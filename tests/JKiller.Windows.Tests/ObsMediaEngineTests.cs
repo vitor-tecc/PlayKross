@@ -8,6 +8,17 @@ namespace JKiller.Windows.Tests;
 public sealed class ObsMediaEngineTests
 {
     [Fact]
+    public async Task AudioBytesAloneDoNotReportVideoBroadcastReady()
+    {
+        var rpc = new FakeRpc { VideoReady = false };
+        await using var engine = new ObsMediaEngine(new FakeHelper(), (_, _) => Task.FromResult<IObsRpcClient>(rpc));
+        await engine.PrepareAsync(Request, CancellationToken.None);
+        var start = engine.StartAsync(new("http://localhost:5000/whip"), "credential", CancellationToken.None);
+        await rpc.PipelinePolled.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.False(start.IsCompleted); rpc.VideoReady = true;
+        await start.WaitAsync(TimeSpan.FromSeconds(2));
+    }
+    [Fact]
     public async Task AcceptedStartWithFailedHandshakeIsNotReportedAsBroadcasting()
     {
         var rpc = new FakeRpc { HandshakeFailed = true };
@@ -109,6 +120,8 @@ public sealed class ObsMediaEngineTests
     private sealed class FakeRpc : IObsRpcClient
     {
         public bool FailNvenc, WrongReadback, DelayStart, Publishing, HandshakeFailed;
+        public bool VideoReady = true;
+        public TaskCompletionSource PipelinePolled = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public int Starts;
         public List<string> PreparedEncoders = [];
         public JsonElement VideoSettings;
@@ -134,7 +147,7 @@ public sealed class ObsMediaEngineTests
             }
             if (vendor == "StartPipeline") { Starts++; StartEntered.TrySetResult(); if (DelayStart) await CompleteStart.Task; Publishing = true; }
             if (vendor is "StopPipeline" or "Disarm") Publishing = false;
-            if (vendor == "GetPipelineState") response = new { outputActive = Publishing && !HandshakeFailed, sentMediaBytes = Publishing && !HandshakeFailed ? 100 : 0, outputError = HandshakeFailed ? "Handshake refused." : "" };
+            if (vendor == "GetPipelineState") { PipelinePolled.TrySetResult(); response = new { outputActive = Publishing && !HandshakeFailed, sentMediaBytes = Publishing && !HandshakeFailed ? 100 : 0, sentFrames = Publishing && VideoReady ? 1 : 0, outputError = HandshakeFailed ? "Handshake refused." : "" }; }
             return JsonSerializer.SerializeToElement(new { responseData = response });
         }
     }

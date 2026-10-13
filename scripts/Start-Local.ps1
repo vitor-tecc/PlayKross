@@ -31,7 +31,10 @@ if (-not (Test-Path -LiteralPath $dotnet) -or -not (Test-Path -LiteralPath $medi
 New-Item -ItemType Directory -Force -Path $logs | Out-Null
 $devEnvironment = @{ DOTNET_CLI_HOME=(Join-Path $root '.tools/dotnet-home'); NUGET_PACKAGES=(Join-Path $root '.tools/nuget'); DOTNET_CLI_TELEMETRY_OPTOUT='1' }
 if (-not $NoBuild) {
-    $build = Start-Process -FilePath $dotnet -ArgumentList @('build', 'src/JKiller.Host/JKiller.Host.csproj') -WorkingDirectory $root -WindowStyle Hidden -Environment $devEnvironment -RedirectStandardOutput (Join-Path $logs 'build.log') -RedirectStandardError (Join-Path $logs 'build-errors.log') -Wait -PassThru
+    $build = Start-Process -FilePath $dotnet -ArgumentList @('build', 'src/JKiller.Host/JKiller.Host.csproj') -WorkingDirectory $root -WindowStyle Hidden -Environment $devEnvironment -RedirectStandardOutput (Join-Path $logs 'build.log') -RedirectStandardError (Join-Path $logs 'build-errors.log') -PassThru
+    # Start-Process -Wait waits for descendants, including persistent SDK workers.
+    # The host can start once its actual build process has exited successfully.
+    if (-not $build.WaitForExit(120000)) { if (-not $build.HasExited) { $build.Kill(); $build.WaitForExit() }; throw 'Host build did not exit within two minutes; inspect .artifacts/local/build.log.' }
     if ($build.ExitCode -ne 0) { throw 'Host build failed; inspect .artifacts/local/build.log.' }
 }
 $hostDll = Join-Path $root 'src/JKiller.Host/bin/Debug/net10.0/JKiller.Host.dll'

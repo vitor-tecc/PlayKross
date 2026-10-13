@@ -23,7 +23,9 @@ finally { $launchLock.Dispose(); & (Join-Path $root 'scripts/Stop-Local.ps1') | 
 for ($round = 0; $round -lt 2; $round++) {
     $owned = $null
     try {
-        $owned = & (Join-Path $root 'scripts/Start-Local.ps1') -NoBuild -PassThru
+        $startup = [Diagnostics.Stopwatch]::StartNew()
+        $owned = & (Join-Path $root 'scripts/Start-Local.ps1') -NoBuild:($round -gt 0) -PassThru
+        if ($startup.Elapsed.TotalSeconds -gt 45) { throw 'Completed host build did not permit bounded startup; reusable compiler workers must not extend build lifetime.' }
         $health = Invoke-RestMethod 'http://127.0.0.1:5000/health'
         if ($health.status -ne 'ready') { throw 'Host failed health check.' }
         if (-not $owned.JoinLink.StartsWith('http://localhost:5000/#invite=')) { throw 'Bootstrap join link missing.' }

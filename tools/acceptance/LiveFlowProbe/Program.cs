@@ -32,6 +32,19 @@ try
 finally { await model.StopAsync(CancellationToken.None); }
 async Task Ready(int height)
 {
+    if (Environment.GetEnvironmentVariable("JKILLER_EXPECT_TRACE_DISABLED") == "1")
+    {
+        var disabledResponse = await control!.RequestAsync("CallVendorRequest", JsonSerializer.SerializeToElement(new { vendorName = "jkiller", requestType = "GetDiagnostics", requestData = new { } }), deadline.Token);
+        var disabled = disabledResponse.GetProperty("responseData");
+        if (disabled.GetProperty("traceEnabled").GetBoolean() || disabled.TryGetProperty("compositorFrames", out _)) throw new Exception("Disabled tracing must report unavailable trace observations, not fake zeros.");
+    }
+    if (Environment.GetEnvironmentVariable("JKILLER_REQUIRE_DIAGNOSTICS") == "1")
+    {
+        var diagnosticResponse = await control!.RequestAsync("CallVendorRequest", JsonSerializer.SerializeToElement(new { vendorName = "jkiller", requestType = "GetDiagnostics", requestData = new { } }), deadline.Token);
+        var diagnostics = diagnosticResponse.GetProperty("responseData");
+        if (!diagnostics.GetProperty("acquisitionHookAvailable").GetBoolean() || diagnostics.GetProperty("captureFrames").GetInt64() <= 0) throw new Exception("Actual capture acquisition hook is unavailable.");
+        Console.WriteLine("Actual native diagnostics: " + diagnostics);
+    }
     var response = await control!.RequestAsync("CallVendorRequest", JsonSerializer.SerializeToElement(new { vendorName = "jkiller", requestType = "GetSafetyStatus", requestData = new { } }), deadline.Token);
     Console.WriteLine($"Live flow {height}p: {model.AppliedText}; safety={response.GetProperty("responseData")}");
     await File.WriteAllTextAsync(Path.Combine(directory, "ready.json"), JsonSerializer.Serialize(new { height, model.CaptureLive, source = image }), deadline.Token);

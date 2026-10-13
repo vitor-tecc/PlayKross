@@ -113,7 +113,7 @@ public sealed class ObsMediaEngine(IOwnedObsProcess helper, Func<OwnedEngineHand
             {
                 var state = await Vendor("GetPipelineState", new { }, cancellationToken);
                 ThrowIfInvalidated(current, cancellationToken);
-                if (state.GetProperty("outputActive").GetBoolean() && state.GetProperty("sentMediaBytes").GetInt64() > 0) break;
+                if (state.GetProperty("outputActive").GetBoolean() && state.GetProperty("sentMediaBytes").GetInt64() > 0 && state.GetProperty("sentFrames").GetInt64() > 0) break;
                 if (!string.IsNullOrEmpty(state.GetProperty("outputError").GetString())) throw new InvalidOperationException("The media handshake failed; inspect native diagnostics.");
                 if (DateTimeOffset.UtcNow >= deadline) throw new TimeoutException("The media connection did not send data within 20 seconds.");
                 await Task.Delay(100, cancellationToken);

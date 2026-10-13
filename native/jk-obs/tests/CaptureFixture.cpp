@@ -4,8 +4,10 @@
 #include <vector>
 #include <cmath>
 bool replacing = false;
+std::uint64_t paint_count = 0;
 
 LRESULT CALLBACK WindowProcedure(HWND window, UINT message, WPARAM wparam, LPARAM lparam) {
+    if (message == WM_APP + 3) { KillTimer(window, 1); InvalidateRect(window, nullptr, FALSE); UpdateWindow(window); return 0; }
     if (message == WM_APP + 2) {
         replacing = true; DestroyWindow(window); replacing = false;
         auto replacement = CreateWindowW(L"JKCaptureFixture", L"JKiller synthetic fixture", WS_OVERLAPPEDWINDOW, 40, 40, 740, 480, nullptr, nullptr, GetModuleHandleW(nullptr), nullptr);
@@ -13,6 +15,7 @@ LRESULT CALLBACK WindowProcedure(HWND window, UINT message, WPARAM wparam, LPARA
     }
     if (message == WM_TIMER) { InvalidateRect(window, nullptr, FALSE); return 0; }
     if (message == WM_PAINT) {
+        ++paint_count; SetPropW(window, L"JKFixturePaintCount", reinterpret_cast<HANDLE>(static_cast<ULONG_PTR>(paint_count)));
         PAINTSTRUCT paint{}; HDC dc = BeginPaint(window, &paint);
         RECT client{}; GetClientRect(window, &client);
         auto brush = CreateSolidBrush(RGB(16, 36, 64)); FillRect(dc, &client, brush); DeleteObject(brush);
@@ -22,7 +25,7 @@ LRESULT CALLBACK WindowProcedure(HWND window, UINT message, WPARAM wparam, LPARA
         const auto text = L"JKiller synthetic capture fixture " + std::to_wstring(GetTickCount64());
         TextOutW(dc, 20, 30, text.c_str(), static_cast<int>(text.size())); EndPaint(window, &paint); return 0;
     }
-    if (message == WM_DESTROY) { if (!replacing) PostQuitMessage(0); return 0; }
+    if (message == WM_DESTROY) { RemovePropW(window, L"JKFixturePaintCount"); if (!replacing) PostQuitMessage(0); return 0; }
     return DefWindowProcW(window, message, wparam, lparam);
 }
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {

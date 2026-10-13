@@ -2,6 +2,8 @@
 #include <mutex>
 #include <string>
 #include <cstring>
+#include "NativeDiagnostics.hpp"
+#include <util/platform.h>
 
 namespace jk {
 namespace {
@@ -12,8 +14,22 @@ obs_encoder_t* audio{};
 obs_service_t* service{};
 std::uint64_t generation{};
 bool initialized = false;
+bool diagnostics_callbacks = false;
+void BeginComposition(void*, std::uint32_t, std::uint32_t) { BeginDiagnosticsComposition(); }
+void EndComposition(void*) { EndDiagnosticsComposition(); }
+void PacketObserved(obs_output_t*, encoder_packet* packet, encoder_packet_time* timing, void*) {
+    if (!DiagnosticsEnabled() || !packet || packet->type != OBS_ENCODER_VIDEO) return;
+    auto& trace = DiagnosticsTrace(); const auto now = os_gettime_ns();
+    if (timing && timing->fer && timing->fer <= now) {
+        trace.RemapComposition(static_cast<std::int64_t>(timing->cts), packet->pts);
+        trace.EncodeInput(packet->pts, timing->fer);
+        if (timing->ferc) trace.EncodeReturn(packet->pts, timing->ferc);
+    }
+    trace.Encoded(packet->pts, now);
+}
 void Release() {
-    if (output) { obs_output_force_stop(output); obs_output_release(output); output = nullptr; }
+    if (output) { obs_output_force_stop(output); obs_output_remove_packet_callback(output, PacketObserved, nullptr); obs_output_release(output); output = nullptr; }
+    if (diagnostics_callbacks) { obs_remove_main_render_callback(BeginComposition, nullptr); obs_remove_main_rendered_callback(EndComposition, nullptr); diagnostics_callbacks = false; }
     if (video) { obs_encoder_release(video); video = nullptr; }
     if (audio) { obs_encoder_release(audio); audio = nullptr; }
     if (service) { obs_service_release(service); service = nullptr; }
@@ -71,6 +87,8 @@ void Prepare(obs_data_t* request, obs_data_t* response, void*) {
     audio = obs_audio_encoder_create("ffmpeg_opus", "JK Application Opus", audio_settings, 0, nullptr); obs_data_release(audio_settings);
     output = obs_output_create("whip_output", "JK Shared WHIP", nullptr, nullptr);
     if (video && audio && output) {
+        obs_output_add_packet_callback(output, PacketObserved, nullptr);
+        obs_add_main_render_callback(BeginComposition, nullptr); obs_add_main_rendered_callback(EndComposition, nullptr); diagnostics_callbacks = true;
         // The typed controller must reacquire a fresh grant before reconnecting.
         // OBS defaults to retrying the old service token after remote revocation.
         obs_output_set_reconnect_settings(output, 0, 1);
@@ -95,6 +113,32 @@ void Start(obs_data_t* request, obs_data_t* response, void*) {
 }
 void Stop(obs_data_t*, obs_data_t* response, void*) { StopPipeline(); obs_data_set_bool(response, "success", true); }
 void State(obs_data_t*, obs_data_t* response, void*) { DescribePipeline(response); }
+void Diagnostics(obs_data_t*, obs_data_t* response, void*) {
+    std::lock_guard lock(pipeline_mutex); Describe(response); DescribeVideo(response);
+    DescribeAudioSource("JK Application Audio", response);
+    obs_data_set_bool(response, "traceEnabled", DiagnosticsEnabled());
+    obs_data_set_int(response, "monotonicNs", static_cast<long long>(os_gettime_ns()));
+    obs_data_set_double(response, "nativeRenderAverageMs", static_cast<double>(obs_get_average_frame_time_ns()) / 1'000'000.0);
+    obs_data_set_int(response, "renderClockFrames", obs_get_total_frames()); obs_data_set_int(response, "renderLagFrames", obs_get_lagged_frames());
+    if (video) { obs_data_set_int(response, "encodedWidth", obs_encoder_get_width(video)); obs_data_set_int(response, "encodedHeight", obs_encoder_get_height(video)); obs_data_set_int(response, "actualEncodedFrames", obs_encoder_get_encoded_frames(video)); }
+    obs_video_info info{}; if (obs_get_video_info(&info)) { obs_data_set_int(response, "requestedFpsNumerator", info.fps_num); obs_data_set_int(response, "requestedFpsDenominator", info.fps_den); }
+    obs_data_set_string(response, "gpuKernelTiming", "unavailable: these host timestamps do not measure GPU kernels");
+    if (!DiagnosticsEnabled()) { obs_data_set_string(response, "captureUnavailableReason", "Trace disabled for an uninstrumented baseline measurement."); obs_data_set_string(response, "timingProvenance", "Trace timing unavailable in disabled baseline mode."); return; }
+    const auto snapshot = DiagnosticsTrace().Snapshot();
+    if (obs_data_get_bool(response, "acquisitionHookAvailable")) obs_data_set_int(response, "captureFrames", static_cast<long long>(snapshot.captured_frames));
+    else obs_data_set_string(response, "captureUnavailableReason", "The owned libobs-winrt acquisition hook is not installed; OBS render FPS is not capture FPS.");
+    obs_data_set_int(response, "compositorFrames", static_cast<long long>(snapshot.rendered_frames));
+    obs_data_set_int(response, "repeatedSourceFrames", static_cast<long long>(snapshot.repeated_frames));
+    obs_data_set_int(response, "encodedPackets", static_cast<long long>(snapshot.encoded_packets));
+    obs_data_set_int(response, "unmatchedPackets", static_cast<long long>(snapshot.unmatched_packets));
+    obs_data_set_int(response, "timingSamples", static_cast<long long>(snapshot.sample_count));
+    obs_data_set_int(response, "captureTimingSamples", static_cast<long long>(snapshot.capture_timing_samples));
+    if (snapshot.encode_residence_ms) obs_data_set_double(response, "inputToOutputPacketMs", *snapshot.encode_residence_ms);
+    if (snapshot.capture_to_render_ms) obs_data_set_double(response, "captureToRenderMs", *snapshot.capture_to_render_ms);
+    if (snapshot.encode_api_call_ms) obs_data_set_double(response, "encodeApiCallMs", *snapshot.encode_api_call_ms);
+    if (snapshot.capture_to_packet_ms) obs_data_set_double(response, "freshCaptureToPacketMs", *snapshot.capture_to_packet_ms);
+    obs_data_set_string(response, "timingProvenance", "OBS32.2.2 matched encoder_packet_time CTS/FER/FERC; encode API call and input-to-output-packet residence (includes interleaving), QPC monotonic nanoseconds.");
+}
 }
 void StopPipeline() { std::lock_guard lock(pipeline_mutex); if (output) obs_output_force_stop(output); }
 void ReleasePipeline() { std::lock_guard lock(pipeline_mutex); Release(); }
@@ -105,6 +149,7 @@ void RegisterPipelineRequests(obs_websocket_vendor vendor) {
     obs_websocket_vendor_register_request(vendor, "StartPipeline", Start, nullptr);
     obs_websocket_vendor_register_request(vendor, "StopPipeline", Stop, nullptr);
     obs_websocket_vendor_register_request(vendor, "GetPipelineState", State, nullptr);
+    obs_websocket_vendor_register_request(vendor, "GetDiagnostics", Diagnostics, nullptr);
 }
-void UnregisterPipelineRequests(obs_websocket_vendor vendor) { for (const char* name : {"GetCapabilities", "PreparePipeline", "StartPipeline", "StopPipeline", "GetPipelineState"}) obs_websocket_vendor_unregister_request(vendor, name); }
+void UnregisterPipelineRequests(obs_websocket_vendor vendor) { for (const char* name : {"GetCapabilities", "PreparePipeline", "StartPipeline", "StopPipeline", "GetPipelineState", "GetDiagnostics"}) obs_websocket_vendor_unregister_request(vendor, name); }
 }

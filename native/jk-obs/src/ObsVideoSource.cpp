@@ -6,6 +6,8 @@
 #include <string>
 #include <stdexcept>
 #include "winrt-capture.h"
+#include "NativeDiagnostics.hpp"
+#include <util/platform.h>
 
 namespace jk {
 namespace {
@@ -18,6 +20,7 @@ struct CaptureApi {
     decltype(&winrt_capture_render) render{};
     decltype(&winrt_capture_width) width{};
     decltype(&winrt_capture_height) height{};
+    BOOL (*frame_info)(const winrt_capture*, std::uint64_t*, std::uint64_t*){};
     CaptureApi() {
         wchar_t path[32768]{};
         if (!GetModuleFileNameW(nullptr, path, 32768)) throw std::runtime_error("Owned engine path unavailable.");
@@ -28,6 +31,7 @@ struct CaptureApi {
         LOAD(supported, winrt_capture_supported); LOAD(window, winrt_capture_init_window); LOAD(monitor, winrt_capture_init_monitor);
         LOAD(free, winrt_capture_free); LOAD(active, winrt_capture_active); LOAD(render, winrt_capture_render);
         LOAD(width, winrt_capture_width); LOAD(height, winrt_capture_height);
+        frame_info = reinterpret_cast<decltype(frame_info)>(GetProcAddress(library, "winrt_capture_get_frame_info"));
 #undef LOAD
     }
 };
@@ -94,7 +98,15 @@ void Destroy(void* data) {
 }
 void Render(void* data, gs_effect_t*) {
     auto* context = static_cast<VideoSource*>(data); std::lock_guard lock(context->mutex);
-    if (context->Ready()) Api().render(context->capture); // A lost item renders blank; it is never recreated.
+    if (context->Ready()) {
+        auto& api = Api();
+        if (InMainComposition()) {
+            std::uint64_t sequence = 0, timestamp = 0;
+            if (api.frame_info && api.frame_info(context->capture, &sequence, &timestamp)) DiagnosticsTrace().Capture(1, sequence, timestamp);
+            DiagnosticsTrace().Render(sequence, static_cast<std::int64_t>(obs_get_video_frame_time()), os_gettime_ns());
+        }
+        api.render(context->capture); // A lost item renders blank; it is never recreated.
+    }
 }
 void Tick(void* data, float) {
     auto* c = static_cast<VideoSource*>(data);
@@ -153,6 +165,7 @@ void DescribeVideo(obs_data_t* response) {
     {
     std::lock_guard lock(sources_mutex);
     obs_data_set_bool(response, "videoReady", false);
+    obs_data_set_bool(response, "acquisitionHookAvailable", Api().frame_info != nullptr);
     for (const auto& [source, c] : sources) if (std::string(obs_source_get_name(source)) == "JK Video") {
         std::lock_guard capture_lock(c->mutex);
         obs_data_set_bool(response, "videoReady", c->Ready() && Api().width(c->capture) > 0 && Api().height(c->capture) > 0);

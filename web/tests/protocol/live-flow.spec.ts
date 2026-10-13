@@ -22,10 +22,17 @@ test("native broadcaster controller sends the requested live smoke preset", asyn
     if (!peer) throw new Error("Actual receiver not connected.");
     const stats = await peer.getStats(); const inbound = [...stats.values()].filter(value => value.type === "inbound-rtp");
     const video = inbound.find(value => value.kind === "video"), audio = inbound.find(value => value.kind === "audio");
+    const canvas = document.createElement("canvas"); canvas.width = 32; canvas.height = 32;
+    const context = canvas.getContext("2d")!; context.drawImage(document.querySelector("video")!, 0, 0, 32, 32);
+    const pixels = context.getImageData(0, 0, 32, 32).data;
+    let sum = 0, squares = 0;
+    for (let index = 0; index < pixels.length; index += 4) { const luminance = (pixels[index]! + pixels[index+1]! + pixels[index+2]!) / 3; sum += luminance; squares += luminance*luminance; }
+    const pixelLumaVariance = squares / 1024 - (sum / 1024) ** 2;
     return { codec: stats.get(video.codecId)?.mimeType, width: video.frameWidth, height: video.frameHeight, decoded: video.framesDecoded,
-      reportedDecodeFps: video.framesPerSecond, audioCodec: stats.get(audio.codecId)?.mimeType, audioPackets: audio.packetsReceived, audioEnergy: audio.totalAudioEnergy };
+      reportedDecodeFps: video.framesPerSecond, pixelLumaVariance, audioCodec: stats.get(audio.codecId)?.mimeType, audioPackets: audio.packetsReceived, audioEnergy: audio.totalAudioEnergy };
   });
   expect(metrics.codec.toLowerCase()).toBe("video/h264"); expect(metrics.audioCodec.toLowerCase()).toBe("audio/opus"); expect(metrics.audioPackets).toBeGreaterThan(0);
+  expect(metrics.pixelLumaVariance, "Actual received video must contain varied pixels, rather than a blank decoded frame").toBeGreaterThan(1);
   console.log(JSON.stringify({ browser: browser.version(), topology: "loopback", check: "short-live-smoke-only", ...metrics }));
   await page.getByRole("button", { name: "Fullscreen", exact: true }).click(); await page.getByRole("button", { name: "Return to room" }).click();
   await page.close();

@@ -1,0 +1,42 @@
+diff --git a/libobs-winrt/winrt-capture.cpp b/libobs-winrt/winrt-capture.cpp
+index ea0335f..7dce41d 100644
+--- a/libobs-winrt/winrt-capture.cpp
++++ b/libobs-winrt/winrt-capture.cpp
+@@ -1,4 +1,5 @@
+ #include "winrt-capture.h"
++#include <util/platform.h>
+ 
+ extern "C" EXPORT BOOL winrt_capture_supported()
+ try {
+@@ -117,6 +118,8 @@ struct winrt_capture {
+ 	D3D11_BOX client_box;
+ 
+ 	BOOL active;
++	uint64_t jk_sequence = 0;
++	uint64_t jk_texture_acquired_ns = 0;
+ 	struct winrt_capture *next;
+ 
+ 	void on_closed(winrt::Windows::Graphics::Capture::GraphicsCaptureItem const &,
+@@ -175,6 +178,8 @@ struct winrt_capture {
+ 				}
+ 
+ 				texture_written = true;
++				++jk_sequence;
++				jk_texture_acquired_ns = os_gettime_ns();
+ 			}
+ 
+ 			if (frame_content_size.Width != last_size.Width ||
+@@ -604,3 +609,13 @@ extern "C" EXPORT void winrt_capture_thread_stop()
+ 		capture = capture->next;
+ 	}
+ }
++
++// Caller holds the OBS graphics lock, as for the existing texture queries.
++extern "C" EXPORT BOOL winrt_capture_get_frame_info(const winrt_capture *capture, uint64_t *sequence, uint64_t *ns)
++{
++	if (!capture || !sequence || !ns || !capture->texture_written)
++		return FALSE;
++	*sequence = capture->jk_sequence;
++	*ns = capture->jk_texture_acquired_ns;
++	return TRUE;
++}
