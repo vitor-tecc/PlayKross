@@ -68,6 +68,13 @@ public static class HostApplication
         });
         app.UseAuthentication(); app.UseAuthorization();
         app.UseRateLimiter();
+        var viewerRoot = Path.GetFullPath(builder.Configuration["ViewerRoot"] ?? Path.Combine(builder.Environment.ContentRootPath, "web", "dist"));
+        if (Directory.Exists(viewerRoot))
+        {
+            var files = new Microsoft.Extensions.FileProviders.PhysicalFileProvider(viewerRoot);
+            app.UseDefaultFiles(new DefaultFilesOptions { FileProvider = files });
+            app.UseStaticFiles(new StaticFileOptions { FileProvider = files });
+        }
         app.MapRoomEndpoints();
         app.MapMediaProxy();
         app.MapHub<RoomHub>("/hubs/room").RequireAuthorization();

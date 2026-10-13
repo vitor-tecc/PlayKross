@@ -27,6 +27,8 @@ public sealed class RoomStore(SessionStore sessions, MediaGrantStore grants, Tim
         var id = Guid.NewGuid(); var invite = OpaqueSecrets.Create('i', id);
         rooms.Add(id, new(id, OpaqueSecrets.Hash(invite))); return new RoomInvite(id, invite);
     });
+    public bool MatchesInvite(Guid roomId, string invite) => Run(() =>
+        OpaqueSecrets.TryId(invite, 'i', out var supplied) && supplied == roomId && rooms.TryGetValue(roomId, out var room) && OpaqueSecrets.Matches(invite, room.InviteHash));
     public SessionGrant Join(string invite, string nickname) => Run(() =>
     {
         var name = ValidateNickname(nickname);

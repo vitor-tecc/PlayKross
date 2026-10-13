@@ -1,6 +1,7 @@
 #include "ModuleState.hpp"
 #include <obs-frontend-api.h>
 #include <util/platform.h>
+#include <windows.h>
 
 OBS_DECLARE_MODULE()
 MODULE_EXPORT const char* obs_module_description(void) { return "JKiller process-only audio and publication guard"; }
@@ -10,6 +11,7 @@ SceneGuard module_guard;
 std::atomic<std::uint64_t> last_heartbeat_ns{0};
 namespace {
 std::atomic_bool stopping{false};
+std::atomic<std::uint64_t> controller_exit_ns{0};
 bool Allowed(obs_source_t* source) {
     obs_data_t* settings = obs_source_get_settings(source);
     const auto generation = static_cast<std::uint64_t>(obs_data_get_int(settings, "selection_generation"));
@@ -45,6 +47,22 @@ bool Audit(void* result, obs_source_t* source) {
     return true;
 }
 void Tick(void*, float) {
+    if (ControllerLost()) {
+        const auto now = os_gettime_ns();
+        // Capture emissions stop synchronously through the retained controller binding.
+        static std::atomic_bool closing{false};
+        if (!closing.exchange(true)) {
+            controller_exit_ns.store(now); StopPublication();
+            obs_queue_task(OBS_TASK_UI, [](void*) {
+                const auto window = static_cast<HWND>(obs_frontend_get_main_window_handle());
+                if (window) PostMessageW(window, WM_CLOSE, 0, 0);
+            }, nullptr, false);
+        } else if (now - controller_exit_ns.load() > 2000000000ULL) {
+            // The configured, disposable owned helper must not survive a blocked close dialog.
+            TerminateProcess(GetCurrentProcess(), 0);
+        }
+        return;
+    }
     if (module_guard.Active()) {
         const auto heartbeat = last_heartbeat_ns.load();
         if (!heartbeat || os_gettime_ns() - heartbeat > 2000000000ULL || !GuardVideoReady() || !AuditScene()) StopPublication();

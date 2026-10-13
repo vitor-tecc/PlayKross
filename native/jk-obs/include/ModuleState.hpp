@@ -29,4 +29,6 @@ bool AudioSourceReady(const char* name, std::uint64_t generation, std::uint32_t 
 void StartLocalControl();
 void StopLocalControl();
 std::optional<ProcessToken> ControllerIdentity();
+bool ControllerAlive();
+bool ControllerLost();
 }

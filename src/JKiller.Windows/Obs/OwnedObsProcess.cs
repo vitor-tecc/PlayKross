@@ -19,6 +19,7 @@ public sealed class OwnedObsProcess(string repositoryRoot) : IOwnedObsProcess, I
     private readonly string root = Path.GetFullPath(repositoryRoot);
     private readonly SemaphoreSlim gate = new(1);
     private Process? process;
+    private OwnedProcessJob? job;
     private FileStream? ownershipLock;
     private OwnedEngineHandle? handle;
     private string RuntimeRoot => Path.Combine(root, ".runtime", "obs");
@@ -54,7 +55,7 @@ public sealed class OwnedObsProcess(string repositoryRoot) : IOwnedObsProcess, I
             InitializeProfile();
             cancellationToken.ThrowIfCancellationRequested();
             var pipeName = "jkiller-" + Guid.NewGuid().ToString("N");
-            process = Process.Start(BuildLaunch(pipeName, owner)) ?? throw new InvalidOperationException("Owned engine could not start.");
+            job = OwnedProcessJob.Launch(BuildLaunch(pipeName, owner)); process = job.Process;
             var identity = ProcessIdentityReader.Read(process.Id) ?? throw new InvalidOperationException("Owned engine identity unavailable.");
             handle = new(identity, pipeName, owner);
             return handle;
@@ -111,6 +112,7 @@ public sealed class OwnedObsProcess(string repositoryRoot) : IOwnedObsProcess, I
     private void Cleanup()
     {
         process?.Dispose(); process = null; handle = null;
+        job?.Dispose(); job = null;
         if (ownershipLock is not null) { ClearServiceSecrets(); ownershipLock.Dispose(); ownershipLock = null; }
     }
     public async ValueTask DisposeAsync() => await StopAsync(CancellationToken.None);

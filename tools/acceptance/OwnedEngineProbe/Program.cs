@@ -4,6 +4,8 @@ using JKiller.Windows.Capture;
 using JKiller.Contracts;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using System.Net.Http.Json;
+using System.Net.Http.Headers;
 
 await using var helper = new OwnedObsProcess(Environment.CurrentDirectory);
 try
@@ -20,6 +22,56 @@ try
     Console.WriteLine("Actual pipeline initialization: " + applied);
     if (!applied.GetProperty("success").GetBoolean() || !applied.GetProperty("hardwareInitialized").GetBoolean()) throw new Exception("NVENC did not initialize.");
     await Vendor("StopPipeline", new { });
+    if (args.Length > 0 && args[0] == "publish")
+    {
+        await rpc.DisposeAsync(); await helper.StopAsync(CancellationToken.None);
+        var link = new Uri(Environment.GetEnvironmentVariable("JKILLER_PROBE_JOIN_LINK") ?? throw new Exception("Probe invitation missing."));
+        var invitation = Uri.UnescapeDataString(link.Fragment["#invite=".Length..]);
+        using var http = new HttpClient(new HttpClientHandler { UseCookies = false }) { BaseAddress = new Uri(link.GetLeftPart(UriPartial.Authority)) };
+        var joinResponse = await http.PostAsJsonAsync("/api/join", new { invite = invitation, nickname = "Synthetic publisher", desktop = true }); joinResponse.EnsureSuccessStatusCode();
+        var joined = (await joinResponse.Content.ReadFromJsonAsync<SessionGrant>())!;
+        http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", joined.SessionToken);
+        var reservedResponse = await http.PostAsync("/api/streams", null); reservedResponse.EnsureSuccessStatusCode();
+        var reservation = (await reservedResponse.Content.ReadFromJsonAsync<PublishReservation>())!;
+        var fixtureId = int.Parse(Environment.GetEnvironmentVariable("JKILLER_FIXTURE_PID")!);
+        using var fixture = Process.GetProcessById(fixtureId); fixture.Refresh();
+        var identity = ProcessIdentityReader.Read(fixtureId)!;
+        if (!string.Equals(Path.GetFullPath(identity.ExecutablePath), Path.GetFullPath(Path.Combine(Environment.CurrentDirectory, ".artifacts/native/Debug/CaptureFixture.exe")), StringComparison.OrdinalIgnoreCase)) throw new Exception("Protocol probe accepts only the synthetic fixture.");
+        var video = new SourceDescriptor("fixture", SourceKind.Window, unchecked((ulong)(long)fixture.MainWindowHandle), identity, "Synthetic fixture");
+        IObsRpcClient? publisherControl = null;
+        await using var engine = new ObsMediaEngine(helper, async (owned, cancellation) => publisherControl = await ObsRpcClient.ConnectAsync(owned.PipeName, owned.Identity, cancellation));
+        try
+        {
+            var requested = new BroadcastSettings(1280, 720, 30, 6);
+            Console.WriteLine("Actual native applied settings: " + await engine.PrepareAsync(new(video, new(identity), requested), CancellationToken.None));
+            await engine.StartAsync(new Uri(http.BaseAddress!, reservation.WhipUri), reservation.Token, CancellationToken.None);
+            var directory = Path.Combine(Environment.CurrentDirectory, ".artifacts/protocol"); Directory.CreateDirectory(directory);
+            await File.WriteAllTextAsync(Path.Combine(directory, "publisher-ready.local.json"), JsonSerializer.Serialize(new { streamId = reservation.StreamId }));
+            Console.WriteLine("Native publication requested; real browser negotiation is the next check.");
+            var deadline = DateTimeOffset.UtcNow.AddSeconds(90);
+            bool revoked = false;
+            while (DateTimeOffset.UtcNow < deadline && !File.Exists(Path.Combine(directory, "stop-publisher")))
+            {
+                if (!revoked && File.Exists(Path.Combine(directory, "revoke-publication")))
+                {
+                    async Task<JsonElement> PipelineState() => (await publisherControl!.RequestAsync("CallVendorRequest", JsonSerializer.SerializeToElement(new { vendorName = "jkiller", requestType = "GetPipelineState", requestData = new { } }), CancellationToken.None)).GetProperty("responseData").Clone();
+                    if (!(await PipelineState()).GetProperty("outputActive").GetBoolean()) throw new Exception("Native output was not active before the revocation check.");
+                    var stopped = await http.DeleteAsync($"/api/streams/{reservation.StreamId}"); stopped.EnsureSuccessStatusCode();
+                    revoked = true; Console.WriteLine("Publication ownership revoked through the host; native capture remains present for disconnection validation.");
+                    var disconnectDeadline = DateTimeOffset.UtcNow.AddSeconds(5);
+                    while ((await PipelineState()).GetProperty("outputActive").GetBoolean())
+                    {
+                        if (DateTimeOffset.UtcNow >= disconnectDeadline) throw new Exception("Router revocation did not stop the active native output.");
+                        await Task.Delay(100);
+                    }
+                    Console.WriteLine("PASS: real router revocation stopped the active native output before engine Stop.");
+                }
+                await Task.Delay(250);
+            }
+        }
+        finally { await engine.StopAsync(CancellationToken.None); await http.DeleteAsync($"/api/streams/{reservation.StreamId}"); }
+        return;
+    }
     if (args.Length > 0 && args[0] == "capture")
     {
         await rpc.DisposeAsync(); await helper.StopAsync(CancellationToken.None);

@@ -101,6 +101,12 @@ public static class MediaProxy
     }
     private static async Task Forward(HttpContext context, HttpResponseMessage response)
     {
+        if (response.StatusCode is HttpStatusCode.NoContent or HttpStatusCode.NotModified || HttpMethods.IsHead(context.Request.Method))
+        {
+            context.Response.StatusCode = (int)response.StatusCode;
+            foreach (var header in responseHeaders) if (response.Headers.TryGetValues(header, out var values)) context.Response.Headers[header] = values.ToArray();
+            return;
+        }
         var body = await ReadBounded(await response.Content.ReadAsStreamAsync(context.RequestAborted), context.RequestAborted);
         context.Response.StatusCode = (int)response.StatusCode;
         if (response.Content.Headers.ContentType is { } type) context.Response.ContentType = type.ToString();

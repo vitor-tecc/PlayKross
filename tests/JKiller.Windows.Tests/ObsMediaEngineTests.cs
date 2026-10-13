@@ -68,6 +68,16 @@ public sealed class ObsMediaEngineTests
         Assert.Equal("jk_bound_capture", rpc.VideoKind);
         await engine.StopAsync(CancellationToken.None);
     }
+    [Fact]
+    public async Task CapturedSourceFitsTheSelectedOutputWithoutCroppingOrStretching()
+    {
+        var rpc = new FakeRpc();
+        var engine = new ObsMediaEngine(new FakeHelper(), (_, _) => Task.FromResult<IObsRpcClient>(rpc));
+        await engine.PrepareAsync(Request, CancellationToken.None);
+        Assert.Equal("OBS_BOUNDS_SCALE_INNER", rpc.Transform.GetProperty("boundsType").GetString());
+        Assert.Equal(1920, rpc.Transform.GetProperty("boundsWidth").GetInt32()); Assert.Equal(1080, rpc.Transform.GetProperty("boundsHeight").GetInt32());
+        await engine.StopAsync(CancellationToken.None);
+    }
 
     private sealed class FakeHelper : IOwnedObsProcess
     {
@@ -81,12 +91,15 @@ public sealed class ObsMediaEngineTests
         public int Starts;
         public List<string> PreparedEncoders = [];
         public JsonElement VideoSettings;
+        public JsonElement Transform = JsonSerializer.SerializeToElement(new { });
         public string? VideoKind;
         public TaskCompletionSource StartEntered = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public TaskCompletionSource CompleteStart = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public async Task<JsonElement> RequestAsync(string requestType, JsonElement data, CancellationToken cancellationToken)
         {
             if (requestType == "CreateInput" && data.GetProperty("inputName").GetString() == "JK Video") { VideoSettings = data.GetProperty("inputSettings").Clone(); VideoKind = data.GetProperty("inputKind").GetString(); }
+            if (requestType == "GetSceneItemList") return JsonSerializer.SerializeToElement(new { sceneItems = new[] { new { sourceName = "JK Video", sceneItemId = 1 } } });
+            if (requestType == "SetSceneItemTransform") Transform = data.GetProperty("sceneItemTransform").Clone();
             if (requestType == "GetVideoSettings") return JsonSerializer.SerializeToElement(new { outputWidth = WrongReadback ? 1280 : 1920, outputHeight = 1080, fpsNumerator = 60, fpsDenominator = 1 });
             if (requestType != "CallVendorRequest") return JsonSerializer.SerializeToElement(new { });
             var vendor = data.GetProperty("requestType").GetString();

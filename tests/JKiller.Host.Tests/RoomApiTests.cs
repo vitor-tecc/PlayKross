@@ -6,6 +6,25 @@ namespace JKiller.Host.Tests;
 public sealed class RoomApiTests
 {
     [Fact]
+    public async Task ReopeningTheSameInvitationReusesAuthenticatedSessionAndStreamOwnership()
+    {
+        await using var host = await HostFixture.Start(); var invite = host.Invite; var owner = await host.Join(invite);
+        var publication = (await (await host.Client.SendAsync(host.Request(HttpMethod.Post, "/api/streams", owner.SessionToken))).Content.ReadFromJsonAsync<PublishReservation>())!;
+        var response = await host.Client.SendAsync(host.Request(HttpMethod.Post, "/api/join", owner.SessionToken, new { invite, nickname = "renamed", desktop = true }));
+        var resumed = (await response.Content.ReadFromJsonAsync<SessionGrant>())!;
+        Assert.Equal(owner.SessionId, resumed.SessionId); Assert.Equal(publication.StreamId, Assert.Single(resumed.Room.Streams).StreamId);
+    }
+    [Fact]
+    public async Task BrowserResumeReadsItsStableIdentityWithoutReturningCredential()
+    {
+        await using var host = await HostFixture.Start(); var owner = await host.Join();
+        var response = await host.Client.SendAsync(host.Request(HttpMethod.Get, "/api/me", owner.SessionToken));
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using var json = System.Text.Json.JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal(owner.SessionId, json.RootElement.GetProperty("sessionId").GetGuid());
+        Assert.False(json.RootElement.TryGetProperty("sessionToken", out _));
+    }
+    [Fact]
     public async Task AnonymousJoinAttemptsHaveABoundedRate()
     {
         await using var host = await HostFixture.Start(); var invite = host.Invite;

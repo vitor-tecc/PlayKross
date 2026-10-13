@@ -9,11 +9,13 @@ public sealed class MediaProxyTests
     private sealed class Upstream : HttpMessageHandler
     {
         public bool ExternalLocation;
+        public bool Empty204Options;
         public List<Uri> Requests = [];
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             Requests.Add(request.RequestUri!);
             var response = new HttpResponseMessage(request.Method == HttpMethod.Post ? HttpStatusCode.Created : HttpStatusCode.NoContent);
+            if (request.Method == HttpMethod.Options && Empty204Options) response.Content = new StringContent("unexpected upstream body");
             if (request.Method == HttpMethod.Post)
             {
                 response.Content = new StringContent("v=0\r\na=answer\r\n", Encoding.UTF8, "application/sdp");
@@ -22,6 +24,14 @@ public sealed class MediaProxyTests
             }
             return Task.FromResult(response);
         }
+    }
+    [Fact]
+    public async Task NoContentOptionsNeverWritesAnUpstreamBody()
+    {
+        await using var host = await HostFixture.Start(new Upstream { Empty204Options = true }); var owner = await host.Join();
+        var stream = (await (await host.Client.SendAsync(host.Request(HttpMethod.Post, "/api/streams", owner.SessionToken))).Content.ReadFromJsonAsync<PublishReservation>())!;
+        var response = await host.Client.SendAsync(host.Request(HttpMethod.Options, stream.WhipUri.ToString(), stream.Token));
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode); Assert.Equal("", await response.Content.ReadAsStringAsync());
     }
     private static HttpRequestMessage Offer(HostFixture host, string url, string token)
     {

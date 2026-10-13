@@ -10,11 +10,23 @@ public static class RoomEndpoints
     {
         app.MapPost("/api/join", async (JoinRequest request, HttpContext context, RoomStore rooms, HostOptions options, IHubContext<RoomHub> hub) =>
         {
-            var session = rooms.Join(request.Invite, request.Nickname);
+            SessionGrant session;
+            if (context.Items.TryGetValue(typeof(SessionIdentity), out var authenticated) && authenticated is SessionIdentity previous && rooms.MatchesInvite(previous.RoomId, request.Invite))
+            {
+                var credential = SessionAuthenticationHandler.Bearer(context.Request);
+                if (credential is null || !credential.StartsWith("s.", StringComparison.Ordinal)) credential = context.Request.Cookies[SessionAuthenticationHandler.CookieName];
+                session = new(previous.RoomId, previous.SessionId, credential!, previous.ExpiresAt, rooms.Rename(previous.SessionId, request.Nickname));
+            }
+            else session = rooms.Join(request.Invite, request.Nickname);
             context.Response.Cookies.Append(SessionAuthenticationHandler.CookieName, session.SessionToken, new CookieOptions { HttpOnly = true, Secure = options.PublicOrigin.Scheme == "https", SameSite = SameSiteMode.Strict, Path = "/", Expires = session.ExpiresAt, IsEssential = true });
             await hub.Clients.Group(session.RoomId.ToString("N")).SendAsync("room", session.Room);
             return Results.Ok(request.Desktop ? session : session with { SessionToken = "" });
         }).RequireRateLimiting("join");
+        app.MapGet("/api/me", (HttpContext context, RoomStore rooms) =>
+        {
+            var session = SessionAuthenticationHandler.Require(context);
+            return Results.Ok(new { sessionId = session.SessionId, expiresAt = session.ExpiresAt, room = rooms.Snapshot(session.SessionId) });
+        }).RequireAuthorization();
         app.MapGet("/api/room", (HttpContext context, RoomStore rooms) => Results.Ok(rooms.Snapshot(SessionAuthenticationHandler.Require(context).SessionId))).RequireAuthorization();
         app.MapPost("/api/me/nickname", async (RenameRequest request, HttpContext context, RoomStore rooms, IHubContext<RoomHub> hub) =>
         {

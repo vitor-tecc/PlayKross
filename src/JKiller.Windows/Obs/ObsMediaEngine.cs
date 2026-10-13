@@ -75,6 +75,13 @@ public sealed class ObsMediaEngine(IOwnedObsProcess helper, Func<OwnedEngineHand
                 await Task.Delay(100, cancellationToken);
             }
             var owner = handle.Controller;
+            var items = await Request("GetSceneItemList", new { sceneName = "JKiller" }, cancellationToken);
+            var item = items.GetProperty("sceneItems").EnumerateArray().Single(value => value.GetProperty("sourceName").GetString() == "JK Video");
+            await Request("SetSceneItemTransform", new { sceneName = "JKiller", sceneItemId = item.GetProperty("sceneItemId").GetInt64(), sceneItemTransform = new
+            {
+                boundsType = "OBS_BOUNDS_SCALE_INNER", boundsWidth = settings.Width, boundsHeight = settings.Height,
+                alignment = 5, boundsAlignment = 0, positionX = 0, positionY = 0, scaleX = 1, scaleY = 1, cropLeft = 0, cropTop = 0, cropRight = 0, cropBottom = 0
+            } }, cancellationToken);
             var arm = await Vendor("Arm", new { ownerPid = owner.Pid, ownerCreationFileTime = owner.CreationFileTime.ToString(CultureInfo.InvariantCulture), ownerImagePath = owner.ExecutablePath, generation, audioSource = audioName, videoSource = "JK Video" }, cancellationToken);
             if (!arm.GetProperty("armed").GetBoolean()) throw new InvalidOperationException("Native capture safety guard refused the selected sources.");
             ThrowIfInvalidated(current, cancellationToken);

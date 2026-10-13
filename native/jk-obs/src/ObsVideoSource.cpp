@@ -52,7 +52,7 @@ struct VideoSource {
         bool valid = false; DWORD observed_pid = 0;
         if (window) valid = IsWindow(reinterpret_cast<HWND>(handle)) && GetWindowThreadProcessId(reinterpret_cast<HWND>(handle), &observed_pid);
         else { MONITORINFO info{sizeof(info)}; valid = GetMonitorInfoW(reinterpret_cast<HMONITOR>(handle), &info); }
-        return lease->CanRender(!binding || binding->CanEmit(), Api().active(capture), valid, observed_pid);
+        return lease->CanRender(ControllerAlive() && (!binding || binding->CanEmit()), Api().active(capture), valid, observed_pid);
     }
 };
 std::mutex sources_mutex;

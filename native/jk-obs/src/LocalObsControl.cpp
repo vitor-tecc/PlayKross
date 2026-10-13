@@ -11,6 +11,8 @@ namespace {
 LocalControlPipe control;
 std::mutex controller_mutex;
 std::optional<ProcessToken> controller_identity;
+std::unique_ptr<ProcessBinding> controller_lifetime;
+bool controller_expected = false;
 std::wstring Environment(const wchar_t* name) {
     const DWORD size = GetEnvironmentVariableW(name, nullptr, 0);
     if (!size || size > 32768) return {};
@@ -92,11 +94,18 @@ void StartLocalControl() {
         if (!pid || pid > UINT32_MAX) throw std::runtime_error("Invalid controller PID.");
         const auto created = std::stoull(Environment(L"JKILLER_OWNER_CREATION"));
         const ProcessToken owner{static_cast<std::uint32_t>(pid), created, Environment(L"JKILLER_OWNER_IMAGE")};
-        { std::lock_guard lock(controller_mutex); controller_identity = owner; }
+        auto lifetime = ProcessBinding::Open(owner);
+        if (!lifetime.binding) throw std::runtime_error(lifetime.error);
         if (!control.Start(name, owner, ProcessMessage)) throw std::runtime_error("Private control pipe could not start.");
+        { std::lock_guard lock(controller_mutex); controller_identity = owner; controller_lifetime = std::move(lifetime.binding); controller_expected = true; }
         blog(LOG_INFO, "[JKiller] local-only controller pipe ready; remote clients prohibited");
-    } catch (const std::exception& error) { blog(LOG_ERROR, "[JKiller] private control unavailable: %s", error.what()); }
+    } catch (const std::exception& error) {
+        { std::lock_guard lock(controller_mutex); controller_expected = true; }
+        blog(LOG_ERROR, "[JKiller] private control unavailable: %s", error.what());
+    }
 }
-void StopLocalControl() { control.Stop(); std::lock_guard lock(controller_mutex); controller_identity.reset(); }
+void StopLocalControl() { control.Stop(); std::lock_guard lock(controller_mutex); controller_identity.reset(); controller_lifetime.reset(); controller_expected = false; }
 std::optional<ProcessToken> ControllerIdentity() { std::lock_guard lock(controller_mutex); return controller_identity; }
+bool ControllerAlive() { std::lock_guard lock(controller_mutex); return controller_lifetime && controller_lifetime->CanEmit(); }
+bool ControllerLost() { std::lock_guard lock(controller_mutex); return controller_expected && (!controller_lifetime || !controller_lifetime->CanEmit()); }
 }

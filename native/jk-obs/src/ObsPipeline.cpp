@@ -71,6 +71,9 @@ void Prepare(obs_data_t* request, obs_data_t* response, void*) {
     audio = obs_audio_encoder_create("ffmpeg_opus", "JK Application Opus", audio_settings, 0, nullptr); obs_data_release(audio_settings);
     output = obs_output_create("whip_output", "JK Shared WHIP", nullptr, nullptr);
     if (video && audio && output) {
+        // The typed controller must reacquire a fresh grant before reconnecting.
+        // OBS defaults to retrying the old service token after remote revocation.
+        obs_output_set_reconnect_settings(output, 0, 1);
         obs_encoder_set_video(video, obs_get_video()); obs_encoder_set_audio(audio, obs_get_audio());
         obs_output_set_video_encoder(output, video); obs_output_set_audio_encoder(output, audio, 0);
         initialized = obs_output_initialize_encoders(output, 0);
