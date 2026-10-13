@@ -31,6 +31,14 @@ public sealed class MediaGrantStore(TimeProvider clock)
         lock (gate)
             return entries.TryGetValue(id, out var entry) && entry.ExpiresAt > now && entry.Path == path && entry.Action == action && OpaqueSecrets.Matches(token, entry.CredentialHash) ? entry.SessionId : null;
     }
+    public bool CommitAuthorization(string token, string path, string action, DateTimeOffset now, Func<Guid, bool> commit)
+    {
+        lock (gate)
+        {
+            var owner = GetAuthorizedSession(token, path, action, now);
+            return owner is { } id && commit(id);
+        }
+    }
     public void RevokePath(string path) { lock (gate) foreach (var id in entries.Where(x => x.Value.Path == path).Select(x => x.Key).ToArray()) entries.Remove(id); }
     public void RevokeSession(Guid sessionId) { lock (gate) foreach (var id in entries.Where(x => x.Value.SessionId == sessionId).Select(x => x.Key).ToArray()) entries.Remove(id); }
     public static bool IsGeneratedPath(string? path)

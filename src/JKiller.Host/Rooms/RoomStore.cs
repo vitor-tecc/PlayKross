@@ -19,6 +19,8 @@ public sealed class RoomStore(SessionStore sessions, MediaGrantStore grants, Tim
     private readonly Dictionary<Guid, Room> rooms = [];
     public event Action<string>? StreamRevoked;
     public event Action<Guid>? SessionRevoked;
+    public event Action<RoomSnapshot>? Changed;
+    private void NotifyChanged(RoomSnapshot snapshot) => Changed?.Invoke(snapshot);
     public RoomInvite CreateRoom() => Run(() =>
     {
         if (rooms.Count >= limits.Rooms) throw new InvalidOperationException("Room capacity reached.");
@@ -92,19 +94,25 @@ public sealed class RoomStore(SessionStore sessions, MediaGrantStore grants, Tim
     }
     private T Run<T>(Func<T> action)
     {
-        List<string> paths = []; List<Guid> sessionIds = [];
+        List<string> paths = []; List<Guid> sessionIds = []; List<RoomSnapshot> changed = [];
         try
         {
             lock (gate)
             {
+                var revisions = rooms.ToDictionary(x => x.Key, x => x.Value.Revision);
                 try { Purge(); return action(); }
-                finally { paths = revokedPaths; sessionIds = revokedSessions; revokedPaths = []; revokedSessions = []; }
+                finally
+                {
+                    paths = revokedPaths; sessionIds = revokedSessions; revokedPaths = []; revokedSessions = [];
+                    changed = rooms.Values.Where(x => !revisions.TryGetValue(x.Id, out var prior) || x.Revision > prior).Select(Snapshot).ToList();
+                }
             }
         }
         finally
         {
             foreach (var path in paths) StreamRevoked?.Invoke(path);
             foreach (var sessionId in sessionIds) SessionRevoked?.Invoke(sessionId);
+            foreach (var snapshot in changed) NotifyChanged(snapshot);
         }
     }
     private static string ValidateNickname(string nickname)

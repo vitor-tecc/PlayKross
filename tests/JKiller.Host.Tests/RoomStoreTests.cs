@@ -10,6 +10,16 @@ public sealed class TestClock : TimeProvider
 }
 public sealed class RoomStoreTests
 {
+    [Fact]
+    public void ExpirySweepNotifiesTheRemainingRoomWithARevisionedSnapshot()
+    {
+        var store = Create(); var room = store.CreateRoom(); var owner = store.Join(room.Invite, "owner"); store.ReservePublish(owner.SessionId);
+        clock.Now = clock.Now.AddHours(1); store.Join(room.Invite, "viewer");
+        var changes = new List<JKiller.Contracts.RoomSnapshot>(); store.Changed += changes.Add;
+        clock.Now = owner.ExpiresAt; store.SweepExpired();
+        var snapshot = Assert.Single(changes);
+        Assert.Single(snapshot.Participants); Assert.Equal("viewer", snapshot.Participants[0].Nickname); Assert.Empty(snapshot.Streams);
+    }
     private readonly TestClock clock = new();
     private RoomStore Create() => new(new(clock), new(clock), clock);
     [Fact]
