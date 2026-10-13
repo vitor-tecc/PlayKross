@@ -47,7 +47,7 @@ bool Audit(void* result, obs_source_t* source) {
 void Tick(void*, float) {
     if (module_guard.Active()) {
         const auto heartbeat = last_heartbeat_ns.load();
-        if (!heartbeat || os_gettime_ns() - heartbeat > 2000000000ULL || !AuditScene()) StopPublication();
+        if (!heartbeat || os_gettime_ns() - heartbeat > 2000000000ULL || !GuardVideoReady() || !AuditScene()) StopPublication();
     } else if (obs_frontend_streaming_active()) StopPublication();
 }
 void FrontendEvent(obs_frontend_event event, void*) {
@@ -63,11 +63,12 @@ bool AuditScene() { bool safe = true; obs_enum_sources(Audit, &safe); return saf
 void StopPublication() {
     module_guard.Disarm();
     AuditScene();
-    if (!stopping.exchange(true)) obs_queue_task(OBS_TASK_UI, [](void*) { StopAllAudioSources(); obs_frontend_streaming_stop(); stopping.store(false); }, nullptr, false);
+    if (!stopping.exchange(true)) obs_queue_task(OBS_TASK_UI, [](void*) { StopAllAudioSources(); StopPipeline(); obs_frontend_streaming_stop(); stopping.store(false); }, nullptr, false);
 }
 }
 bool obs_module_load(void) {
     jk::RegisterAudioSource();
+    jk::RegisterVideoSource();
     signal_handler_connect(obs_get_signal_handler(), "source_create", jk::HookSource, nullptr);
     obs_add_tick_callback(jk::Tick, nullptr);
     blog(LOG_INFO, "[JKiller] process-only audio source and synchronous route guard loaded");
@@ -76,6 +77,7 @@ bool obs_module_load(void) {
 void obs_module_post_load(void) { jk::RegisterVendorRequests(); obs_frontend_add_event_callback(jk::FrontendEvent, nullptr); }
 void obs_module_unload(void) {
     jk::StopLocalControl(); jk::module_guard.Disarm(); jk::StopAllAudioSources(); jk::UnregisterVendorRequests();
+    jk::ReleasePipeline();
     obs_frontend_remove_event_callback(jk::FrontendEvent, nullptr);
     obs_remove_tick_callback(jk::Tick, nullptr);
     signal_handler_disconnect(obs_get_signal_handler(), "source_create", jk::HookSource, nullptr);

@@ -21,6 +21,7 @@ void Status(obs_data_t*, obs_data_t* response, void*) {
     obs_data_set_bool(response, "graphSafe", AuditScene());
     obs_data_set_string(response, "audioSource", audio_source_name.c_str());
     DescribeAudioSource(audio_source_name.c_str(), response);
+    DescribeVideo(response);
 }
 void Arm(obs_data_t* request, obs_data_t* response, void*) {
     std::lock_guard lock(vendor_mutex);
@@ -35,9 +36,12 @@ void Arm(obs_data_t* request, obs_data_t* response, void*) {
         if (!binding.binding) throw std::runtime_error(binding.error);
         const auto generation = static_cast<std::uint64_t>(obs_data_get_int(request, "generation"));
         const std::string name = obs_data_get_string(request, "audioSource");
+        const std::string video_name = obs_data_get_string(request, "videoSource");
+        if (!VideoSourceReady(video_name.c_str(), generation)) throw std::runtime_error("Original capture item is unavailable.");
         if (!AudioSourceReady(name.c_str(), generation, owner.pid)) throw std::runtime_error("Selected application audio is unavailable or belongs to room playback.");
         if (!module_guard.Arm(std::move(binding.binding), name, generation)) throw std::runtime_error("Capture guard could not be armed.");
         audio_source_name = name;
+        SelectGuardVideo(video_name, generation);
         last_heartbeat_ns.store(os_gettime_ns());
         AuditScene(); // Applies the single approved track; all other routes remain zero.
         obs_data_set_bool(response, "armed", true);
@@ -56,9 +60,11 @@ void RegisterVendorRequests() {
     obs_websocket_vendor_register_request(vendor, "Disarm", Disarm, nullptr);
     obs_websocket_vendor_register_request(vendor, "Heartbeat", Heartbeat, nullptr);
     obs_websocket_vendor_register_request(vendor, "GetSafetyStatus", Status, nullptr);
+    RegisterPipelineRequests(vendor);
 }
 void UnregisterVendorRequests() {
     if (!vendor) return;
+    UnregisterPipelineRequests(vendor);
     for (const char* name : {"Arm", "Disarm", "Heartbeat", "GetSafetyStatus"}) obs_websocket_vendor_unregister_request(vendor, name);
 }
 }
