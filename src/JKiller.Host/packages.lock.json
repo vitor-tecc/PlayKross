@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "dependencies": {
+    "net10.0": {
+      "jkiller.contracts": {
+        "type": "Project"
+      },
+      "jkiller.core": {
+        "type": "Project",
+        "dependencies": {
+          "JKiller.Contracts": "[1.0.0, )"
+        }
+      }
+    }
+  }
+}
