@@ -7,6 +7,27 @@ namespace JKiller.Windows.Tests;
 
 public sealed class ObsMediaEngineTests
 {
+    [Fact]
+    public async Task AcceptedStartWithFailedHandshakeIsNotReportedAsBroadcasting()
+    {
+        var rpc = new FakeRpc { HandshakeFailed = true };
+        await using var engine = new ObsMediaEngine(new FakeHelper(), (_, _) => Task.FromResult<IObsRpcClient>(rpc));
+        await engine.PrepareAsync(Request, CancellationToken.None);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => engine.StartAsync(new("http://localhost:5000/whip"), "credential", CancellationToken.None));
+        Assert.False(rpc.Publishing);
+    }
+    [Fact]
+    public async Task OutputLossAfterConnectionRaisesSafetyFault()
+    {
+        var rpc = new FakeRpc();
+        await using var engine = new ObsMediaEngine(new FakeHelper(), (_, _) => Task.FromResult<IObsRpcClient>(rpc));
+        var fault = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        engine.SafetyFault += (_, _) => fault.TrySetResult();
+        await engine.PrepareAsync(Request, CancellationToken.None);
+        await engine.StartAsync(new("http://localhost:5000/whip"), "credential", CancellationToken.None);
+        rpc.Publishing = false;
+        await fault.Task.WaitAsync(TimeSpan.FromSeconds(2));
+    }
     private static BroadcastRequest Request => new(new("window", SourceKind.Window, 42, new(222, 333, @"C:\Game.exe"), "Game"), new(null), new(1920, 1080, 60, 15));
     [Fact]
     public async Task InvalidSettingsRejectedBeforeHelperLaunch()
@@ -87,7 +108,7 @@ public sealed class ObsMediaEngineTests
     }
     private sealed class FakeRpc : IObsRpcClient
     {
-        public bool FailNvenc, WrongReadback, DelayStart, Publishing;
+        public bool FailNvenc, WrongReadback, DelayStart, Publishing, HandshakeFailed;
         public int Starts;
         public List<string> PreparedEncoders = [];
         public JsonElement VideoSettings;
@@ -113,6 +134,7 @@ public sealed class ObsMediaEngineTests
             }
             if (vendor == "StartPipeline") { Starts++; StartEntered.TrySetResult(); if (DelayStart) await CompleteStart.Task; Publishing = true; }
             if (vendor is "StopPipeline" or "Disarm") Publishing = false;
+            if (vendor == "GetPipelineState") response = new { outputActive = Publishing && !HandshakeFailed, sentMediaBytes = Publishing && !HandshakeFailed ? 100 : 0, outputError = HandshakeFailed ? "Handshake refused." : "" };
             return JsonSerializer.SerializeToElement(new { responseData = response });
         }
     }

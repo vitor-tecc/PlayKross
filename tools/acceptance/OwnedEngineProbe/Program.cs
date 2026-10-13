@@ -39,7 +39,10 @@ try
         if (!string.Equals(Path.GetFullPath(identity.ExecutablePath), Path.GetFullPath(Path.Combine(Environment.CurrentDirectory, ".artifacts/native/Debug/CaptureFixture.exe")), StringComparison.OrdinalIgnoreCase)) throw new Exception("Protocol probe accepts only the synthetic fixture.");
         var video = new SourceDescriptor("fixture", SourceKind.Window, unchecked((ulong)(long)fixture.MainWindowHandle), identity, "Synthetic fixture");
         IObsRpcClient? publisherControl = null;
-        await using var engine = new ObsMediaEngine(helper, async (owned, cancellation) => publisherControl = await ObsRpcClient.ConnectAsync(owned.PipeName, owned.Identity, cancellation));
+        OwnedEngineHandle? publisherHandle = null;
+        await using var engine = new ObsMediaEngine(helper, async (owned, cancellation) => { publisherHandle = owned; return publisherControl = await ObsRpcClient.ConnectAsync(owned.PipeName, owned.Identity, cancellation); });
+        var disconnected = new TaskCompletionSource<Exception>(TaskCreationOptions.RunContinuationsAsynchronously);
+        engine.SafetyFault += (_, error) => disconnected.TrySetResult(error);
         try
         {
             var requested = new BroadcastSettings(1280, 720, 30, 6);
@@ -56,15 +59,14 @@ try
                 {
                     async Task<JsonElement> PipelineState() => (await publisherControl!.RequestAsync("CallVendorRequest", JsonSerializer.SerializeToElement(new { vendorName = "jkiller", requestType = "GetPipelineState", requestData = new { } }), CancellationToken.None)).GetProperty("responseData").Clone();
                     if (!(await PipelineState()).GetProperty("outputActive").GetBoolean()) throw new Exception("Native output was not active before the revocation check.");
+                    using var originalHelper = Process.GetProcessById(publisherHandle!.Identity.Pid);
                     var stopped = await http.DeleteAsync($"/api/streams/{reservation.StreamId}"); stopped.EnsureSuccessStatusCode();
                     revoked = true; Console.WriteLine("Publication ownership revoked through the host; native capture remains present for disconnection validation.");
-                    var disconnectDeadline = DateTimeOffset.UtcNow.AddSeconds(5);
-                    while ((await PipelineState()).GetProperty("outputActive").GetBoolean())
-                    {
-                        if (DateTimeOffset.UtcNow >= disconnectDeadline) throw new Exception("Router revocation did not stop the active native output.");
-                        await Task.Delay(100);
-                    }
-                    Console.WriteLine("PASS: real router revocation stopped the active native output before engine Stop.");
+                    var reason = await disconnected.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                    if (!reason.Message.StartsWith("The media connection ended.", StringComparison.Ordinal)) throw new Exception("Unexpected fault instead of confirmed native output loss.", reason);
+                    await originalHelper.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(7));
+                    if (fixture.HasExited) throw new Exception("Fixture exit invalidated the revocation check.");
+                    Console.WriteLine("PASS: real router revocation reported native output loss and automatically closed the original owned helper before explicit engine Stop.");
                 }
                 await Task.Delay(250);
             }

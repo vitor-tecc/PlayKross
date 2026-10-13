@@ -15,6 +15,7 @@ public sealed class ObsMediaEngine(IOwnedObsProcess helper, Func<OwnedEngineHand
     private long generation;
     private CancellationTokenSource? heartbeatCancellation;
     private Task? heartbeat;
+    private volatile bool connected;
     public event EventHandler<Exception>? SafetyFault;
 
     public ObsMediaEngine(OwnedObsProcess helper, bool allowCpuFallback = false)
@@ -107,6 +108,17 @@ public sealed class ObsMediaEngine(IOwnedObsProcess helper, Func<OwnedEngineHand
             var result = await Vendor("StartPipeline", new { url = whipUri.AbsoluteUri, token, generation }, cancellationToken);
             ThrowIfInvalidated(current, cancellationToken);
             if (!result.GetProperty("success").GetBoolean()) throw new InvalidOperationException("WHIP publication failed; inspect native diagnostics.");
+            var deadline = DateTimeOffset.UtcNow.AddSeconds(20);
+            while (true)
+            {
+                var state = await Vendor("GetPipelineState", new { }, cancellationToken);
+                ThrowIfInvalidated(current, cancellationToken);
+                if (state.GetProperty("outputActive").GetBoolean() && state.GetProperty("sentMediaBytes").GetInt64() > 0) break;
+                if (!string.IsNullOrEmpty(state.GetProperty("outputError").GetString())) throw new InvalidOperationException("The media handshake failed; inspect native diagnostics.");
+                if (DateTimeOffset.UtcNow >= deadline) throw new TimeoutException("The media connection did not send data within 20 seconds.");
+                await Task.Delay(100, cancellationToken);
+            }
+            connected = true;
         }
         catch { await Cleanup(); throw; }
         finally { gate.Release(); }
@@ -135,6 +147,8 @@ public sealed class ObsMediaEngine(IOwnedObsProcess helper, Func<OwnedEngineHand
                 await Task.Delay(500, token);
                 var state = await Vendor("Heartbeat", new { }, token);
                 if (!state.GetProperty("armed").GetBoolean()) throw new InvalidOperationException("Native source or safety guard was lost.");
+                if (connected && !(await Vendor("GetPipelineState", new { }, token)).GetProperty("outputActive").GetBoolean())
+                    throw new InvalidOperationException("The media connection ended. Start again to request a fresh publication grant.");
             }
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested) { }
@@ -142,6 +156,7 @@ public sealed class ObsMediaEngine(IOwnedObsProcess helper, Func<OwnedEngineHand
     }
     private async Task Cleanup()
     {
+        connected = false;
         heartbeatCancellation?.Cancel();
         if (heartbeat is not null) await heartbeat;
         heartbeatCancellation?.Dispose(); heartbeatCancellation = null; heartbeat = null; prepared = null;
