@@ -1,5 +1,5 @@
 diff --git a/libobs-winrt/winrt-capture.cpp b/libobs-winrt/winrt-capture.cpp
-index ea0335f..7dce41d 100644
+index ea0335f..4594ad7 100644
 --- a/libobs-winrt/winrt-capture.cpp
 +++ b/libobs-winrt/winrt-capture.cpp
 @@ -1,4 +1,5 @@
@@ -8,16 +8,18 @@ index ea0335f..7dce41d 100644
  
  extern "C" EXPORT BOOL winrt_capture_supported()
  try {
-@@ -117,6 +118,8 @@ struct winrt_capture {
+@@ -117,6 +118,10 @@ struct winrt_capture {
  	D3D11_BOX client_box;
  
  	BOOL active;
 +	uint64_t jk_sequence = 0;
 +	uint64_t jk_texture_acquired_ns = 0;
++	int64_t jk_original_interval_ns = -1;
++	int64_t jk_actual_interval_ns = -1;
  	struct winrt_capture *next;
  
  	void on_closed(winrt::Windows::Graphics::Capture::GraphicsCaptureItem const &,
-@@ -175,6 +178,8 @@ struct winrt_capture {
+@@ -175,6 +180,8 @@ struct winrt_capture {
  				}
  
  				texture_written = true;
@@ -26,7 +28,44 @@ index ea0335f..7dce41d 100644
  			}
  
  			if (frame_content_size.Width != last_size.Width ||
-@@ -604,3 +609,13 @@ extern "C" EXPORT void winrt_capture_thread_stop()
+@@ -195,6 +202,20 @@ struct winrt_capture {
+ 	}
+ };
+ 
++static void jk_configure_interval(winrt_capture *capture, const winrt::Windows::Graphics::Capture::GraphicsCaptureSession &session)
++{
++	if (!winrt::Windows::Foundation::Metadata::ApiInformation::IsPropertyPresent(L"Windows.Graphics.Capture.GraphicsCaptureSession", L"MinUpdateInterval")) return;
++	capture->jk_original_interval_ns = session.MinUpdateInterval().count() * 100;
++	wchar_t requested[16]{};
++	int milliseconds = 4; // A minimum update hint, not a promised capture frame rate.
++	if (GetEnvironmentVariableW(L"JKILLER_WGC_INTERVAL_MS", requested, 16)) {
++		const auto experiment = _wtoi(requested);
++		if (experiment >= 0 && experiment <= 16) milliseconds = experiment;
++	}
++	session.MinUpdateInterval(winrt::Windows::Foundation::TimeSpan{milliseconds * 10000LL});
++	capture->jk_actual_interval_ns = session.MinUpdateInterval().count() * 100;
++}
++
+ static struct winrt_capture *capture_list;
+ 
+ static void winrt_capture_device_loss_release(void *data)
+@@ -312,6 +333,7 @@ static void winrt_capture_device_loss_rebuild(void *device_void, void *data)
+ 			device, static_cast<winrt::Windows::Graphics::DirectX::DirectXPixelFormat>(capture->format), 2,
+ 			capture->last_size);
+ 	const winrt::Windows::Graphics::Capture::GraphicsCaptureSession session = frame_pool.CreateCaptureSession(item);
++	jk_configure_interval(capture, session);
+ 
+ 	if (winrt_capture_border_toggle_supported()) {
+ 		winrt::Windows::Graphics::Capture::GraphicsCaptureAccess::RequestAccessAsync(
+@@ -393,6 +415,7 @@ try {
+ 	}
+ 
+ 	struct winrt_capture *capture = new winrt_capture{};
++	jk_configure_interval(capture, session);
+ 	capture->window = window;
+ 	capture->client_area = client_area;
+ 	capture->force_sdr = force_sdr;
+@@ -604,3 +627,19 @@ extern "C" EXPORT void winrt_capture_thread_stop()
  		capture = capture->next;
  	}
  }
@@ -39,4 +78,10 @@ index ea0335f..7dce41d 100644
 +	*sequence = capture->jk_sequence;
 +	*ns = capture->jk_texture_acquired_ns;
 +	return TRUE;
++}
++
++extern "C" EXPORT BOOL winrt_capture_get_update_interval(const winrt_capture *capture, int64_t *original_ns, int64_t *actual_ns)
++{
++	if (!capture || !original_ns || !actual_ns || capture->jk_actual_interval_ns < 0) return FALSE;
++	*original_ns = capture->jk_original_interval_ns; *actual_ns = capture->jk_actual_interval_ns; return TRUE;
 +}

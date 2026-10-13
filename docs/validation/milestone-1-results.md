@@ -1,0 +1,27 @@
+# Milestone one results
+
+**Acceptance status: pending.** Working native-to-browser software and local integration checks exist. The final ten-minute full-resolution run and independent review are being completed. Real Discord exclusion, calibrated delivered audiovisual offset, and one real external phone viewer remain pending. Do not advance to viewer-capacity or multi-broadcaster implementation yet.
+
+Test system: Windows 11 build 26200, Ryzen 7 7700X / 32 GB RAM, RTX 5070 with driver 617.14; .NET SDK 10.0.401, OBS 32.2.2, MediaMTX 1.21.2, Edge/WebView2 155.0.4283.45. Reported 250 Mbps internet upload was not measured by these loopback tests. NVIDIA device-wide encoder activity included other applications.
+
+| Check | Status | Evidence / limits |
+|---|---|---|
+| Automated correctness | passed before final review fixes | .NET, native and frontend tests/builds; final fresh totals will be recorded after review |
+| Native capture / browser playback | passed locally | Real Geometry Dash and synthetic 720p30/1080p60 smoke, nonblank numerical pixels, H.264/Opus, fullscreen return; game audio energy was zero |
+| In-app watching while publishing | passed locally | Real WebView2 decode, stable cookie/session/nickname, fullscreen return, off-origin cancellation and renderer-crash recovery |
+| NVENC path | passed for observed local pipeline | Actual initialized `obs_nvenc_h264_tex` object produced encoded packets; GPU device-wide activity is additional context, not per-process attribution |
+| GDI synthetic ten-minute playback | measured; fresh-capture gate failed | Presented 59.995 FPS, all complete five-second intervals ≥55, max callback gap 32.3 ms, visual-clock p95 185 ms; fresh acquisition 51.35 FPS while source paints/encoding stayed near60, zero rendering/encoding skips |
+| Full-source 1080p GPU comparison | measured short run | 1920×1080 source at60 updates/s, initial fresh acquisition49.41 FPS; changing only WGC minimum update interval from observed16ms to4ms brought fresh capture to60.03 FPS in a30s repeat |
+| Ten-minute full-resolution corrected capture | pending current run | Same GPU workload, shared NVENC encoder and local routing; default4ms capture hint with measured original/applied readback |
+| Controlled digital audio exclusion | passed short synthetic check | Selected997Hz audible signal; separate1801Hz process and2753Hz browser playback ≥35dB below selected signal in receiver spectrum. Real Discord is a separate test |
+| Delivered audiovisual synchronization | pending | Flash follows native waveform position; FFT/window/device scheduling has not been calibrated into a delivered ±100ms result |
+| Real Discord desktop/browser exclusion | pending | Requires intended game audio and user-controlled Discord activity; no calls/messages or private recordings performed |
+| Real external phone viewer / other OS | pending | User has no domain, can use a phone, but is away from home/router access. HTTPS/IP certificate profile parsed; no public listeners/router/firewall changes or certificate issuance performed |
+| Relayed connection | pending | No TURN relay configured or tested |
+| Eight viewers / multiple broadcasters | deferred behind this gate | Local single-viewer results do not establish capacity or upload budget |
+
+The first GDI600-second run is preserved under `.artifacts/acceptance/gdi-600s/`. It had586 valid clock samples and11 rejected codes, with maximum marker-analysis time13.2ms. Its1264×721 source was upscaled to1080 output; it does not prove full-source1080 quality. A30-second GPU source reproduced the low acquisition rate, rejecting GDI drawing alone as the cause. Supported Windows WGC `MinUpdateInterval` readback showed16ms; a controlled4ms request improved acquisition while source/encoding/network stayed fixed. The capture update request is a hint, not a guaranteed FPS. Actual capture remains measured, including intentional static repeats.
+
+Latency uses a synthetic pixel wall-clock code and browser callback on the same PC, with Windows/browser clock quantization and readback overhead. It is not physical-display timing or a cross-device latency result. Native encode API/residence timestamps are also not GPU-kernel timings or end-to-end latency. See [timing source](timing-source.md), [diagnostic coverage](diagnostic-coverage.md) and [acceptance checklist](milestone-1-checklist.md).
+
+One earlier Geometry Dash startup did not produce a texture within ten seconds even though the window appeared visible/unminimized; subsequent original/instrumented runs passed. Its transient cause remains unresolved. No claim that this capture-startup issue is fixed follows from the capture-cadence change.

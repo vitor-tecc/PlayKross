@@ -21,6 +21,7 @@ struct CaptureApi {
     decltype(&winrt_capture_width) width{};
     decltype(&winrt_capture_height) height{};
     BOOL (*frame_info)(const winrt_capture*, std::uint64_t*, std::uint64_t*){};
+    BOOL (*update_interval)(const winrt_capture*, std::int64_t*, std::int64_t*){};
     CaptureApi() {
         wchar_t path[32768]{};
         if (!GetModuleFileNameW(nullptr, path, 32768)) throw std::runtime_error("Owned engine path unavailable.");
@@ -32,6 +33,7 @@ struct CaptureApi {
         LOAD(free, winrt_capture_free); LOAD(active, winrt_capture_active); LOAD(render, winrt_capture_render);
         LOAD(width, winrt_capture_width); LOAD(height, winrt_capture_height);
         frame_info = reinterpret_cast<decltype(frame_info)>(GetProcAddress(library, "winrt_capture_get_frame_info"));
+        update_interval = reinterpret_cast<decltype(update_interval)>(GetProcAddress(library, "winrt_capture_get_update_interval"));
 #undef LOAD
     }
 };
@@ -170,6 +172,8 @@ void DescribeVideo(obs_data_t* response) {
         std::lock_guard capture_lock(c->mutex);
         obs_data_set_bool(response, "videoReady", c->Ready() && Api().width(c->capture) > 0 && Api().height(c->capture) > 0);
         obs_data_set_int(response, "captureWidth", c->capture ? Api().width(c->capture) : 0); obs_data_set_int(response, "captureHeight", c->capture ? Api().height(c->capture) : 0);
+        std::int64_t original{}, actual{};
+        if (Api().update_interval && Api().update_interval(c->capture, &original, &actual)) { obs_data_set_double(response,"captureOriginalMinIntervalMs",original/1e6); obs_data_set_double(response,"captureMinIntervalMs",actual/1e6); }
         obs_data_set_string(response, "captureApi", "Windows Graphics Capture / D3D11 texture"); obs_data_set_string(response, "videoError", c->error.c_str()); break;
     }
     }

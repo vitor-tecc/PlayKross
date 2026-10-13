@@ -3,7 +3,7 @@ namespace JKiller.Core.Diagnostics;
 public static class DiagnosticsExport
 {
     private static readonly HashSet<string> Metrics = new(StringComparer.Ordinal) {
-        "captureFps", "compositorFps", "encodedFps", "sentFps", "sendMbps", "receiveMbps", "decodedFps", "presentedFps",
+        "captureFps", "sourceWidth", "sourceHeight", "compositorFps", "encodedFps", "sentFps", "sendMbps", "receiveMbps", "decodedFps", "presentedFps",
         "iceRttMs", "videoLatencyMs", "packetLossPercent", "jitterMs", "width", "height", "startupMs", "stalls", "longestGapMs",
         "encodeApiCallMs", "inputToOutputPacketMs", "captureToRenderMs", "freshCaptureToPacketMs", "nativeRenderAverageMs",
         "requestedWidth", "requestedHeight", "requestedFps", "requestedMbps", "appliedWidth", "appliedHeight", "appliedFps", "appliedMbps",
@@ -11,7 +11,7 @@ public static class DiagnosticsExport
     private static readonly Dictionary<string, HashSet<string>> Metadata = new(StringComparer.Ordinal) {
         ["codec"] = new(["h264", "H264", "opus", "video/H264", "audio/opus", "video/VP8", "video/VP9", "video/AV1"], StringComparer.Ordinal),
         ["encoder"] = new(["obs_nvenc_h264_tex", "obs_x264"], StringComparer.Ordinal),
-        ["captureApi"] = new(["Windows Graphics Capture", "WGC"], StringComparer.Ordinal),
+        ["captureApi"] = new(["Windows Graphics Capture", "Windows Graphics Capture / D3D11 texture", "WGC"], StringComparer.Ordinal),
         ["connectionPath"] = new(["unknown", "direct", "relayed"], StringComparer.Ordinal),
         ["hardwareInitialized"] = new(["true", "false"], StringComparer.Ordinal),
         ["provenance"] = new(["browser-rolling-5s", "native-monotonic-interval", "mediamtx-api-and-all-active-nics"], StringComparer.Ordinal) };

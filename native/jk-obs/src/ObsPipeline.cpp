@@ -120,6 +120,7 @@ void Diagnostics(obs_data_t*, obs_data_t* response, void*) {
     obs_data_set_int(response, "monotonicNs", static_cast<long long>(os_gettime_ns()));
     obs_data_set_double(response, "nativeRenderAverageMs", static_cast<double>(obs_get_average_frame_time_ns()) / 1'000'000.0);
     obs_data_set_int(response, "renderClockFrames", obs_get_total_frames()); obs_data_set_int(response, "renderLagFrames", obs_get_lagged_frames());
+    if (auto* clock = obs_get_video()) { obs_data_set_int(response,"encodingClockFrames",video_output_get_total_frames(clock)); obs_data_set_int(response,"encodingSkippedFrames",video_output_get_skipped_frames(clock)); }
     if (video) { obs_data_set_int(response, "encodedWidth", obs_encoder_get_width(video)); obs_data_set_int(response, "encodedHeight", obs_encoder_get_height(video)); obs_data_set_int(response, "actualEncodedFrames", obs_encoder_get_encoded_frames(video)); }
     obs_video_info info{}; if (obs_get_video_info(&info)) { obs_data_set_int(response, "requestedFpsNumerator", info.fps_num); obs_data_set_int(response, "requestedFpsDenominator", info.fps_den); }
     obs_data_set_string(response, "gpuKernelTiming", "unavailable: these host timestamps do not measure GPU kernels");
