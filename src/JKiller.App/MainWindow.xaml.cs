@@ -45,6 +45,12 @@ public partial class MainWindow : Window
     private async void JoinClick(object sender, RoutedEventArgs args) => await Run(model!.JoinAsync);
     private async void RenameClick(object sender, RoutedEventArgs args) => await Run(model!.RenameAsync);
     private async void RefreshClick(object sender, RoutedEventArgs args) => await Run(model!.RefreshAsync);
+    private async void ExportClick(object sender, RoutedEventArgs args) => await Run(async token =>
+    {
+        var report = await model!.ExportDiagnosticsAsync(token);
+        var dialog = new Microsoft.Win32.SaveFileDialog { Filter = "JSON report|*.json", FileName = "jkiller-diagnostics.json" };
+        if (dialog.ShowDialog(this) == true) await File.WriteAllTextAsync(dialog.FileName, System.Text.Json.JsonSerializer.Serialize(report, new System.Text.Json.JsonSerializerOptions { WriteIndented = true }), token);
+    });
     private async void StartClick(object sender, RoutedEventArgs args) => await Run(token => { ReadSettings(); return model!.StartAsync(token); });
     private async void ApplyClick(object sender, RoutedEventArgs args) => await Run(token => { ReadSettings(); return model!.ApplySettingsAsync(token); });
     private async void StopClick(object sender, RoutedEventArgs args)

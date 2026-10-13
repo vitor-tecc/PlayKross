@@ -27,6 +27,8 @@
     <WrapPanel Margin="0,18,0,0"><Button x:Name="StartButton" Content="Start broadcast" Click="StartClick"/><Button Content="Stop broadcast" Click="StopClick"/></WrapPanel>
     <TextBlock Text="{Binding Status}" FontWeight="SemiBold" TextWrapping="Wrap" Margin="0,12,0,8"/>
     <TextBlock Text="{Binding AppliedText}" TextWrapping="Wrap"/>
+    <TextBlock Text="{Binding ObservedText}" TextWrapping="Wrap" Margin="0,8,0,0"/>
+    <Button HorizontalAlignment="Left" Content="Export room diagnostics" Click="ExportClick"/>
     <TextBlock Margin="0,12,0,0" TextWrapping="Wrap" Text="This first milestone supports one broadcaster per room. Multi-stream rooms and higher viewer counts follow measured validation."/>
   </StackPanel></ScrollViewer>
 </Window>

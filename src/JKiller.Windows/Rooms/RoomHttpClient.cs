@@ -35,6 +35,8 @@ public sealed class RoomHttpClient(HttpClient http) : IRoomClient
     public Task<PublishReservation> ReservePublishAsync(CancellationToken token) => Auth<PublishReservation>(HttpMethod.Post, "/api/streams", null, token);
     public async Task StopPublishAsync(Guid id, CancellationToken token) => await Auth<RoomSnapshot>(HttpMethod.Delete, $"/api/streams/{id:D}", null, token);
     public Task<PlaybackGrant> GetPlaybackAsync(Guid id, CancellationToken token) => Auth<PlaybackGrant>(HttpMethod.Get, $"/api/streams/{id:D}/playback", null, token);
+    public Task<System.Text.Json.JsonElement> ReportDiagnosticsAsync(DiagnosticsEnvelope sample, CancellationToken token) => Auth<System.Text.Json.JsonElement>(HttpMethod.Post, "/api/diagnostics", sample, token);
+    public Task<RedactedReport> ExportDiagnosticsAsync(CancellationToken token) => Auth<RedactedReport>(HttpMethod.Get, "/api/diagnostics", null, token);
     private Task<T> Auth<T>(HttpMethod method, string path, object? body, CancellationToken token) => Send<T>(Origin ?? throw new InvalidOperationException("Join a room first."), method, path, body, true, token);
     private async Task<T> Send<T>(Uri origin, HttpMethod method, string path, object? body, bool authenticate, CancellationToken token)
     {
@@ -49,7 +51,7 @@ public sealed class RoomHttpClient(HttpClient http) : IRoomClient
         if (body is not null) request.Content = JsonContent.Create(body);
         using var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, deadline.Token);
         if (!response.IsSuccessStatusCode) throw new HttpRequestException($"The room server rejected the request (HTTP {(int)response.StatusCode}).", null, response.StatusCode);
-        await response.Content.LoadIntoBufferAsync(131072, deadline.Token);
+        await response.Content.LoadIntoBufferAsync(path == "/api/diagnostics" && method == HttpMethod.Get ? 8388608 : 131072, deadline.Token);
         return await response.Content.ReadFromJsonAsync<T>(deadline.Token) ?? throw new InvalidDataException("The room server returned an empty response.");
     }
 }

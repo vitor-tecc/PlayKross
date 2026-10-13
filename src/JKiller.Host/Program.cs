@@ -4,6 +4,7 @@ using JKiller.Host.Media;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.AspNetCore.RateLimiting;
 using System.Threading.RateLimiting;
+using JKiller.Host.Diagnostics;
 namespace JKiller.Host;
 public sealed record HostOptions(Uri PublicOrigin, Uri MediaOrigin, Uri AdminOrigin, string BootstrapSecret, string AdminSecret, int InternalPort = 5001);
 public static class HostApplication
@@ -29,6 +30,7 @@ public static class HostApplication
         builder.Services.AddSingleton(options);
         builder.Services.TryAddSingleton<TimeProvider>(TimeProvider.System);
         builder.Services.AddSingleton<SessionStore>(); builder.Services.AddSingleton<MediaGrantStore>(); builder.Services.AddSingleton<RoomStore>();
+        builder.Services.AddSingleton<DiagnosticStore>(); builder.Services.TryAddSingleton<IHostTrafficReader, HostTrafficReader>();
         builder.Services.AddSingleton<MediaResourceStore>();
         builder.Services.AddSingleton<MediaSessionTracker>();
         builder.Services.TryAddSingleton<IMediaControl, MediaMtxClient>();
@@ -76,6 +78,7 @@ public static class HostApplication
             app.UseStaticFiles(new StaticFileOptions { FileProvider = files });
         }
         app.MapRoomEndpoints();
+        app.MapDiagnostics();
         app.MapMediaProxy();
         app.MapHub<RoomHub>("/hubs/room").RequireAuthorization();
         app.MapGet("/health", () => Results.Ok(new { status = "ready" }));

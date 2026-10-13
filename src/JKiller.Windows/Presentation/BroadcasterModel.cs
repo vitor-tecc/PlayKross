@@ -8,6 +8,8 @@ using JKiller.Core.Capture;
 using JKiller.Windows.Rooms;
 using JKiller.Windows.Security;
 using System.Runtime.CompilerServices;
+using JKiller.Windows.Obs;
+using JKiller.Core.Diagnostics;
 namespace JKiller.Windows.Presentation;
 public class BroadcasterModel(Func<bool, IMediaEngine> engineFactory, IRoomClient room, IWindowsSourceCatalog catalog, SessionVault? vault = null) : INotifyPropertyChanged, IAsyncDisposable
 {
@@ -15,6 +17,10 @@ public class BroadcasterModel(Func<bool, IMediaEngine> engineFactory, IRoomClien
     private IMediaEngine? engine;
     private Uri? origin;
     private bool disposed;
+    private CancellationTokenSource? diagnosticsCancellation;
+    private Task? diagnosticsTask;
+    private string observedText = "Observed: unavailable until broadcasting.";
+    public string ObservedText { get => observedText; private set { observedText = value; Notify(); } }
     private string status = "Join a room and select a source. Nothing is captured until Start.";
     public string RoomLink { get; set; } = "";
     public string Nickname { get; set; } = "Player";
@@ -69,6 +75,10 @@ public class BroadcasterModel(Func<bool, IMediaEngine> engineFactory, IRoomClien
         engine = engineFactory(AllowCpuFallback); controller = new(engine, room, origin, TimeProvider.System);
         controller.BroadcastStateChanged += OnState;
         await controller.StartAsync(new(video, new(Audio?.Process), Settings), token);
+        if (engine is ObsMediaEngine native)
+        {
+            diagnosticsCancellation = new(); diagnosticsTask = Observe(native, diagnosticsCancellation.Token);
+        }
     }
     private void OnState(object? sender, EventArgs args)
     {
@@ -80,9 +90,50 @@ public class BroadcasterModel(Func<bool, IMediaEngine> engineFactory, IRoomClien
         if (controller is null) throw new InvalidOperationException("Start a broadcast before applying settings.");
         await controller.ChangeSettingsAsync(Settings, token);
     }
-    public async Task StopAsync(CancellationToken token) { if (controller is not null) await controller.StopAsync(token); }
+    public async Task StopAsync(CancellationToken token) { await StopDiagnostics(); if (controller is not null) await controller.StopAsync(token); }
+    public async Task<RedactedReport> ExportDiagnosticsAsync(CancellationToken token) => room is RoomHttpClient client ? await client.ExportDiagnosticsAsync(token) : throw new InvalidOperationException("Diagnostic export requires a room connection.");
+    private async Task Observe(ObsMediaEngine native, CancellationToken token)
+    {
+        MediaDiagnostics? previous = null;
+        while (!token.IsCancellationRequested)
+        {
+            try
+            {
+                var current = await native.GetDiagnosticsAsync(token);
+                var interval = TimeSpan.FromSeconds(previous is null ? 0 : (current.MonotonicNs - previous.MonotonicNs) / 1e9);
+                double? Rate(long? a, long? b) => a is null || b is null ? null : CounterRates.Calculate(a.Value, b.Value, interval);
+                var capture = Rate(previous?.CaptureFrames, current.CaptureFrames); var encoded = Rate(previous?.ActualEncodedFrames, current.ActualEncodedFrames);
+                var sent = Rate(previous?.SentFrames, current.SentFrames); var mbps = Rate(previous?.SentMediaBytes, current.SentMediaBytes) * 8 / 1e6;
+                string Format(double? value) => value is null ? "unavailable" : value.Value.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture);
+                ObservedText = $"Observed: {current.EncodedWidth}×{current.EncodedHeight}; capture {Format(capture)}, encoded {Format(encoded)}, sent {Format(sent)} FPS; {Format(mbps)} Mbps to host. Encode API {Format(current.EncodeApiCallMs)} ms; input→packet {Format(current.InputToOutputPacketMs)} ms; fresh capture→packet {Format(current.FreshCaptureToPacketMs)} ms. GPU kernel timing unavailable. Viewer/network measurements are in Playback diagnostics.";
+                if (room is RoomHttpClient client && controller?.StreamId is { } id && controller.Applied is { } applied)
+                {
+                    var metrics = new Dictionary<string, double?> { ["captureFps"] = capture, ["encodedFps"] = encoded, ["sentFps"] = sent, ["sendMbps"] = mbps,
+                        ["compositorFps"] = Rate(previous?.CompositorFrames, current.CompositorFrames), ["encodeApiCallMs"] = current.EncodeApiCallMs, ["inputToOutputPacketMs"] = current.InputToOutputPacketMs,
+                        ["captureToRenderMs"] = current.CaptureToRenderMs, ["freshCaptureToPacketMs"] = current.FreshCaptureToPacketMs, ["nativeRenderAverageMs"] = current.NativeRenderAverageMs,
+                        ["width"] = current.EncodedWidth, ["height"] = current.EncodedHeight,
+                        ["requestedWidth"] = Settings.Width, ["requestedHeight"] = Settings.Height, ["requestedFps"] = Settings.Fps, ["requestedMbps"] = (double)Settings.BitrateMbps,
+                        ["appliedWidth"] = applied.Settings.Width, ["appliedHeight"] = applied.Settings.Height, ["appliedFps"] = applied.Settings.Fps, ["appliedMbps"] = (double)applied.Settings.BitrateMbps };
+                    using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token); deadline.CancelAfter(TimeSpan.FromSeconds(3));
+                    try { await client.ReportDiagnosticsAsync(new(id, "publisher", metrics, new Dictionary<string, string> { ["encoder"] = current.Encoder, ["codec"] = current.Codec, ["hardwareInitialized"] = current.HardwareInitialized ? "true" : "false", ["provenance"] = "native-monotonic-interval" }), deadline.Token); }
+                    catch (Exception e) when (e is HttpRequestException || e is OperationCanceledException && !token.IsCancellationRequested) { }
+                }
+                previous = current;
+            }
+            catch (OperationCanceledException) when (token.IsCancellationRequested) { break; }
+            catch (Exception) { previous = null; ObservedText = "Observed: diagnostics unavailable; native safety monitoring remains active."; }
+            try { await Task.Delay(1000, token); } catch (OperationCanceledException) { break; }
+        }
+    }
+    private async Task StopDiagnostics()
+    {
+        diagnosticsCancellation?.Cancel(); if (diagnosticsTask is not null) await diagnosticsTask;
+        diagnosticsCancellation?.Dispose(); diagnosticsCancellation = null; diagnosticsTask = null;
+        ObservedText = "Observed: unavailable until broadcasting.";
+    }
     private async Task ReleaseControllerAsync()
     {
+        await StopDiagnostics();
         if (controller is not null) { controller.BroadcastStateChanged -= OnState; await controller.DisposeAsync(); controller = null; }
         if (engine is IAsyncDisposable disposable) await disposable.DisposeAsync(); engine = null;
     }

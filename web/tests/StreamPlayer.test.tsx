@@ -7,6 +7,7 @@ import type { PlaybackGrant } from "../src/api/contracts";
 const mocks = vi.hoisted(() => ({ sessions: [] as { start: ReturnType<typeof vi.fn>; close: ReturnType<typeof vi.fn> }[], media: { getTracks: () => [] } }));
 vi.mock("../src/media/WhepSession", () => ({ WhepSession: class {
   start = vi.fn(async () => mocks.media); close = vi.fn(async () => {});
+  getPeer = () => null;
   constructor() { mocks.sessions.push(this); }
 } }));
 beforeEach(() => {

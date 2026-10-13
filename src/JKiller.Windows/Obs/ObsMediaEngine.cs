@@ -130,6 +130,16 @@ public sealed class ObsMediaEngine(IOwnedObsProcess helper, Func<OwnedEngineHand
         try { await Cleanup(); }
         finally { gate.Release(); }
     }
+    public async Task<MediaDiagnostics> GetDiagnosticsAsync(CancellationToken token)
+    {
+        await gate.WaitAsync(token);
+        try
+        {
+            if (!connected || rpc is null) throw new InvalidOperationException("No active native publication to measure.");
+            return await new ObsDiagnosticsReader(ct => Vendor("GetDiagnostics", new { }, ct)).ReadAsync(token);
+        }
+        finally { gate.Release(); }
+    }
     private void ThrowIfInvalidated(long current, CancellationToken token)
     {
         token.ThrowIfCancellationRequested();

@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { mkdirSync, writeFileSync } from "node:fs";
 test("native broadcaster controller sends the requested live smoke preset", async ({ page, browser }) => {
   test.skip(!process.env.JKILLER_LIVE_FLOW, "Run with the native live-flow harness.");
   const link = new URL(process.env.JKILLER_PROBE_JOIN_LINK ?? "");
@@ -17,6 +18,19 @@ test("native broadcaster controller sends the requested live smoke preset", asyn
   await page.getByRole("button", { name: "Enable sound" }).click();
   await expect.poll(() => video.evaluate(element => (element as HTMLVideoElement).getVideoPlaybackQuality().totalVideoFrames), { timeout: 10000 }).toBeGreaterThan(30);
   await page.waitForTimeout(3000);
+  await expect.poll(async () => {
+    const response = await page.request.get(new URL("/api/diagnostics", link.origin).href);
+    const report = await response.json();
+    return report.samples.some((s: { role: string; metrics: { height?: number; decodedFps?: number; presentedFps?: number } }) => s.role === "viewer" && s.metrics.height === height && s.metrics.decodedFps! > 0 && s.metrics.presentedFps! > 0);
+  }, { timeout: 15000 }).toBe(true);
+  const report = await (await page.request.get(new URL("/api/diagnostics", link.origin).href)).json();
+  expect(report.samples.some((s: { role: string; metrics: { encodedFps?: number } }) => s.role === "publisher" && s.metrics.encodedFps! > 0)).toBe(true);
+  const host = report.samples.find((s: { role: string }) => s.role === "host");
+  expect(host.metrics.activeMediaSessions).toBeGreaterThanOrEqual(2); expect(host.metrics.mediaBytesSent).toBeGreaterThan(0);
+  const reportText = JSON.stringify(report); expect(reportText).not.toContain("sessionToken"); expect(reportText).not.toContain("candidateAddress"); expect(reportText).not.toContain("imagePath");
+  await test.info().attach(`redacted-${height}-report`, { body: Buffer.from(JSON.stringify(report, null, 2)), contentType: "application/json" });
+  mkdirSync("../.artifacts/diagnostics", { recursive: true });
+  writeFileSync(`../.artifacts/diagnostics/live-room-${height}.json`, JSON.stringify(report, null, 2));
   const metrics = await page.evaluate(async () => {
     const peer = (window as unknown as { jkTestPeers: RTCPeerConnection[] }).jkTestPeers.find(value => value.connectionState === "connected");
     if (!peer) throw new Error("Actual receiver not connected.");

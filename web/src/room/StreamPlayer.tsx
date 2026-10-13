@@ -1,11 +1,14 @@
 import type { PlaybackGrant } from "../api/contracts";
 import { useEffect, useRef, useState } from "react";
 import { WhepSession } from "../media/WhepSession";
+import { observePlayer, type ViewerDiagnostics } from "../media/playerDiagnostics";
+import { DiagnosticsPanel } from "./DiagnosticsPanel";
 export interface StreamPlayerProps { streamId: string; nickname: string; getPlayback: (id: string, signal: AbortSignal) => Promise<PlaybackGrant> }
 export function StreamPlayer({ streamId, nickname, getPlayback }: StreamPlayerProps) {
   const panel = useRef<HTMLDivElement>(null); const video = useRef<HTMLVideoElement>(null);
   const [watch, setWatch] = useState(false); const [retry, setRetry] = useState(0); const [sound, setSound] = useState(false);
   const [status, setStatus] = useState("Ready to watch"); const [error, setError] = useState(false); const [fullscreen, setFullscreen] = useState(false);
+  const [diagnostics, setDiagnostics] = useState<ViewerDiagnostics | null>(null);
   useEffect(() => {
     const changed = () => setFullscreen(document.fullscreenElement === panel.current);
     document.addEventListener("fullscreenchange", changed); return () => document.removeEventListener("fullscreenchange", changed);
@@ -14,7 +17,9 @@ export function StreamPlayer({ streamId, nickname, getPlayback }: StreamPlayerPr
     if (!watch) { setStatus("Ready to watch"); setError(false); return; }
     const abort = new AbortController(); const element = video.current;
     let current: WhepSession | null = null; let timer: ReturnType<typeof setTimeout> | null = null;
-    const detach = () => { if (element) { element.pause(); element.srcObject = null; } };
+    let stopDiagnostics: (() => void) | null = null;
+    let reporting = false;
+    const detach = () => { stopDiagnostics?.(); stopDiagnostics = null; setDiagnostics(null); if (element) { element.pause(); element.srcObject = null; } };
     const schedule = (reason: Error, attempt: number) => {
       if (abort.signal.aborted) return;
       detach();
@@ -32,6 +37,17 @@ export function StreamPlayer({ streamId, nickname, getPlayback }: StreamPlayerPr
         const stream = await session.start(grant, abort.signal);
         if (abort.signal.aborted || !element || current !== session) { await session.close(); return; }
         element.srcObject = stream;
+        const peer = session.getPeer();
+        if (peer) stopDiagnostics = observePlayer(peer, element, sample => {
+          setDiagnostics(sample);
+          const { codec, connectionPath, ...metrics } = sample;
+          const { receivedMbps, ...remaining } = metrics;
+          if (!reporting) {
+            reporting = true;
+            void fetch("/api/diagnostics", { method: "POST", credentials: "same-origin", signal: AbortSignal.any([abort.signal, AbortSignal.timeout(3000)]), headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ streamId, role: "viewer", metrics: { ...remaining, receiveMbps: receivedMbps }, metadata: { codec: codec ?? "", connectionPath, provenance: "browser-rolling-5s" } }) }).catch(() => { }).finally(() => { reporting = false; });
+          }
+        });
         setStatus("Connected; waiting for frames");
         try { await element.play(); } catch { setStatus("Connected. Press Play to begin playback."); }
       } catch (reason) {
@@ -61,5 +77,6 @@ export function StreamPlayer({ streamId, nickname, getPlayback }: StreamPlayerPr
       {error && <button onClick={() => setRetry(value => value + 1)}>Retry</button>}
       <button onClick={() => { void toggleFullscreen(); }}>{fullscreen ? "Return to room" : "Fullscreen"}</button>
     </div>
+    <DiagnosticsPanel sample={diagnostics} />
   </div>;
 }
