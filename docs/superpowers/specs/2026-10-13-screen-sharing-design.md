@@ -2,7 +2,7 @@
 
 Date: 2026-10-13 (America/Sao_Paulo)
 
-Status: Proposed written specification. The user approved the conversational architecture; this document awaits review before implementation planning.
+Status: Approved by the user on 2026-10-13, with microphone capture removed at their request. Implementation planning may proceed; the resulting plan still requires review before execution.
 
 ## 1. Intended outcome
 
@@ -75,19 +75,17 @@ Do not automatically replace a lost window with another application. Source loss
 
 ### Application audio
 
-All global desktop/system audio sources are disabled. The only permitted digital audio inputs are explicitly approved application sources. Window capture and audio selection are distinct; selecting a monitor never implies system-audio capture.
+All global desktop/system audio sources and audio-input-device sources are disabled. The only permitted audio inputs are explicitly approved application sources. Window capture and audio selection are distinct; selecting a monitor never implies system-audio capture. There is no microphone picker, permission request, capture path, mixing route, or microphone control.
 
 Windows application loopback isolates a process or process tree, not arbitrary browser tabs. OBS exposes application audio sources and capture-audio options. Inspect the pinned source implementation and configuration semantics before relying on window matching. Enforce exact selection, avoid executable/title fallback to a replacement, and fail closed if the supported API cannot maintain the intended binding.
+
+Planning inspection of OBS 32.2.2 found that its standard application-audio source searches for a matching window on initialization/reconnection. The first milestone therefore uses a small native OBS audio-source extension backed by Microsoft's process-loopback API, bound to an open process handle and its creation identity. It never searches for a replacement or falls back to endpoint loopback. OBS continues to provide capture, mixing of the approved application source, encoding, and transport.
 
 Discord, the broadcaster/viewing application's process tree, general browsers, and shared browser-host applications are ineligible audio sources in the first release. Unknown shared-process hosts are also ineligible until their isolation boundary has been verified. Capturing a browser window's video remains possible with audio disabled. Running Discord in a separate browser does not make unsafe browser audio capture eligible in the initial release.
 
 For monitor sharing, offer explicit eligible application-audio selection or video without audio. Do not offer a system-output mode with a promise to subtract Discord later. If application audio is incompatible, unavailable, denied, lost, or ambiguously matched, keep it muted and explain why. Validate process identity during selection and source lifecycle changes; PID reuse must not attach to a different process.
 
 The owned scene graph must be audited before Start and monitored while publishing. Unexpected audio sources, monitoring routes, or configuration changes stop/mute capture. A monitoring failure must fail closed. Nothing routes incoming room playback into the outgoing mix. Headless or hidden operation must not conceal which source is live.
-
-### Microphone
-
-A microphone is a separate opt-in input with its own mute control and level meter. It is off by default. Process isolation cannot remove Discord sound physically played through speakers and picked up by a microphone; communicate this limitation when enabling the microphone and recommend headphones. Digital audio-exclusion acceptance uses microphone-off tests, with separate microphone behavior checks.
 
 ## 7. Codec and streaming controls
 
@@ -171,7 +169,7 @@ The helper is a supervised process with an application-owned portable profile, p
 
 Use xUnit for .NET logic and integration checks, a TypeScript test runner for browser logic, and browser automation for UI/network lifecycle where available. Tests must exercise meaningful safety and failure behavior, including:
 
-- Audio defaults and prohibited-source rejection; ambiguous or lost source fails closed.
+- Application-only audio defaults and prohibited-source rejection, including audio-input-device sources; ambiguous or lost source fails closed.
 - Stable session ownership across renaming/reconnect; unauthorized sessions cannot replace a stream.
 - Settings validation, Mbps conversion, applied/readback state, and restart semantics.
 - Counter deltas, reset handling, metric availability, and credential redaction.
@@ -195,7 +193,7 @@ Initial targets for 1080p60 at 15 Mbps on a suitable uncongested path:
 
 These are engineering acceptance targets, not guarantees for arbitrary internet paths. A missed target opens an investigation; it cannot be waived by passing mocked tests. Report conditions that make a result inconclusive.
 
-Audio acceptance plays identifiable intended-application audio, Discord desktop audio, Discord browser audio, and incoming stream audio concurrently. Verify intended audio is present and prohibited sources are absent from the received signal using listening plus a calibrated tone/correlation check. Verify default microphone-off behavior. Repeat after source loss, window-title change, process restart, and display/window selection changes. Prohibited browser audio selections must be rejected or silent. Establish the test's detection floor and record it; an audio spectrum alone does not prove every possible exclusion scenario.
+Audio acceptance plays identifiable intended-application audio, Discord desktop audio, Discord browser audio, and incoming stream audio concurrently. Verify intended audio is present and prohibited sources are absent from the received signal using listening plus a calibrated tone/correlation check. Verify that no audio-input-device capture exists in the owned configuration or scene graph. Repeat after source loss, window-title change, process restart, and display/window selection changes. Prohibited browser audio selections must be rejected or silent. Establish the test's detection floor and record it; an audio spectrum alone does not prove every possible exclusion scenario.
 
 Run one real external viewer from another internet connection before declaring milestone 1 streaming validation complete. Distinguish local, LAN, external direct, and relayed evidence. An unavailable external participant/network leaves that acceptance pending; do not substitute multiple local tabs or contact friends without the user's authorization.
 
