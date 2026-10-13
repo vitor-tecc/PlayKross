@@ -49,13 +49,22 @@ public sealed class RoomClientTests
         await client.RenameAsync("After", CancellationToken.None); await client.ReservePublishAsync(CancellationToken.None);
         Assert.Equal(grant.SessionId, client.Session!.SessionId); Assert.Equal(2, handler.Authenticated);
     }
+    [Fact]
+    public async Task NativeBearerRequestsDoNotPretendToBeBrowserOriginRequests()
+    {
+        var handler = new Handler(Grant) { RequireNoOrigin = true }; using var http = new HttpClient(handler); var client = new RoomHttpClient(http);
+        await client.JoinAsync(new("http://localhost:5000"), "invitation", "Local host broadcaster", CancellationToken.None);
+        await client.ReservePublishAsync(CancellationToken.None);
+    }
     private sealed class Clock : TimeProvider { public DateTimeOffset Now = DateTimeOffset.UtcNow; public override DateTimeOffset GetUtcNow() => Now; }
     private sealed class Handler(SessionGrant grant) : HttpMessageHandler
     {
         public int Authenticated;
+        public bool RequireNoOrigin;
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
         {
             Assert.Empty(request.RequestUri!.Query); Assert.Empty(request.RequestUri.Fragment);
+            if (RequireNoOrigin) Assert.False(request.Headers.Contains("Origin"));
             if (request.RequestUri.AbsolutePath == "/api/join")
             {
                 var body = await request.Content!.ReadAsStringAsync(token); Assert.Contains("\"desktop\":true", body);

@@ -1,4 +1,4 @@
-param([switch]$CheckOnly,[ValidateSet('dotnet','obs','mediamtx')][string[]]$Dependencies = @('dotnet','obs','mediamtx'))
+param([switch]$CheckOnly,[ValidateSet('dotnet','obs','mediamtx','caddy')][string[]]$Dependencies = @('dotnet','obs','mediamtx'))
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'DependencyTools.ps1')
 $projectRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
@@ -28,4 +28,9 @@ foreach ($id in $Dependencies) {
     }
     if (-not (Test-Path -LiteralPath $program)) { throw "Expected $id executable is missing after extraction." }
     Write-Output "$id $($dependency.version): verified and available."
+}
+if ($CheckOnly) {
+    [pscustomobject]@{ Prerequisite='PowerShell >=7.4'; Present=($PSVersionTable.PSVersion -ge [Version]'7.4') }
+    foreach ($name in @('node','npm','git')) { [pscustomobject]@{ Prerequisite=$name; Present=($null -ne (Get-Command $name -ErrorAction SilentlyContinue)) } }
+    [pscustomobject]@{ Prerequisite='Visual Studio C++ Build Tools / Windows SDK / CMake'; Present=(Test-Path -LiteralPath 'C:/Program Files (x86)/Microsoft Visual Studio/Installer/vswhere.exe'); Note='Confirm C++ Desktop workload and Windows 11 SDK 10.0.26100 or newer in Visual Studio Installer.' }
 }

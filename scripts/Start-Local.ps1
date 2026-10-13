@@ -1,7 +1,9 @@
 #requires -Version 7.4
-param([switch]$NoBuild, [switch]$PassThru)
+param([switch]$NoBuild, [switch]$PassThru, [Uri]$PublicOrigin)
 $ErrorActionPreference = 'Stop'
 $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
+$origin = if ($PublicOrigin) { $PublicOrigin } else { [Uri]'http://localhost:5000' }
+if ($PublicOrigin -and (-not $origin.IsAbsoluteUri -or $origin.Scheme -ne 'https' -or $origin.IsLoopback -or $origin.AbsolutePath -ne '/' -or $origin.UserInfo -or $origin.Query -or $origin.Fragment -or $origin.Port -ne 443)) { throw 'PublicOrigin must be a complete public HTTPS origin on port 443, with no path, credentials, query or fragment.' }
 $state = Join-Path $root '.runtime/local-services.local.json'
 $logs = Join-Path $root '.artifacts/local'
 New-Item -ItemType Directory -Force -Path (Join-Path $root '.runtime') | Out-Null
@@ -53,7 +55,7 @@ try {
     $hostEnvironment = $devEnvironment.Clone()
     $hostEnvironment['JKILLER_BOOTSTRAP_SECRET'] = $bootstrap
     $hostEnvironment['JKILLER_ADMIN_SECRET'] = $admin
-    $hostEnvironment['PublicOrigin'] = 'http://localhost:5000'
+    $hostEnvironment['PublicOrigin'] = $origin.GetLeftPart([UriPartial]::Authority)
     $hostProcess = Start-Process -FilePath $dotnet -ArgumentList ('"' + $hostDll + '"') -WorkingDirectory $root -WindowStyle Hidden -Environment $hostEnvironment -RedirectStandardOutput (Join-Path $logs 'host.log') -RedirectStandardError (Join-Path $logs 'host-errors.log') -PassThru
     Track-Process $hostProcess 'host' $dotnet
     $deadline = [DateTime]::UtcNow.AddSeconds(15)
@@ -64,6 +66,12 @@ try {
     } until ($ready -or [DateTime]::UtcNow -ge $deadline)
     if (-not $ready) { throw 'Host did not become ready within 15 seconds.' }
     $configuration = Join-Path $root 'config/mediamtx.local.yml'
+    if ($PublicOrigin) {
+        $configuration = Join-Path $root '.runtime/mediamtx-public.generated.yml'
+        $template = Get-Content -Raw -LiteralPath (Join-Path $root 'config/mediamtx.public.yml')
+        $advertised = ConvertTo-Json -Compress -InputObject @($origin.DnsSafeHost, '127.0.0.1')
+        $template.Replace('webrtcAdditionalHosts: [127.0.0.1]', ('webrtcAdditionalHosts: ' + $advertised)) | Set-Content -LiteralPath $configuration -Encoding utf8
+    }
     $mediaProcess = Start-Process -FilePath $media -ArgumentList ('"' + $configuration + '"') -WorkingDirectory $root -WindowStyle Hidden -RedirectStandardOutput (Join-Path $logs 'media.log') -RedirectStandardError (Join-Path $logs 'media-errors.log') -PassThru
     Track-Process $mediaProcess 'media' $media
     $adminHeaders = @{ Authorization='Basic ' + [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes('jk-admin:' + $admin)) }
@@ -75,9 +83,12 @@ try {
     } until ($ready -or [DateTime]::UtcNow -ge $deadline)
     if (-not $ready) { throw 'Private MediaMTX authentication did not become ready; inspect local service logs.' }
     $invitation = Invoke-RestMethod 'http://127.0.0.1:5001/internal/bootstrap' -Headers @{ Authorization='Bearer ' + $bootstrap } -TimeoutSec 3
-    if ($PassThru) { return [pscustomobject]@{ JoinLink=$invitation.joinLink; Processes=$owned.ToArray() } }
-    Write-Output ('Local room: ' + $invitation.joinLink)
-    Write-Output 'Services are local-only. Stop them with pwsh -File scripts/Stop-Local.ps1.'
+    $localLink = $invitation.joinLink.Replace($origin.GetLeftPart([UriPartial]::Authority), 'http://localhost:5000')
+    if ($PassThru) { return [pscustomobject]@{ JoinLink=$invitation.joinLink; LocalJoinLink=$localLink; Processes=$owned.ToArray() } }
+    Write-Output ('Room: ' + $invitation.joinLink)
+    if ($PublicOrigin) { Write-Output ('Host PC native broadcaster link: ' + $localLink); Write-Output 'Public media UDP listener enabled. HTTPS proxy, router/firewall and external test must be configured separately; see docs/setup/internet.md.' }
+    else { Write-Output 'Services are local-only.' }
+    Write-Output 'Stop tracked services with pwsh -File scripts/Stop-Local.ps1.'
 }
 catch {
     if ($owned.Count -gt 0) { & (Join-Path $PSScriptRoot 'Stop-Local.ps1') }

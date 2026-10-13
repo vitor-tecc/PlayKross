@@ -47,7 +47,8 @@ public sealed class RoomHttpClient(HttpClient http) : IRoomClient
             if (session.ExpiresAt <= DateTimeOffset.UtcNow) throw new InvalidOperationException("The room session expired. Join again.");
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", session.SessionToken);
         }
-        request.Headers.Add("Origin", origin.GetLeftPart(UriPartial.Authority));
+        // This client uses bearer headers and no cookie jar, not browser ambient credentials.
+        // Omitting Origin also permits the host PC to use localhost behind its public proxy.
         if (body is not null) request.Content = JsonContent.Create(body);
         using var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, deadline.Token);
         if (!response.IsSuccessStatusCode) throw new HttpRequestException($"The room server rejected the request (HTTP {(int)response.StatusCode}).", null, response.StatusCode);

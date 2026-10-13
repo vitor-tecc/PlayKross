@@ -15,6 +15,14 @@
     "destination": ".runtime/obs",
     "executable": "bin/64bit/obs64.exe"
   },
+  "caddy": {
+    "version": "2.11.7",
+    "url": "https://github.com/caddyserver/caddy/releases/download/v2.11.7/caddy_2.11.7_windows_amd64.zip",
+    "algorithm": "SHA256",
+    "hash": "0a1edc0b799512051c57071ce0e798d3f2cf67dc98171366f1d2b326072e3b06",
+    "destination": ".tools/caddy",
+    "executable": "caddy.exe"
+  },
   "mediamtx": {
     "version": "1.21.2",
     "url": "https://github.com/bluenviron/mediamtx/releases/download/v1.21.2/mediamtx_v1.21.2_windows_amd64.zip",
