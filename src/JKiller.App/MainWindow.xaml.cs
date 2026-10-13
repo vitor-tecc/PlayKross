@@ -11,18 +11,21 @@ public partial class MainWindow : Window
 {
     private readonly HttpClient http = new(new HttpClientHandler { AllowAutoRedirect = false, UseCookies = false });
     private MainWindowViewModel? model;
+    private RoomHttpClient? roomClient;
+    private string root = "";
+    private Window? viewingWindow;
     private CancellationTokenSource? command;
     private bool closing, closed;
     public MainWindow()
     {
         InitializeComponent();
-        var root = Environment.CurrentDirectory;
+        root = Environment.CurrentDirectory;
         if (!File.Exists(Path.Combine(root, "config/dependencies.json")))
         {
             for (var directory = new DirectoryInfo(AppContext.BaseDirectory); directory is not null; directory = directory.Parent)
                 if (File.Exists(Path.Combine(directory.FullName, "config/dependencies.json"))) { root = directory.FullName; break; }
         }
-        model = new(root, new RoomHttpClient(http)); DataContext = model;
+        roomClient = new(http); model = new(root, roomClient); DataContext = model;
         model.PropertyChanged += (_, args) => Dispatcher.InvokeAsync(() => { if (args.PropertyName == nameof(model.CaptureLive)) SetControls(); });
     }
     private void SetControls()
@@ -79,10 +82,21 @@ public partial class MainWindow : Window
         try { RoomHttpClient.ParseLink(model!.RoomLink); Process.Start(new ProcessStartInfo(model.RoomLink) { UseShellExecute = true }); }
         catch (Exception error) { MessageBox.Show(this, error.Message, "JKiller"); }
     }
+    private async void WatchClick(object sender, RoutedEventArgs args) => await Run(async token =>
+    {
+        var parsed = new Uri(model!.RoomLink); viewingWindow?.Close();
+        var viewer = new Viewing.RoomWebView(root, roomClient!);
+        var window = new Window { Title = "JKiller • Room viewer", Width = 1000, Height = 740, Content = viewer, Owner = this }; viewingWindow = window;
+        var previousState = WindowState.Normal; var previousStyle = WindowStyle.SingleBorderWindow;
+        viewer.FullscreenChanged += (_, _) => { if (viewer.IsFullscreen) { previousState = window.WindowState; previousStyle = window.WindowStyle; window.WindowStyle = WindowStyle.None; window.WindowState = WindowState.Maximized; } else { window.WindowStyle = previousStyle; window.WindowState = previousState; } };
+        window.Closed += (_, _) => { viewer.Dispose(); if (viewingWindow == window) viewingWindow = null; };
+        window.Show();
+        try { await viewer.OpenRoomAsync(parsed, token); } catch { window.Close(); throw; }
+    });
     private async void WindowClosing(object? sender, CancelEventArgs args)
     {
         if (closed) return; args.Cancel = true; if (closing) return; closing = true; command?.Cancel();
-        try { await model!.DisposeAsync(); }
+        try { viewingWindow?.Close(); await model!.DisposeAsync(); }
         finally { http.Dispose(); closed = true; _ = Dispatcher.BeginInvoke(new Action(Close)); }
     }
 }

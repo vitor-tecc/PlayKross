@@ -4,7 +4,7 @@
     <TextBlock Margin="0,8,0,18" TextWrapping="Wrap" Text="This app broadcasts. The room host runs separately. Start the local server with scripts/Start-Local.ps1 and paste its room link here."/>
     <StackPanel x:Name="ConnectionControls"><TextBlock Text="Room link"/><TextBox x:Name="Link" AutomationProperties.AutomationId="RoomLink" Text="{Binding RoomLink, UpdateSourceTrigger=PropertyChanged}"/>
       <TextBlock Margin="0,10,0,0" Text="Nickname"/><TextBox Text="{Binding Nickname, UpdateSourceTrigger=PropertyChanged}"/>
-      <WrapPanel><Button x:Name="JoinButton" Content="Join room" Click="JoinClick"/><Button Content="Change nickname" Click="RenameClick"/><Button Content="Copy room link" Click="CopyClick"/><Button Content="Open browser viewer" Click="ViewClick"/></WrapPanel>
+      <WrapPanel><Button x:Name="JoinButton" Content="Join room" Click="JoinClick"/><Button Content="Change nickname" Click="RenameClick"/><Button Content="Copy room link" Click="CopyClick"/><Button Content="Open browser viewer" Click="ViewClick"/><Button Content="Watch in app" Click="WatchClick"/></WrapPanel>
     </StackPanel>
     <StackPanel x:Name="SelectionControls"><TextBlock Margin="0,16,0,4" FontWeight="SemiBold" Text="Video source — required"/>
       <ComboBox x:Name="VideoSource" AutomationProperties.AutomationId="VideoSource" ItemsSource="{Binding Sources}" DisplayMemberPath="DisplayName" SelectedItem="{Binding Video}"/>
