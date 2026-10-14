@@ -13,6 +13,7 @@ try {
             & (Join-Path $PSScriptRoot 'Build-Native.ps1') -Plugin -Test
             & (Join-Path $root 'tests/setup/SetupChecks.ps1')
             & (Join-Path $root 'tests/setup/CleanupChecks.ps1')
+            & (Join-Path $root 'tests/setup/MediaInterfaceChecks.ps1')
             Write-Output 'Automated correctness: passed. Real streaming smoothness, audio exclusion and internet performance are separate checks.'
         }
         LocalMedia {

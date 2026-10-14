@@ -27,6 +27,7 @@ jobs:
         run: |
           ./tests/setup/SetupChecks.ps1
           ./tests/setup/CleanupChecks.ps1
+          ./tests/setup/MediaInterfaceChecks.ps1
   browser:
     name: Browser correctness and production build
     runs-on: ubuntu-latest

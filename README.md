@@ -15,6 +15,8 @@ On this already-prepared PC, run PowerShell 7 from the project folder:
 
 Paste the printed `http://localhost:5000/#invite=...` link into the native app, choose a nickname, Join, choose a video source, and Start. Audio is off until an explicitly supported application is selected; standalone Steam Geometry Dash and the development fixture are the initial audio profiles. Browser/Discord/unknown/shared processes are video-only. The room page opens in a browser or with **Watch in app**. Localhost links work only on this PC.
 
+In a browser, **Join room**, then click **Watch stream**; use **Enable sound** separately. For Firefox on this PC, start the server with `./scripts/Start-Local.ps1 -MediaInterface Ethernet` instead of default startup. This explicitly uses the Ethernet address for encrypted UDP media while the website/admin stay on localhost. Default loopback-only media was observed to fail in Firefox here, while Edge worked. See [Firefox local viewing](docs/setup/windows.md#firefox-on-the-host-pc) for scope and adapter selection.
+
 ```powershell
 ./scripts/Stop-Local.ps1
 ```

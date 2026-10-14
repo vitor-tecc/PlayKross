@@ -26,11 +26,35 @@ npm --prefix web run build
 
 Setup downloads pinned SDK, portable OBS and MediaMTX to this project and verifies hashes before extraction. Native builds download pinned OBS source/JSON headers and verify them. Instrumentation rebuilds only the owned WGC component; missing instrumentation appears as unavailable capture FPS. Stop the owned broadcaster before rebuilding native libraries. This does not change personal OBS settings. Build/download errors must be fixed before launching; scripts do not install system prerequisites or relax execution policy.
 
-Copy the printed room invitation into the app and browser. Invite fragments are secrets; don't put them in screenshots, logs or public issues. Pick video, then optional **explicit application audio**. Display capture never automatically selects system audio. Requested settings can be changed with **Apply settings (restart)**, which briefly interrupts capture while retaining stream identity. Applied encoder readback and observed output rates are separate displays.
+Copy the printed room invitation into the app and browser. In the browser, choose a nickname, **Join room**, then **Watch stream**. Video starts muted; use **Enable sound** separately. If autoplay is blocked, press **Play**. Invite fragments are secrets; don't put them in screenshots, logs or public issues. Pick video, then optional **explicit application audio**. Display capture never automatically selects system audio. Requested settings can be changed with **Apply settings (restart)**, which briefly interrupts capture while retaining stream identity. Applied encoder readback and observed output rates are separate displays.
 
 Native app sessions are protected with Windows DPAPI and user/SYSTEM ACLs. Native OBS uses a private PID/creation-identity-bound pipe, not an open websocket control port. The development services bind TCP 5000/5001/8889/9997/9998 and UDP 8189 to loopback. Public hosting is opt-in and documented separately. Keep the PC awake while hosting.
 
 Run `Verify -Mode LocalMedia` with no project service already running. It starts/stops its own services and synthetic fixture and tests actual H.264/Opus browser playback and WebView2. It uses installed Edge, no screenshots or real desktop recording. It is a protocol smoke test. The later sustained harness records numerical synthetic measurements separately. A renderer may report 60 FPS while a static/slow source repeats frames; inspect capture and encoded rates together.
+
+## Firefox on the host PC
+
+The prepared PC does not need the full fresh-development setup repeated. A room page loading confirms HTTP access, but WebRTC media uses a separate connection. On this Windows PC, Firefox157.0.1 joined and completed WHEP negotiation yet failed ICE with loopback-only media; Edge155 played the same source. Selecting the PC's Ethernet media address restored Firefox playback without custom media/privacy preferences. The upstream MediaMTX reader reproduced the loopback failure too. See [browser investigation](../validation/firefox-local-viewing.md).
+
+Stop broadcasting and any current project services, then use:
+
+```powershell
+./scripts/Stop-Local.ps1
+./scripts/Start-Local.ps1 -MediaInterface Ethernet
+./scripts/Start-Broadcaster.ps1
+```
+
+Keep using the printed localhost room invitation in both app and browser. Join, start the native broadcast, then click **Watch stream** in the browser. If your adapter has another name, find it with `Get-NetIPAddress -AddressFamily IPv4 | Select-Object InterfaceAlias,IPAddress,AddressState` and pass its exact name, for example `-MediaInterface 'Wi-Fi'`. The script refuses an unknown interface or multiple eligible IPv4 addresses instead of guessing.
+
+This option binds authenticated encrypted media on UDP8189 to the selected assigned IPv4 address, making that media listener reachable on that network. Website/signaling/admin listeners stay on loopback. It does not enable anonymous media, change Firefox settings, modify firewall/router rules, publish HTTPS or make localhost invitations work from friends' computers. Use [internet setup](internet.md) for external viewers. Default startup remains entirely loopback-only; Edge is an observed working default-mode browser. Do not combine this option with `-PublicOrigin`.
+
+Optional real installed-Firefox regression:
+
+```powershell
+./scripts/Test-FirefoxViewing.ps1 -MediaInterface Ethernet
+```
+
+The test downloads hash-pinned [Mozilla geckodriver0.37.1](https://github.com/mozilla/geckodriver/releases/tag/v0.37.1) only for development automation, uses an isolated profile, and saves numeric synthetic-media results. Browser viewers do not install or use geckodriver. It follows Mozilla's [standalone WebDriver interface](https://firefox-source-docs.mozilla.org/testing/geckodriver/Usage.html). Ordinary local/CI correctness checks test address-selection rules; hardware/browser media delivery remains a separate test.
 
 ## Components and licenses
 

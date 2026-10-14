@@ -1,7 +1,11 @@
 #requires -Version 7.4
-param([switch]$NoBuild, [switch]$PassThru, [Uri]$PublicOrigin)
+param([switch]$NoBuild, [switch]$PassThru, [Uri]$PublicOrigin, [string]$MediaInterface)
 $ErrorActionPreference = 'Stop'
 $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
+. (Join-Path $PSScriptRoot 'MediaNetwork.ps1')
+if($PublicOrigin -and $MediaInterface){throw 'Use MediaInterface for local browser testing, or PublicOrigin for public hosting; choose one mode.'}
+$addresses=if($MediaInterface){@(Get-NetIPAddress -AddressFamily IPv4)}else{@()}
+$mediaAddress=Resolve-MediaAddress -InterfaceAlias $MediaInterface -Addresses $addresses
 $origin = if ($PublicOrigin) { $PublicOrigin } else { [Uri]'http://localhost:5000' }
 if ($PublicOrigin -and (-not $origin.IsAbsoluteUri -or $origin.Scheme -ne 'https' -or $origin.IsLoopback -or $origin.AbsolutePath -ne '/' -or $origin.UserInfo -or $origin.Query -or $origin.Fragment -or $origin.Port -ne 443)) { throw 'PublicOrigin must be a complete public HTTPS origin on port 443, with no path, credentials, query or fragment.' }
 $state = Join-Path $root '.runtime/local-services.local.json'
@@ -17,7 +21,7 @@ foreach ($port in @(5000,5001,8889,9997,9998)) {
     finally { $listener.Stop() }
 }
 $udp = [Net.Sockets.UdpClient]::new()
-try { $udp.Client.Bind([Net.IPEndPoint]::new([Net.IPAddress]::Loopback, 8189)) }
+try { $udp.Client.Bind([Net.IPEndPoint]::new([Net.IPAddress]::Parse($mediaAddress), 8189)) }
 catch { throw 'Port 8189 UDP is occupied. Close its current owner before starting the local host.' }
 finally { $udp.Dispose() }
 if (Test-Path -LiteralPath $state) {
@@ -72,6 +76,11 @@ try {
         $advertised = ConvertTo-Json -Compress -InputObject @($origin.DnsSafeHost, '127.0.0.1')
         $template.Replace('webrtcAdditionalHosts: [127.0.0.1]', ('webrtcAdditionalHosts: ' + $advertised)) | Set-Content -LiteralPath $configuration -Encoding utf8
     }
+    elseif($MediaInterface){
+        $configuration=Join-Path $root '.runtime/mediamtx-interface.generated.yml'
+        $template=Get-Content -Raw -LiteralPath (Join-Path $root 'config/mediamtx.local.yml')
+        $template.Replace('webrtcLocalUDPAddress: 127.0.0.1:8189',('webrtcLocalUDPAddress: '+$mediaAddress+':8189')).Replace('webrtcAdditionalHosts: [127.0.0.1]',('webrtcAdditionalHosts: ["'+$mediaAddress+'"]')) | Set-Content -LiteralPath $configuration -Encoding utf8
+    }
     $mediaProcess = Start-Process -FilePath $media -ArgumentList ('"' + $configuration + '"') -WorkingDirectory $root -WindowStyle Hidden -RedirectStandardOutput (Join-Path $logs 'media.log') -RedirectStandardError (Join-Path $logs 'media-errors.log') -PassThru
     Track-Process $mediaProcess 'media' $media
     $adminHeaders = @{ Authorization='Basic ' + [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes('jk-admin:' + $admin)) }
@@ -87,7 +96,8 @@ try {
     if ($PassThru) { return [pscustomobject]@{ JoinLink=$invitation.joinLink; LocalJoinLink=$localLink; Processes=$owned.ToArray() } }
     Write-Output ('Room: ' + $invitation.joinLink)
     if ($PublicOrigin) { Write-Output ('Host PC native broadcaster link: ' + $localLink); Write-Output 'Public media UDP listener enabled. HTTPS proxy, router/firewall and external test must be configured separately; see docs/setup/internet.md.' }
-    else { Write-Output 'Services are local-only.' }
+    elseif($MediaInterface){Write-Output ('Website/admin remain on localhost. Authenticated encrypted media uses '+$MediaInterface+' ('+$mediaAddress+'):8189 UDP. No router/firewall changes were made. This is not internet hosting.')}
+    else { Write-Output 'Services are local-only. If Firefox cannot load the stream on this PC, use -MediaInterface with your Ethernet/Wi-Fi interface; see docs/setup/windows.md.' }
     Write-Output 'Stop tracked services with pwsh -File scripts/Stop-Local.ps1.'
 }
 catch {
