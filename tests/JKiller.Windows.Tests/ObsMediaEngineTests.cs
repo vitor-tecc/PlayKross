@@ -8,6 +8,14 @@ namespace JKiller.Windows.Tests;
 public sealed class ObsMediaEngineTests
 {
     [Fact]
+    public async Task DirectEngineAudioRequestCannotBypassUnconfinedTreePolicy()
+    {
+        var helper = new FakeHelper(); var rpc = new FakeRpc();
+        await using var engine = new ObsMediaEngine(helper, (_, _) => Task.FromResult<IObsRpcClient>(rpc));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => engine.PrepareAsync(Request with { Audio = new(Request.Video.Process) }, CancellationToken.None));
+        Assert.Equal(0, helper.Starts);
+    }
+    [Fact]
     public async Task AudioBytesAloneDoNotReportVideoBroadcastReady()
     {
         var rpc = new FakeRpc { VideoReady = false };
@@ -63,6 +71,9 @@ public sealed class ObsMediaEngineTests
         var engine = new ObsMediaEngine(new FakeHelper(), (_, _) => Task.FromResult<IObsRpcClient>(rpc), allowCpuFallback: true);
         var applied = await engine.PrepareAsync(Request, CancellationToken.None);
         Assert.Equal("obs_x264", applied.Encoder); Assert.False(applied.HardwareVerified);
+        Assert.Equal(new BroadcastSettings(1280, 720, 30, 4), applied.Settings);
+        Assert.Equal(1280, rpc.Transform.GetProperty("boundsWidth").GetInt32());
+        Assert.Equal(720, rpc.Transform.GetProperty("boundsHeight").GetInt32());
         await engine.StopAsync(CancellationToken.None);
     }
     [Fact]
@@ -113,8 +124,8 @@ public sealed class ObsMediaEngineTests
 
     private sealed class FakeHelper : IOwnedObsProcess
     {
-        public int Stops;
-        public Task<OwnedEngineHandle> StartAsync(CancellationToken cancellationToken) => Task.FromResult(new OwnedEngineHandle(new(1, 2, "obs64.exe"), "test", new(100, 200, "JKiller.exe")));
+        public int Stops, Starts;
+        public Task<OwnedEngineHandle> StartAsync(CancellationToken cancellationToken) { Starts++; return Task.FromResult(new OwnedEngineHandle(new(1, 2, "obs64.exe"), "test", new(100, 200, "JKiller.exe"))); }
         public Task StopAsync(CancellationToken cancellationToken) { Stops++; return Task.CompletedTask; }
     }
     private sealed class FakeRpc : IObsRpcClient
@@ -127,14 +138,16 @@ public sealed class ObsMediaEngineTests
         public JsonElement VideoSettings;
         public JsonElement Transform = JsonSerializer.SerializeToElement(new { });
         public string? VideoKind;
+        private JsonElement videoOutput = JsonSerializer.SerializeToElement(new { outputWidth = 1920, outputHeight = 1080, fpsNumerator = 60, fpsDenominator = 1 });
         public TaskCompletionSource StartEntered = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public TaskCompletionSource CompleteStart = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public async Task<JsonElement> RequestAsync(string requestType, JsonElement data, CancellationToken cancellationToken)
         {
+            if (requestType == "SetVideoSettings") videoOutput = data.Clone();
             if (requestType == "CreateInput" && data.GetProperty("inputName").GetString() == "JK Video") { VideoSettings = data.GetProperty("inputSettings").Clone(); VideoKind = data.GetProperty("inputKind").GetString(); }
             if (requestType == "GetSceneItemList") return JsonSerializer.SerializeToElement(new { sceneItems = new[] { new { sourceName = "JK Video", sceneItemId = 1 } } });
             if (requestType == "SetSceneItemTransform") Transform = data.GetProperty("sceneItemTransform").Clone();
-            if (requestType == "GetVideoSettings") return JsonSerializer.SerializeToElement(new { outputWidth = WrongReadback ? 1280 : 1920, outputHeight = 1080, fpsNumerator = 60, fpsDenominator = 1 });
+            if (requestType == "GetVideoSettings") return JsonSerializer.SerializeToElement(new { outputWidth = WrongReadback ? 1280 : videoOutput.GetProperty("outputWidth").GetInt32(), outputHeight = videoOutput.GetProperty("outputHeight").GetInt32(), fpsNumerator = videoOutput.GetProperty("fpsNumerator").GetInt32(), fpsDenominator = 1 });
             if (requestType != "CallVendorRequest") return JsonSerializer.SerializeToElement(new { });
             var vendor = data.GetProperty("requestType").GetString();
             var args = data.GetProperty("requestData");
@@ -143,7 +156,7 @@ public sealed class ObsMediaEngineTests
             if (vendor == "PreparePipeline")
             {
                 var encoder = args.GetProperty("encoder").GetString()!; PreparedEncoders.Add(encoder);
-                response = new { success = !(FailNvenc && encoder.Contains("nvenc")), encoder, codec = "h264", hardwareInitialized = encoder.Contains("nvenc"), bitrateKbps = 15000, bFrames = 0, lookahead = false };
+                response = new { success = !(FailNvenc && encoder.Contains("nvenc")), encoder, codec = "h264", hardwareInitialized = encoder.Contains("nvenc"), bitrateKbps = args.GetProperty("bitrateKbps").GetInt32(), bFrames = 0, lookahead = false };
             }
             if (vendor == "StartPipeline") { Starts++; StartEntered.TrySetResult(); if (DelayStart) await CompleteStart.Task; Publishing = true; }
             if (vendor is "StopPipeline" or "Disarm") Publishing = false;

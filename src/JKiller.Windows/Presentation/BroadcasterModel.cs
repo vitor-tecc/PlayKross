@@ -34,7 +34,7 @@ public class BroadcasterModel(Func<bool, IMediaEngine> engineFactory, IRoomClien
     public bool CaptureLive => controller?.State == BroadcastState.Broadcasting;
     public static AudioEligibility AudioEligibilityFor(SourceDescriptor? source)
     {
-        if (source is null) return new(false, "Audio off. Choose an explicitly supported application; displays never select system audio.");
+        if (source is null) return new(false, "Audio is temporarily disabled until application-only exclusion can be enforced. Video remains available.");
         var image = source.Process?.ExecutablePath ?? "";
         var name = Path.GetFileName(image.Replace('/', '\\'));
         var classification = name.ToLowerInvariant() switch
@@ -60,7 +60,7 @@ public class BroadcasterModel(Func<bool, IMediaEngine> engineFactory, IRoomClien
         if (room is RoomHttpClient client && vault is not null && await vault.RestoreAsync(parsed.Origin, token) is { } saved) client.Restore(saved.Origin, saved.Grant);
         var joined = await room.JoinAsync(parsed.Origin, parsed.Invite, Nickname, token); origin = parsed.Origin;
         if (vault is not null) await vault.SaveAsync(new(origin, joined), token);
-        Status = "Joined. Select video and optional application audio, then Start.";
+        Status = "Joined. Select video, then Start. Application audio is temporarily disabled for exclusion safety.";
         await RefreshAsync(token);
     }
     public async Task RenameAsync(CancellationToken token) { await room.RenameAsync(Nickname, token); Status = "Nickname updated; your session identity stays the same."; }

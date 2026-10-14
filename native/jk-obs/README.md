@@ -1,5 +1,7 @@
 # JKiller OBS extension
 
+Current review-fix revision disables `jk_process_audio` in the native input policy and inside its libobs creation callback. The retained loopback implementation is an extension point, not an eligible production input: its tree includes future children, so root identity/filename checks cannot guarantee Discord or viewer-audio exclusion. Video inputs remain available. Re-enabling audio needs an enforced boundary and fresh real-media validation. Use `Build-Native -Plugin -Test -NonInteractive -NoInstall` for compilation and the twenty non-interactive tests while the PC is occupied.
+
 This module uses OBS 32.2.2's public source and vendor APIs. Its application audio source uses Windows process-loopback inclusion bound to the original process handle. It has no endpoint-loopback or audio-input-device implementation.
 
 Build with `pwsh -File scripts/Build-Native.ps1 -Plugin -Test` from the repository root after setup. Only the application-owned OBS runtime is modified. The SDK headers come from the official hash-verified source release; Windows-incompatible Unix formatting-helper links are excluded during extraction. Import libraries are generated from the pinned official DLL exports.

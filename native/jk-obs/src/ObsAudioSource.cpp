@@ -1,4 +1,5 @@
 #include "ModuleState.hpp"
+#include "InputPolicy.hpp"
 #include <windows.h>
 #include <map>
 #include <mutex>
@@ -75,6 +76,10 @@ const char* Name(void*) { return "JKiller application audio (process only)"; }
 void* Create(obs_data_t* settings, obs_source_t* source) {
     auto context = std::make_unique<AudioSource>(source, static_cast<std::uint64_t>(obs_data_get_int(settings, "selection_generation")));
     try {
+        // Defense in depth: source creation through libobs must not bypass the
+        // control-plane input policy and activate an unconfined process tree.
+        if (!AllowsCreateInput("jk_process_audio"))
+            throw std::runtime_error("Application audio disabled: no enforced process-tree exclusion boundary.");
         const long long pid = obs_data_get_int(settings, "pid");
         if (pid <= 0 || pid > UINT32_MAX || static_cast<std::uint32_t>(pid) == GetCurrentProcessId()) throw std::runtime_error("Select an eligible application; OBS itself cannot be captured.");
         const std::string creation = obs_data_get_string(settings, "creation_filetime");

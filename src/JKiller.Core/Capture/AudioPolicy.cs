@@ -9,7 +9,7 @@ public static class AudioPolicy
     {
         if (source.Process is not { Pid: > 0, CreationFileTime: > 0 }) return new(false, "Select a running application for audio; a display does not select audio.");
         return classification == ProcessClassification.VerifiedApplication
-            ? new(true, "Only this application's process tree will be captured.")
+            ? new(false, "Application audio is temporarily disabled: Windows also captures child processes, and their exclusion cannot yet be enforced. Video remains available.")
             : new(false, classification switch
             {
                 ProcessClassification.Discord => "Discord audio cannot be captured.",

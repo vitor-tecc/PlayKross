@@ -30,6 +30,8 @@ public sealed class ObsMediaEngine(IOwnedObsProcess helper, Func<OwnedEngineHand
             if (prepared is not null || rpc is not null) throw new InvalidOperationException("Stop the current capture before preparing another selection.");
             var validation = StreamSettings.Validate(request.Settings);
             if (!validation.IsValid) throw new ArgumentException(string.Join(" ", validation.Errors), nameof(request));
+            if (request.Audio.Application is not null)
+                throw new InvalidOperationException("Application audio is disabled until an enforced process-tree boundary is available. Use video-only capture.");
             if (request.Video.NativeHandle == 0 || (request.Video.Kind == SourceKind.Window && request.Video.Process is null))
                 throw new InvalidOperationException("Select an identifiable live display or window.");
             var handle = await helper.StartAsync(cancellationToken);
@@ -39,11 +41,15 @@ public sealed class ObsMediaEngine(IOwnedObsProcess helper, Func<OwnedEngineHand
             if (!Has("sources", "jk_bound_capture") || !Has("services", "whip_custom") || !Has("encoders", "ffmpeg_opus"))
                 throw new InvalidOperationException("Pinned native capture, WHIP or Opus component unavailable.");
             var settings = request.Settings;
-            await Request("SetVideoSettings", new { baseWidth = settings.Width, baseHeight = settings.Height, outputWidth = settings.Width, outputHeight = settings.Height, fpsNumerator = settings.Fps, fpsDenominator = 1 }, cancellationToken);
-            var readback = await Request("GetVideoSettings", new { }, cancellationToken);
-            if (readback.GetProperty("outputWidth").GetInt32() != settings.Width || readback.GetProperty("outputHeight").GetInt32() != settings.Height ||
-                readback.GetProperty("fpsNumerator").GetInt32() != settings.Fps || readback.GetProperty("fpsDenominator").GetInt32() != 1)
-                throw new InvalidDataException("Engine video readback does not match requested settings.");
+            async Task ConfigureVideo()
+            {
+                await Request("SetVideoSettings", new { baseWidth = settings.Width, baseHeight = settings.Height, outputWidth = settings.Width, outputHeight = settings.Height, fpsNumerator = settings.Fps, fpsDenominator = 1 }, cancellationToken);
+                var readback = await Request("GetVideoSettings", new { }, cancellationToken);
+                if (readback.GetProperty("outputWidth").GetInt32() != settings.Width || readback.GetProperty("outputHeight").GetInt32() != settings.Height ||
+                    readback.GetProperty("fpsNumerator").GetInt32() != settings.Fps || readback.GetProperty("fpsDenominator").GetInt32() != 1)
+                    throw new InvalidDataException("Engine video readback does not match applied settings.");
+            }
+            await ConfigureVideo();
             generation++;
             var selected = request.Video.Process;
             await Request("CreateInput", new { sceneName = "JKiller", inputName = "JK Video", inputKind = "jk_bound_capture", inputSettings = new
@@ -64,7 +70,13 @@ public sealed class ObsMediaEngine(IOwnedObsProcess helper, Func<OwnedEngineHand
             }
             async Task<JsonElement> PrepareEncoder(string encoder) => await Vendor("PreparePipeline", new { encoder, bitrateKbps = settings.EncoderKbps, generation }, cancellationToken);
             var encoded = Has("encoders", "obs_nvenc_h264_tex") ? await PrepareEncoder("obs_nvenc_h264_tex") : JsonSerializer.SerializeToElement(new { success = false });
-            if (!encoded.GetProperty("success").GetBoolean() && allowCpuFallback && Has("encoders", "obs_x264")) encoded = await PrepareEncoder("obs_x264");
+            if (!encoded.GetProperty("success").GetBoolean() && allowCpuFallback && Has("encoders", "obs_x264"))
+            {
+                var reduced = StreamSettings.DefaultFor(Math.Min(settings.Height, 720), 30);
+                settings = reduced with { BitrateMbps = Math.Min(settings.BitrateMbps, reduced.BitrateMbps) };
+                await ConfigureVideo();
+                encoded = await PrepareEncoder("obs_x264");
+            }
             if (!encoded.GetProperty("success").GetBoolean()) throw new InvalidOperationException("NVENC could not initialize. CPU encoding requires explicitly selecting the fallback.");
             if (encoded.GetProperty("bitrateKbps").GetInt32() != settings.EncoderKbps || encoded.GetProperty("bFrames").GetInt32() != 0 || encoded.GetProperty("lookahead").GetBoolean())
                 throw new InvalidDataException("Encoder readback does not match the low-latency configuration.");

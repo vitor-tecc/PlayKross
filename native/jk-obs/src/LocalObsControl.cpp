@@ -45,7 +45,7 @@ std::string ProcessMessage(const std::string& text) {
         if (!parameters.is_object()) return Json{{"op",7},{"d",{{"requestId",id},{"requestStatus",{{"result",false},{"code",400},{"comment","Request data must be an object."}}}}}}.dump();
         if (type == "CreateInput") {
             const std::string kind = parameters.value("inputKind", "");
-            if (!AllowsCreateInput(kind)) return Json{{"op",7},{"d",{{"requestId",id},{"requestStatus",{{"result",false},{"code",400},{"comment","Only video and explicit process-audio sources are permitted."}}}}}}.dump();
+            if (!AllowsCreateInput(kind)) return Json{{"op",7},{"d",{{"requestId",id},{"requestStatus",{{"result",false},{"code",400},{"comment","Only approved video sources are permitted; application audio requires an enforced exclusion boundary."}}}}}}.dump();
             if (!parameters.contains("inputSettings")) parameters["inputSettings"] = Json::object();
             if (!parameters["inputSettings"].is_object()) return Json{{"op",7},{"d",{{"requestId",id},{"requestStatus",{{"result",false},{"code",400}}}}}}.dump();
             parameters["inputSettings"]["capture_audio"] = false;

@@ -20,7 +20,7 @@ public sealed class AudioPolicyTests
         Assert.NotEmpty(result.Reason);
     }
     [Fact]
-    public void VerifiedApplicationIsEligible() => Assert.True(AudioPolicy.Evaluate(Window, ProcessClassification.VerifiedApplication).Allowed);
+    public void KnownApplicationWithoutEnforcedTreeBoundaryIsVideoOnly() => Assert.False(AudioPolicy.Evaluate(Window, ProcessClassification.VerifiedApplication).Allowed);
     [Fact]
     public void MonitorSelectionDoesNotEnableAudio() => Assert.False(AudioPolicy.Evaluate(new("monitor:1", SourceKind.Monitor, 1, null, "Display"), ProcessClassification.VerifiedApplication).Allowed);
     [Fact]

@@ -9,11 +9,11 @@
     <StackPanel x:Name="SelectionControls"><TextBlock Margin="0,16,0,4" FontWeight="SemiBold" Text="Video source — required"/>
       <ComboBox x:Name="VideoSource" AutomationProperties.AutomationId="VideoSource" ItemsSource="{Binding Sources}" DisplayMemberPath="DisplayName" SelectedItem="{Binding Video}"/>
       <Button HorizontalAlignment="Left" Content="Refresh sources" Click="RefreshClick"/>
-      <TextBlock Margin="0,10,0,4" FontWeight="SemiBold" Text="Application audio — optional, explicitly selected"/>
-      <ComboBox x:Name="AudioSource" ItemsSource="{Binding Sources}" DisplayMemberPath="DisplayName" SelectedItem="{Binding Audio}" SelectionChanged="AudioChanged"/>
+      <TextBlock Margin="0,10,0,4" FontWeight="SemiBold" Text="Application audio — temporarily unavailable"/>
+      <ComboBox x:Name="AudioSource" IsEnabled="False" ItemsSource="{Binding Sources}" DisplayMemberPath="DisplayName" SelectedItem="{Binding Audio}" SelectionChanged="AudioChanged"/>
       <Button HorizontalAlignment="Left" Content="Turn audio off" Click="AudioOffClick"/>
-      <TextBlock x:Name="AudioReason" TextWrapping="Wrap" Text="Audio off. No system output or microphone is captured."/>
-      <TextBlock Margin="0,8,0,0" TextWrapping="Wrap" Text="Supported audio profiles: standalone Steam Geometry Dash and the development fixture. Browser tabs, Discord, and unknown apps have audio disabled. Incoming room playback is excluded. Other apps can still share video."/>
+      <TextBlock x:Name="AudioReason" TextWrapping="Wrap" Text="Audio is disabled until application-only exclusion can be enforced. Video sharing remains available."/>
+      <TextBlock Margin="0,8,0,0" TextWrapping="Wrap" Text="Windows application capture also includes child processes. The current boundary cannot guarantee exclusion of Discord or incoming streams. No microphone or system output is captured."/>
       <CheckBox Margin="0,12,0,0" IsChecked="{Binding AllowCpuFallback}" Content="Allow CPU encoding if NVENC initialization fails (may cost game performance)"/>
     </StackPanel>
     <StackPanel x:Name="SettingsControls"><TextBlock Margin="0,20,0,6" FontWeight="SemiBold" Text="Requested output settings"/>

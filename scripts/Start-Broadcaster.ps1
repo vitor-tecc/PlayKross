@@ -14,4 +14,4 @@ $dll = Join-Path $root 'src/JKiller.App/bin/Debug/net10.0-windows10.0.26100.0/JK
 if (-not (Test-Path -LiteralPath $dll)) { throw 'Build the native app before launching it.' }
 $process = Start-Process -FilePath $dotnet -ArgumentList @(('"' + $dll + '"')) -WorkingDirectory $root -WindowStyle Hidden -PassThru
 if ($PassThru) { return $process }
-Write-Output 'Opened JKiller. Paste the room link, select video and optional supported application audio, then Start.'
+Write-Output 'Opened PlayKross. Paste the room link, select video, then Start. Application audio is temporarily disabled for exclusion safety.'
