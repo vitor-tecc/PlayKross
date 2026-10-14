@@ -2,9 +2,9 @@
 
 ![PlayKross](assets/branding/playkross-logo.png)
 
-Self-hosted Windows broadcasting with browser viewers. The first implemented milestone provides one publisher per room: native Windows Graphics Capture, NVIDIA H.264 encoding, Opus application audio, MediaMTX forwarding, anonymous nicknames, settings controls, fullscreen, diagnostics and in-app viewing. Microphone capture is absent.
+Self-hosted Windows broadcasting with browser viewers. The first implemented milestone provides one publisher per room: native Windows Graphics Capture, NVIDIA H.264 encoding, MediaMTX forwarding, anonymous nicknames, settings controls, fullscreen, diagnostics and in-app viewing. Application audio is temporarily disabled while its exclusion boundary is corrected. Microphone capture is absent.
 
-**Milestone acceptance is still pending:** real Discord exclusion, calibrated audiovisual timing, review corrections and external phone testing remain pending. A ten-minute full-source 1080p60 synthetic loopback run is preserved; it does not prove internet or multi-viewer performance. Multiple broadcasters and the eight-viewer capacity milestone follow this gate. Current room limit is eight participants including the publisher, so it is not an eight-viewer capacity claim.
+**Milestone acceptance is still pending:** an enforced application-audio boundary, real Discord exclusion, calibrated audiovisual timing and external phone testing remain pending. A ten-minute full-source 1080p60 synthetic loopback run is preserved as historical evidence; it does not prove this revision, internet or multi-viewer performance. Multiple broadcasters and the eight-viewer capacity milestone follow this gate. Current room limit is eight participants including the publisher, so it is not an eight-viewer capacity claim.
 
 On this already-prepared PC, run PowerShell 7 from the project folder:
 
@@ -13,7 +13,7 @@ On this already-prepared PC, run PowerShell 7 from the project folder:
 ./scripts/Start-Broadcaster.ps1
 ```
 
-Paste the printed `http://localhost:5000/#invite=...` link into the native app, choose a nickname, Join, choose a video source, and Start. Audio is off until an explicitly supported application is selected; standalone Steam Geometry Dash and the development fixture are the initial audio profiles. Browser/Discord/unknown/shared processes are video-only. The room page opens in a browser or with **Watch in app**. Localhost links work only on this PC.
+Paste the printed `http://localhost:5000/#invite=...` link into the native app, choose a nickname, Join, choose a video source, and Start. All current capture modes are video-only: the Windows audio API includes child processes, and the current implementation cannot enforce Discord/incoming-audio exclusion for that tree. The selector and native creation paths are disabled until that boundary is corrected. See the [M1 remaining work](docs/validation/milestone-1-next-steps.md). The room page opens in a browser or with **Watch in app**. Localhost links work only on this PC.
 
 In a browser, **Join room**, then click **Watch stream**; use **Enable sound** separately. For Firefox on this PC, start the server with `./scripts/Start-Local.ps1 -MediaInterface Ethernet` instead of default startup. This explicitly uses the Ethernet address for encrypted UDP media while the website/admin stay on localhost. Default loopback-only media was observed to fail in Firefox here, while Edge worked. See [Firefox local viewing](docs/setup/windows.md#firefox-on-the-host-pc) for scope and adapter selection.
 
@@ -29,11 +29,12 @@ One encoder feeds the media server; it forwards copies to viewers. This avoids e
 
 ```powershell
 ./scripts/Verify.ps1 -Mode Automated
+./scripts/Verify.ps1 -Mode CodeOnly
 ./scripts/Verify.ps1 -Mode LocalMedia
 ./scripts/Verify.ps1 -Mode External -RoomLink 'https://YOUR_PUBLIC_ADDRESS/#invite=...'
 ```
 
-Automated checks do not prove real streaming performance. External mode deliberately reports pending until a separate-network viewer supplies real evidence.
+Use **CodeOnly** while using the PC: it compiles and runs non-interactive correctness tests without launching the app, browser, media server or capture/tone fixtures, and does not install the compiled native plugin. Automated/LocalMedia include additional program/device activity; existing audio acceptance probes are blocked until the boundary is restored. Correctness checks do not prove real streaming performance. External mode deliberately reports pending until a separate-network viewer supplies real evidence.
 
 The native plugin and rebuilt OBS capture component retain their GPL source/licenses under `native/`; pinned upstream downloads and package locks record dependencies. This source tree is a development build, not a signed installer. Review [third-party components](docs/setup/windows.md#components-and-licenses) before distributing binaries.
 

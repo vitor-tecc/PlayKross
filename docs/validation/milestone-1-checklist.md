@@ -2,6 +2,8 @@
 
 Do not advance viewer capacity or multi-publisher work until the required checks pass. Each result must carry `passed`, `failed`, `pending`, or `inconclusive`, workload, duration, topology, versions, measurement method, uncertainty, and evidence files. Automated correctness, protocol smoke tests, and actual performance are separate records.
 
+2026-10-14 constraint: only `Verify -Mode CodeOnly` during the current work pass. Defer all app/browser/device/child-process/live-network fixtures. Unconfined app audio is disabled; restoring its enforced boundary is an implementation prerequisite, not a test that silence can pass. See [ordered remaining work](milestone-1-next-steps.md).
+
 - Automated: .NET, native, browser tests and production builds; setup corruption/traversal, source ownership/lifetime, authorization/revocation and cleanup tests.
 - Local real media: native capture → NVENC H.264/Opus → MediaMTX → real browser; nonblank picture, explicit app audio, settings restart, nickname identity, fullscreen return and in-app watching/recovery.
 - Sustained motion: at least 600 seconds after warmup, actual source/capture/decode/presentation rates, average fresh capture/decoded/presented FPS ≥57, ≥55 presented FPS in 95% of five-second intervals, no freeze >500 ms, separate native rendering/encoding skips <1%, visual-clock latency p95 ≤500 ms. A static/repeated frame encoded 60 times is insufficient evidence.
@@ -17,6 +19,7 @@ Commands:
 
 ```powershell
 ./scripts/Verify.ps1 -Mode Automated
+./scripts/Verify.ps1 -Mode CodeOnly
 ./scripts/Verify.ps1 -Mode LocalMedia
 ./scripts/Build-TimingSource.ps1
 ./scripts/Test-Sustained.ps1 -GpuSource -Seconds 600
