@@ -12,6 +12,7 @@ try {
             npm --prefix web run build; if ($LASTEXITCODE -ne 0) { throw 'Browser production build failed.' }
             & (Join-Path $PSScriptRoot 'Build-Native.ps1') -Plugin -Test
             & (Join-Path $root 'tests/setup/SetupChecks.ps1')
+            & (Join-Path $root 'tests/setup/CleanupChecks.ps1')
             Write-Output 'Automated correctness: passed. Real streaming smoothness, audio exclusion and internet performance are separate checks.'
         }
         LocalMedia {
