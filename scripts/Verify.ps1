@@ -16,6 +16,9 @@ try {
             & (Join-Path $root 'tests/setup/SetupChecks.ps1')
             & (Join-Path $root 'tests/setup/CleanupChecks.ps1')
             & (Join-Path $root 'tests/setup/MediaInterfaceChecks.ps1')
+            & (Join-Path $root 'tests/setup/HolePunchingChecks.ps1')
+            & (Join-Path $root 'tests/setup/TemporaryTunnelChecks.ps1')
+            & (Join-Path $root 'tests/setup/TunnelLifecycleChecks.ps1')
             if ($Mode -eq 'CodeOnly') { Write-Output 'Deferred: audio tone, native child-process tests, app/browser/capture/media startup and all real streaming measurements. Compiled plugin was not installed.' }
             Write-Output 'Automated correctness: passed. Real streaming smoothness, audio exclusion and internet performance are separate checks.'
         }

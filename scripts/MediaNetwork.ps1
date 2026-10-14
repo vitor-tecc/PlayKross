@@ -1,3 +1,24 @@
+function New-HolePunchingMediaConfig {
+    param([string]$Template,[string]$InterfaceAlias)
+    if([string]::IsNullOrWhiteSpace($InterfaceAlias) -or $InterfaceAlias -match '[\x00-\x1f\x7f]'){throw 'An exact, printable media interface alias is required.'}
+    $replacements=[ordered]@{
+        webrtcLocalUDPAddress='""'
+        webrtcLocalTCPAddress='""'
+        webrtcIPsFromInterfaces='true'
+        webrtcAdditionalHosts='[]'
+        webrtcICEServers2=(ConvertTo-Json -Compress -InputObject @(@{url='stun:stun.l.google.com:19302'}))
+    }
+    foreach($key in $replacements.Keys){
+        $pattern='(?m)^'+[regex]::Escape($key)+':[^\r\n]*'
+        if([regex]::Matches($Template,$pattern).Count -ne 1){throw "Media template must contain exactly one $key setting."}
+        $line=$key+': '+$replacements[$key]
+        $Template=[regex]::Replace($Template,$pattern,[Text.RegularExpressions.MatchEvaluator]{param($match) $line})
+    }
+    if($Template -match '(?m)^webrtcIPsFromInterfacesList:'){throw 'Media template already defines an interface list.'}
+    $interfaces=ConvertTo-Json -Compress -InputObject @($InterfaceAlias)
+    return $Template+"`nwebrtcIPsFromInterfacesList: $interfaces`n"
+}
+
 function Resolve-MediaAddress {
     param([string]$InterfaceAlias,[object[]]$Addresses)
     if([string]::IsNullOrWhiteSpace($InterfaceAlias)){return '127.0.0.1'}

@@ -1,9 +1,10 @@
 #requires -Version 7.4
-param([switch]$NoBuild, [switch]$PassThru, [Uri]$PublicOrigin, [string]$MediaInterface)
+param([switch]$NoBuild, [switch]$PassThru, [Uri]$PublicOrigin, [string]$MediaInterface,[switch]$HolePunching,[Parameter(DontShow)][IO.FileStream]$LifecycleLock)
 $ErrorActionPreference = 'Stop'
 $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 . (Join-Path $PSScriptRoot 'MediaNetwork.ps1')
-if($PublicOrigin -and $MediaInterface){throw 'Use MediaInterface for local browser testing, or PublicOrigin for public hosting; choose one mode.'}
+if($HolePunching -and (-not $PublicOrigin -or [string]::IsNullOrWhiteSpace($MediaInterface))){throw 'HolePunching requires PublicOrigin and an exact MediaInterface.'}
+if($PublicOrigin -and $MediaInterface -and -not $HolePunching){throw 'PublicOrigin and MediaInterface together require the explicit HolePunching profile.'}
 $addresses=if($MediaInterface){@(Get-NetIPAddress -AddressFamily IPv4)}else{@()}
 $mediaAddress=Resolve-MediaAddress -InterfaceAlias $MediaInterface -Addresses $addresses
 $origin = if ($PublicOrigin) { $PublicOrigin } else { [Uri]'http://localhost:5000' }
@@ -11,7 +12,13 @@ if ($PublicOrigin -and (-not $origin.IsAbsoluteUri -or $origin.Scheme -ne 'https
 $state = Join-Path $root '.runtime/local-services.local.json'
 $logs = Join-Path $root '.artifacts/local'
 New-Item -ItemType Directory -Force -Path (Join-Path $root '.runtime') | Out-Null
-try { $launchLock = [IO.FileStream]::new((Join-Path $root '.runtime/local-launch.lock'), [IO.FileMode]::OpenOrCreate, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None) }
+try {
+    $ownsLaunchLock=$null -eq $LifecycleLock
+    if($LifecycleLock){
+        if(-not $LifecycleLock.CanWrite -or [IO.Path]::GetFullPath($LifecycleLock.Name) -ne (Join-Path $root '.runtime/local-launch.lock')){throw 'Invalid inherited local lifecycle lock.'}
+        $launchLock=$LifecycleLock
+    }else{$launchLock = [IO.FileStream]::new((Join-Path $root '.runtime/local-launch.lock'), [IO.FileMode]::OpenOrCreate, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None)}
+}
 catch { throw 'Another local launch is in progress. Wait for it to finish before trying again.' }
 try {
 foreach ($port in @(5000,5001,8889,9997,9998)) {
@@ -20,10 +27,12 @@ foreach ($port in @(5000,5001,8889,9997,9998)) {
     catch { throw "Port $port is occupied. Stop the application using it or run scripts/Stop-Local.ps1 for an existing JKiller host." }
     finally { $listener.Stop() }
 }
+if(-not $HolePunching){
 $udp = [Net.Sockets.UdpClient]::new()
 try { $udp.Client.Bind([Net.IPEndPoint]::new([Net.IPAddress]::Parse($mediaAddress), 8189)) }
 catch { throw 'Port 8189 UDP is occupied. Close its current owner before starting the local host.' }
 finally { $udp.Dispose() }
+}
 if (Test-Path -LiteralPath $state) {
     $previous = Get-Content -Raw -LiteralPath $state | ConvertFrom-Json
     foreach ($entry in $previous) {
@@ -73,8 +82,12 @@ try {
     if ($PublicOrigin) {
         $configuration = Join-Path $root '.runtime/mediamtx-public.generated.yml'
         $template = Get-Content -Raw -LiteralPath (Join-Path $root 'config/mediamtx.public.yml')
-        $advertised = ConvertTo-Json -Compress -InputObject @($origin.DnsSafeHost, '127.0.0.1')
-        $template.Replace('webrtcAdditionalHosts: [127.0.0.1]', ('webrtcAdditionalHosts: ' + $advertised)) | Set-Content -LiteralPath $configuration -Encoding utf8
+        if($HolePunching){
+            New-HolePunchingMediaConfig -Template $template -InterfaceAlias $MediaInterface | Set-Content -LiteralPath $configuration -Encoding utf8
+        }else{
+            $advertised = ConvertTo-Json -Compress -InputObject @($origin.DnsSafeHost, '127.0.0.1')
+            $template.Replace('webrtcAdditionalHosts: [127.0.0.1]', ('webrtcAdditionalHosts: ' + $advertised)) | Set-Content -LiteralPath $configuration -Encoding utf8
+        }
     }
     elseif($MediaInterface){
         $configuration=Join-Path $root '.runtime/mediamtx-interface.generated.yml'
@@ -95,7 +108,8 @@ try {
     $localLink = $invitation.joinLink.Replace($origin.GetLeftPart([UriPartial]::Authority), 'http://localhost:5000')
     if ($PassThru) { return [pscustomobject]@{ JoinLink=$invitation.joinLink; LocalJoinLink=$localLink; Processes=$owned.ToArray() } }
     Write-Output ('Room: ' + $invitation.joinLink)
-    if ($PublicOrigin) { Write-Output ('Host PC native broadcaster link: ' + $localLink); Write-Output 'Public media UDP listener enabled. HTTPS proxy, router/firewall and external test must be configured separately; see docs/setup/internet.md.' }
+    if($HolePunching){Write-Output ('Host PC native broadcaster link: '+$localLink);Write-Output 'Experimental random-UDP/STUN profile. Website HTTPS tunnel and external video test are separate; CGNAT can still block media. No firewall or router settings changed.'}
+    elseif ($PublicOrigin) { Write-Output ('Host PC native broadcaster link: ' + $localLink); Write-Output 'Public media UDP listener enabled. HTTPS proxy, router/firewall and external test must be configured separately; see docs/setup/internet.md.' }
     elseif($MediaInterface){Write-Output ('Website/admin remain on localhost. Authenticated encrypted media uses '+$MediaInterface+' ('+$mediaAddress+'):8189 UDP. No router/firewall changes were made. This is not internet hosting.')}
     else { Write-Output 'Services are local-only. If Firefox cannot load the stream on this PC, use -MediaInterface with your Ethernet/Wi-Fi interface; see docs/setup/windows.md.' }
     Write-Output 'Stop tracked services with pwsh -File scripts/Stop-Local.ps1.'
@@ -105,4 +119,4 @@ catch {
     throw
 }
 }
-finally { $launchLock.Dispose() }
+finally { if($ownsLaunchLock){$launchLock.Dispose()} }

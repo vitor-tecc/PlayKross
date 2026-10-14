@@ -28,6 +28,9 @@ jobs:
           ./tests/setup/SetupChecks.ps1
           ./tests/setup/CleanupChecks.ps1
           ./tests/setup/MediaInterfaceChecks.ps1
+          ./tests/setup/HolePunchingChecks.ps1
+          ./tests/setup/TemporaryTunnelChecks.ps1
+          ./tests/setup/TunnelLifecycleChecks.ps1
   browser:
     name: Browser correctness and production build
     runs-on: ubuntu-latest
