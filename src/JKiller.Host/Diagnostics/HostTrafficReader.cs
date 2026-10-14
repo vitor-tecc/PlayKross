@@ -9,13 +9,15 @@ public interface IHostTrafficReader { Task<DiagnosticsEnvelope> ReadAsync(RoomSn
 public sealed class HostTrafficReader : IHostTrafficReader, IDisposable
 {
     private readonly HttpClient client;
+    private readonly TimeProvider clock;
     private readonly SemaphoreSlim gate = new(1);
-    private DateTimeOffset refreshed;
-    private sealed record SessionCounter(string Id, string Path, string State, double Sent, double Received, double? SendMbps, double? ReceiveMbps);
+    private long? refreshed;
+    private sealed record SessionCounter(string Id, string Path, string State, double Sent, double Received, long SampledAt, double? SendMbps, double? ReceiveMbps);
     private List<SessionCounter>? cache;
-    public HostTrafficReader(HostOptions options)
+    public HostTrafficReader(HostOptions options, TimeProvider clock, HttpMessageHandler? handler = null)
     {
-        client = new(new SocketsHttpHandler { AllowAutoRedirect = false }) { BaseAddress = options.AdminOrigin, Timeout = TimeSpan.FromSeconds(3), MaxResponseContentBufferSize = 262144 };
+        this.clock = clock;
+        client = new(handler ?? new SocketsHttpHandler { AllowAutoRedirect = false }) { BaseAddress = options.AdminOrigin, Timeout = TimeSpan.FromSeconds(3), MaxResponseContentBufferSize = 262144 };
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", Convert.ToBase64String(Encoding.UTF8.GetBytes("jk-admin:" + options.AdminSecret)));
     }
     public async Task<DiagnosticsEnvelope> ReadAsync(RoomSnapshot room, CancellationToken token)
@@ -24,9 +26,9 @@ public sealed class HostTrafficReader : IHostTrafficReader, IDisposable
         await gate.WaitAsync(token);
         try
         {
-            if (DateTimeOffset.UtcNow - refreshed > TimeSpan.FromSeconds(3))
+            if (refreshed is null || clock.GetElapsedTime(refreshed.Value) >= TimeSpan.FromSeconds(3))
             {
-                var previous = cache; cache = null; var interval = (DateTimeOffset.UtcNow - refreshed).TotalSeconds;
+                var previous = cache; cache = null;
                 try
                 {
                     var next = new List<SessionCounter>(); int pages = 1;
@@ -34,19 +36,21 @@ public sealed class HostTrafficReader : IHostTrafficReader, IDisposable
                     {
                         using var response = await client.GetAsync($"/v3/webrtc/sessions/list?page={page}&itemsPerPage=100", token); response.EnsureSuccessStatusCode();
                         using var doc = JsonDocument.Parse(await response.Content.ReadAsByteArrayAsync(token));
+                        var sampledAt = clock.GetTimestamp();
                         pages = doc.RootElement.GetProperty("pageCount").GetInt32(); if (pages > 4) throw new InvalidDataException("Session inventory limit exceeded.");
                         foreach (var s in doc.RootElement.GetProperty("items").EnumerateArray())
                         {
                             var id = s.GetProperty("id").GetString()!; var sent = s.GetProperty("outboundBytes").GetDouble(); var received = s.GetProperty("inboundBytes").GetDouble();
                             var prior = previous?.SingleOrDefault(p => p.Id == id);
+                            var interval = prior is null ? 0 : clock.GetElapsedTime(prior.SampledAt, sampledAt).TotalSeconds;
                             double? Rate(double? old, double value) => old is not null && value >= old && interval > 0 ? (value - old.Value) * 8 / 1e6 / interval : null;
-                            next.Add(new(id, s.GetProperty("path").GetString()!, s.GetProperty("state").GetString()!, sent, received, Rate(prior?.Sent, sent), Rate(prior?.Received, received)));
+                            next.Add(new(id, s.GetProperty("path").GetString()!, s.GetProperty("state").GetString()!, sent, received, sampledAt, Rate(prior?.Sent, sent), Rate(prior?.Received, received)));
                         }
                     }
                     cache = next;
                 }
                 catch (Exception e) when (e is HttpRequestException or JsonException or InvalidDataException or KeyNotFoundException || e is OperationCanceledException && !token.IsCancellationRequested) { }
-                refreshed = DateTimeOffset.UtcNow;
+                refreshed = clock.GetTimestamp();
             }
             if (cache is not null)
             {

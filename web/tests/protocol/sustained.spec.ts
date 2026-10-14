@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { mkdirSync, writeFileSync } from "node:fs";
-import { decodeTimingMarker } from "../../src/media/timingMarker";
+import { decodeTimingMarker, summarizeTimingLatency } from "../../src/media/timingMarker";
 test("measure sustained synthetic native motion and application audio", async ({ page, browser }) => {
   test.skip(!process.env.JKILLER_SUSTAINED_SECONDS, "Run with Test-Sustained.ps1.");
   const seconds = Number(process.env.JKILLER_SUSTAINED_SECONDS); test.setTimeout((seconds + 60) * 1000);
@@ -30,7 +30,7 @@ test("measure sustained synthetic native motion and application audio", async ({
       if (now - lastMarker >= 1000) {
         lastMarker = now; const started = performance.now(); context.drawImage(video, 0, 0, 960, 540);
         const decoded = decode(context.getImageData(0, 0, 960, 540).data, 960, 540); markerReadMs.push(performance.now() - started);
-        if (decoded !== null) { const latency = ((Date.now() >>> 0) - decoded + 4294967296) % 4294967296; if (latency < 2000) latencies.push(latency); else markersMissing++; } else markersMissing++;
+        if (decoded !== null) latencies.push(((Date.now() >>> 0) - decoded + 4294967296) % 4294967296); else markersMissing++;
       }
       callback = video.requestVideoFrameCallback(onFrame);
     };
@@ -52,12 +52,12 @@ test("measure sustained synthetic native motion and application audio", async ({
   const reports = [];
   const report = await (await page.request.get(new URL("/api/diagnostics", link.origin).href)).json(); reports.push(report);
   mkdirSync("../.artifacts/acceptance", { recursive: true });
-  const sorted = [...measured.latencies].sort((a, b) => a - b);
-  const latencyP95Ms = sorted.length >= Math.min(10, seconds / 2) ? sorted[Math.ceil(sorted.length * .95) - 1] : null;
-  const result = { browser: browser.version(), topology: "loopback-same-PC", workload: "native-60fps-moving-bands-clock-strip-and-997Hz-bursts", ...measured, latencyP95Ms,
+  const timing = summarizeTimingLatency(measured.latencies, measured.markersMissing, measured.durationSeconds);
+  const { latencyP95Ms } = timing;
+  const result = { browser: browser.version(), topology: "loopback-same-PC", workload: "native-60fps-moving-bands-clock-strip-and-997Hz-bursts", ...measured, ...timing,
     latencyMethod: "same-machine Windows wall clock in synthetic pixel strip to browser callback; no physical-display or cross-machine clock claim", audioMethod: "8192-bin WebAudio frequency peaks, no waveform recording; controlled 1801Hz native process and 2753Hz browser playback present", reports };
   writeFileSync("../.artifacts/acceptance/sustained-viewer.json", JSON.stringify(result, null, 2));
-  console.log(JSON.stringify({ seconds: measured.durationSeconds, presentedFps: measured.averagePresentedFps, healthyPercent: measured.healthyFiveSecondPercent, longestGapMs: measured.longestGapMs, latencyP95Ms, markerSamples: sorted.length, missingMarkers: measured.markersMissing, spectralDb: measured.spectralPeakDb }));
+  console.log(JSON.stringify({ seconds: measured.durationSeconds, presentedFps: measured.averagePresentedFps, healthyPercent: measured.healthyFiveSecondPercent, longestGapMs: measured.longestGapMs, ...timing, missingMarkers: measured.markersMissing, spectralDb: measured.spectralPeakDb }));
   expect(measured.visible).toBe(true); expect(measured.width).toBe(1920); expect(measured.height).toBe(1080); expect(measured.averagePresentedFps).toBeGreaterThanOrEqual(57);
   expect(measured.healthyFiveSecondPercent).toBeGreaterThanOrEqual(95); expect(measured.longestGapMs).toBeLessThanOrEqual(500);
   expect(latencyP95Ms).not.toBeNull(); expect(latencyP95Ms!).toBeLessThanOrEqual(500);
