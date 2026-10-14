@@ -62,7 +62,7 @@ public sealed class RoomWebView(string root, RoomHttpClient room) : Grid, IDispo
         if (disposed) return;
         var panel = new StackPanel { Margin = new Thickness(24) }; panel.Children.Add(new TextBlock { Text = message + " Broadcasting controls remain separate.", TextWrapping = TextWrapping.Wrap });
         var retry = new Button { Content = "Reload viewer", Margin = new Thickness(0, 12, 0, 0) };
-        retry.Click += async (_, _) => { try { if (currentRoom is not null) await OpenRoomAsync(currentRoom, CancellationToken.None); } catch (Exception error) { MessageBox.Show(error.Message, "JKiller viewer"); } };
+        retry.Click += async (_, _) => { try { if (currentRoom is not null) await OpenRoomAsync(currentRoom, CancellationToken.None); } catch (Exception error) { MessageBox.Show(error.Message, "PlayKross viewer"); } };
         panel.Children.Add(retry); Children.Clear(); Children.Add(panel);
     }
     public void Dispose() { disposed = true; browser?.Dispose(); browser = null; Children.Clear(); }

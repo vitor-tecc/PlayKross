@@ -42,7 +42,7 @@ public partial class MainWindow : Window
         using var cancellation = new CancellationTokenSource(); command = cancellation; SetControls();
         try { await action(cancellation.Token); }
         catch (OperationCanceledException) { }
-        catch (Exception error) { MessageBox.Show(this, error.Message, "JKiller", MessageBoxButton.OK, MessageBoxImage.Information); }
+        catch (Exception error) { MessageBox.Show(this, error.Message, "PlayKross", MessageBoxButton.OK, MessageBoxImage.Information); }
         finally { command = null; SetControls(); }
     }
     private async void JoinClick(object sender, RoutedEventArgs args) => await Run(model!.JoinAsync);
@@ -60,7 +60,7 @@ public partial class MainWindow : Window
     {
         command?.Cancel();
         try { await model!.StopAsync(CancellationToken.None); }
-        catch (Exception error) { MessageBox.Show(this, error.Message, "JKiller"); }
+        catch (Exception error) { MessageBox.Show(this, error.Message, "PlayKross"); }
     }
     private void ReadSettings()
     {
@@ -80,13 +80,13 @@ public partial class MainWindow : Window
     private void ViewClick(object sender, RoutedEventArgs args)
     {
         try { RoomHttpClient.ParseLink(model!.RoomLink); Process.Start(new ProcessStartInfo(model.RoomLink) { UseShellExecute = true }); }
-        catch (Exception error) { MessageBox.Show(this, error.Message, "JKiller"); }
+        catch (Exception error) { MessageBox.Show(this, error.Message, "PlayKross"); }
     }
     private async void WatchClick(object sender, RoutedEventArgs args) => await Run(async token =>
     {
         var parsed = new Uri(model!.RoomLink); viewingWindow?.Close();
         var viewer = new Viewing.RoomWebView(root, roomClient!);
-        var window = new Window { Title = "JKiller • Room viewer", Width = 1000, Height = 740, Content = viewer, Owner = this }; viewingWindow = window;
+        var window = new Window { Title = "PlayKross • Room viewer", Width = 1000, Height = 740, Content = viewer, Owner = this }; viewingWindow = window;
         var previousState = WindowState.Normal; var previousStyle = WindowStyle.SingleBorderWindow;
         viewer.FullscreenChanged += (_, _) => { if (viewer.IsFullscreen) { previousState = window.WindowState; previousStyle = window.WindowStyle; window.WindowStyle = WindowStyle.None; window.WindowState = WindowState.Maximized; } else { window.WindowStyle = previousStyle; window.WindowState = previousState; } };
         window.Closed += (_, _) => { viewer.Dispose(); if (viewingWindow == window) viewingWindow = null; };
