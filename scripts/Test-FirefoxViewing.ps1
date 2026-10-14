@@ -1,7 +1,10 @@
 #requires -Version 7.4
-param([string]$MediaInterface='Ethernet',[string]$FirefoxPath)
+param([string]$MediaInterface='Ethernet',[string]$FirefoxPath,[switch]$VideoOnly)
 $ErrorActionPreference='Stop'
 $root=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
+New-Item -ItemType Directory -Force (Join-Path $root '.runtime') | Out-Null
+try{$probeLock=[IO.FileStream]::new((Join-Path $root '.runtime/live-flow-probe.lock'),[IO.FileMode]::OpenOrCreate,[IO.FileAccess]::ReadWrite,[IO.FileShare]::None)}catch{throw 'Another live-flow probe owns the shared controls.'}
+try{
 . (Join-Path $PSScriptRoot 'DependencyTools.ps1')
 $env:DOTNET_CLI_HOME=Join-Path $root '.tools/dotnet-home';$env:NUGET_PACKAGES=Join-Path $root '.tools/nuget'
 if(-not $FirefoxPath){
@@ -33,10 +36,11 @@ try{
     & (Join-Path $root '.tools/dotnet/dotnet.exe') build tools/acceptance/LiveFlowProbe --nologo | Out-Null
     if($LASTEXITCODE -ne 0){throw 'Native publisher probe build failed.'}
     $listener=[Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback,4844);try{$listener.Start()}finally{$listener.Stop()}
-    foreach($name in @('ready.json','next-preset','stop')){Remove-Item -LiteralPath (Join-Path $flow $name) -ErrorAction SilentlyContinue}
     $services=& (Join-Path $PSScriptRoot 'Start-Local.ps1') -MediaInterface $MediaInterface -PassThru
+    foreach($name in @('ready.json','next-preset','stop')){Remove-Item -LiteralPath (Join-Path $flow $name) -ErrorAction SilentlyContinue}
     $fixture=Start-Process -FilePath (Join-Path $root '.artifacts/native/Debug/CaptureFixture.exe') -WindowStyle Hidden -PassThru;Start-Sleep -Milliseconds 500
     $environment=@{JKILLER_PROBE_JOIN_LINK=$services.JoinLink;JKILLER_TARGET_PID=$fixture.Id.ToString();DOTNET_CLI_HOME=$env:DOTNET_CLI_HOME;NUGET_PACKAGES=$env:NUGET_PACKAGES}
+    $environment['JKILLER_PROBE_CAPTURE_MODE']=if($VideoOnly){'video-only'}else{'application'}
     $publisher=Start-Process -FilePath (Join-Path $root '.tools/dotnet/dotnet.exe') -ArgumentList ('"'+(Join-Path $root 'tools/acceptance/LiveFlowProbe/bin/Debug/net10.0-windows10.0.26100.0/LiveFlowProbe.dll')+'"') -WorkingDirectory $root -WindowStyle Hidden -Environment $environment -RedirectStandardOutput (Join-Path $directory 'publisher.log') -RedirectStandardError (Join-Path $directory 'publisher-errors.log') -PassThru
     Until {if($publisher.HasExited){throw 'Synthetic publisher failed; inspect publisher-errors.log.'};Test-Path (Join-Path $flow 'ready.json')} 40
     $driver=Start-Process -FilePath (Join-Path $driverRoot 'geckodriver.exe') -ArgumentList ('--host 127.0.0.1 --port 4844 --log fatal --profile-root "'+$profiles+'"') -WindowStyle Hidden -RedirectStandardOutput (Join-Path $directory 'driver.log') -RedirectStandardError (Join-Path $directory 'driver-errors.log') -PassThru
@@ -64,7 +68,7 @@ const done=arguments[arguments.length-1];const peer=jkProbePeers.find(p=>p.conne
         $metrics=DriverRequest POST ('/session/'+$session+'/execute/async') @{script=$metricsScript;args=@()}
         $metrics|Add-Member -NotePropertyName decodedFrameProgress -NotePropertyValue ($metrics.decodedFrames-$initial.decodedFrames)
         if($metrics.height -ne $height -or $metrics.width -ne $(if($height -eq 720){1280}else{1920}) -or $metrics.decodedFrames -le 0 -or $metrics.decodedFrameProgress -lt 10 -or $metrics.videoCodec -ne 'video/H264' -or $metrics.audioCodec -ne 'audio/opus' -or $metrics.audioPackets -le 0 -or $metrics.pixelLumaVariance -le 1){throw 'Firefox real video/audio validation failed.'}
-        $reports+=@{browserVersion=$created.capabilities.browserVersion;metrics=$metrics}
+        $reports+=@{browserVersion=$created.capabilities.browserVersion;metrics=$metrics;captureMode=$environment['JKILLER_PROBE_CAPTURE_MODE'];audioValidation=if($VideoOnly){'pending; application audio disabled'}else{'short delivery only; Discord and sync pending'}}
         $reports|ConvertTo-Json -Depth 8|Set-Content (Join-Path $directory 'numeric-results.json')
         $metrics|ConvertTo-Json -Depth 4
     }
@@ -77,8 +81,9 @@ const done=arguments[arguments.length-1];const peer=jkProbePeers.find(p=>p.conne
 }finally{
     if($session){try{DriverRequest DELETE ('/session/'+$session)|Out-Null}catch{}}
     if($driver -and -not $driver.HasExited){$driver.Kill($true);$driver.WaitForExit(3000)|Out-Null}
-    Set-Content -LiteralPath (Join-Path $flow 'stop') -Value stop
+    if($publisher){Set-Content -LiteralPath (Join-Path $flow 'stop') -Value stop}
     if($publisher -and -not $publisher.HasExited){$publisher.WaitForExit(15000)|Out-Null;if(-not $publisher.HasExited){$publisher.Kill($true);$publisher.WaitForExit(3000)|Out-Null}}
     if($fixture -and -not $fixture.HasExited){$fixture.Kill();$fixture.WaitForExit(2000)|Out-Null}
     if($services){& (Join-Path $PSScriptRoot 'Stop-Local.ps1')};Pop-Location
 }
+}finally{$probeLock.Dispose()}

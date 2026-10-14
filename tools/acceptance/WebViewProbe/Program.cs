@@ -9,6 +9,7 @@ using System.Text.Json;
 using System.Windows;
 using System.IO;
 using System.Net.Http;
+using JKiller.Acceptance.Probes;
 internal static class Program
 {
     [STAThread] private static int Main()
@@ -27,7 +28,9 @@ internal static class Program
         using var http = new HttpClient(new HttpClientHandler { UseCookies = false, AllowAutoRedirect = false }); var room = new RoomHttpClient(http);
         await using var model = new BroadcasterModel(fallback => new ObsMediaEngine(new OwnedObsProcess(root), fallback), room, new WindowsSourceCatalog());
         var link = Environment.GetEnvironmentVariable("JKILLER_PROBE_JOIN_LINK")!; model.RoomLink = link; model.Nickname = "Embedded viewer probe";
-        await model.JoinAsync(token); model.Video = model.Sources.Single(s => s.Kind == SourceKind.Window && s.NativeHandle == unchecked((ulong)(long)fixture.MainWindowHandle)); model.Audio = model.Video;
+        await model.JoinAsync(token); model.Video = model.Sources.Single(s => s.Kind == SourceKind.Window && s.NativeHandle == unchecked((ulong)(long)fixture.MainWindowHandle));
+        var captureMode = Environment.GetEnvironmentVariable("JKILLER_PROBE_CAPTURE_MODE") ?? "application";
+        model.Audio = ProbeCaptureMode.SelectAudio(captureMode, model.Video);
         await model.StartAsync(token);
         using var viewer = new RoomWebView(root, room); var window = new Window { Content = viewer, Width = 1080, Height = 850, Title = "JKiller synthetic WebView validation" }; window.Show();
         try
@@ -59,7 +62,7 @@ internal static class Program
             await viewer.Core.ExecuteScriptAsync("[...document.querySelectorAll('button')].find(b=>b.textContent==='Watch stream').click()");
             await Wait(async () => await viewer.Core.ExecuteScriptAsync("document.querySelector('video')?.getVideoPlaybackQuality().totalVideoFrames>60") == "true", token);
             Console.WriteLine("PASS: real WebView2 native broadcast+1080p playback, nickname update, fullscreen return, continuing decoded frames, stable native session, bridge disabled, off-origin navigation canceled and renderer-crash recovery without stopping publication.");
-            Console.WriteLine("Runtime: " + viewer.Core.Environment.BrowserVersionString + "; synthetic audio source only; no screen/audio recording saved.");
+            Console.WriteLine("Runtime: " + viewer.Core.Environment.BrowserVersionString + "; captureMode=" + captureMode + "; no screen/audio recording saved. Video-only does not validate audio exclusion or A/V sync.");
         }
         finally { window.Close(); await model.StopAsync(CancellationToken.None); }
     }

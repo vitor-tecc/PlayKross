@@ -5,11 +5,14 @@ using JKiller.Windows.Rooms;
 using JKiller.Core.Settings;
 using System.Text.Json;
 using System.Diagnostics;
+using JKiller.Acceptance.Probes;
 var directory = Path.Combine(Environment.CurrentDirectory, ".artifacts/live-flow"); Directory.CreateDirectory(directory);
 using var http = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false, UseCookies = false });
 IObsRpcClient? control = null;
 OwnedEngineHandle? ownedHandle = null;
-await using var model = new BroadcasterModel(fallback => new ObsMediaEngine(new OwnedObsProcess(Environment.CurrentDirectory), async (handle, token) => { ownedHandle = handle; return control = await ObsRpcClient.ConnectAsync(handle.PipeName, handle.Identity, token); }, fallback), new RoomHttpClient(http), new WindowsSourceCatalog());
+var forceCpuFallback = Environment.GetEnvironmentVariable("JKILLER_PROBE_CPU_FALLBACK") == "1";
+await using var model = new BroadcasterModel(fallback => new ObsMediaEngine(new OwnedObsProcess(Environment.CurrentDirectory), async (handle, token) => { ownedHandle = handle; control = await ObsRpcClient.ConnectAsync(handle.PipeName, handle.Identity, token); return forceCpuFallback ? new CpuFallbackProbeRpc(control) : control; }, fallback), new RoomHttpClient(http), new WindowsSourceCatalog());
+model.AllowCpuFallback = forceCpuFallback;
 model.RoomLink = Environment.GetEnvironmentVariable("JKILLER_PROBE_JOIN_LINK") ?? throw new Exception("Invitation missing.");
 model.Nickname = "Native flow check";
 await model.JoinAsync(CancellationToken.None);
@@ -19,7 +22,9 @@ var image = Path.GetFileName(identity.ExecutablePath);
 if (image is not ("GeometryDash.exe" or "CaptureFixture.exe")) throw new Exception("This acceptance probe only accepts Geometry Dash or the synthetic fixture.");
 using var target = Process.GetProcessById(pid); target.Refresh();
 model.Video = model.Sources.Single(value => value.Kind == JKiller.Contracts.SourceKind.Window && value.NativeHandle == unchecked((ulong)(long)target.MainWindowHandle));
-model.Audio = model.Video;
+var captureMode = Environment.GetEnvironmentVariable("JKILLER_PROBE_CAPTURE_MODE") ?? "application";
+model.Audio = ProbeCaptureMode.SelectAudio(captureMode, model.Video);
+Console.WriteLine("Probe capture mode: " + captureMode + "; audio/synchronization acceptance is pending in video-only mode.");
 var sustainedSeconds = int.TryParse(Environment.GetEnvironmentVariable("JKILLER_SUSTAINED_SECONDS"), out var measuredDuration) ? Math.Clamp(measuredDuration, 10, 1800) : 0;
 using var deadline = new CancellationTokenSource(sustainedSeconds > 0 ? TimeSpan.FromSeconds(sustainedSeconds + 90) : TimeSpan.FromMinutes(3));
 try
@@ -79,7 +84,11 @@ async Task Ready(int height)
     }
     var response = await control!.RequestAsync("CallVendorRequest", JsonSerializer.SerializeToElement(new { vendorName = "jkiller", requestType = "GetSafetyStatus", requestData = new { } }), deadline.Token);
     Console.WriteLine($"Live flow {height}p: {model.AppliedText}; safety={response.GetProperty("responseData")}");
-    await File.WriteAllTextAsync(Path.Combine(directory, "ready.json"), JsonSerializer.Serialize(new { height, model.CaptureLive, source = image }), deadline.Token);
+    var nativeResponse = await control.RequestAsync("CallVendorRequest", JsonSerializer.SerializeToElement(new { vendorName = "jkiller", requestType = "GetDiagnostics", requestData = new { } }), deadline.Token);
+    var native = nativeResponse.GetProperty("responseData");
+    var videoOutput = await control.RequestAsync("GetVideoSettings", JsonSerializer.SerializeToElement(new { }), deadline.Token);
+    if (forceCpuFallback && (native.GetProperty("encoder").GetString() != "obs_x264" || native.GetProperty("hardwareInitialized").GetBoolean() || native.GetProperty("encodedHeight").GetInt32() > 720 || videoOutput.GetProperty("fpsNumerator").GetInt32() > 30 || native.GetProperty("bitrateKbps").GetInt32() > 4000)) throw new Exception("Actual software fallback exceeds its applied limits.");
+    await File.WriteAllTextAsync(Path.Combine(directory, "ready.json"), JsonSerializer.Serialize(new { requestedHeight = height, height = native.GetProperty("encodedHeight").GetInt32(), model.CaptureLive, source = image, captureMode, applicationAudioRequested = model.Audio is not null, cpuFallbackInjected = forceCpuFallback, helperPid = ownedHandle!.Identity.Pid, helperCreation = ownedHandle.Identity.CreationFileTime.ToString() }), deadline.Token);
 }
 async Task WaitFor(string name)
 {
