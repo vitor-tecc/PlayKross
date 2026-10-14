@@ -60,7 +60,8 @@ try{
     Write-Host 'Temporary HTTPS website and anonymous-access boundary checks passed. External video remains untested; audio is disabled.'
     if($PassThru){return [pscustomobject]@{JoinLink=$services.JoinLink;LocalJoinLink=$services.LocalJoinLink;Processes=$services.Processes;Tunnel=$entry}}
     Write-Output ('Phone/friend link: '+$services.JoinLink)
-    Write-Output ('Host PC native app link: '+$services.LocalJoinLink)
+    Write-Output ('Host PC native app link (also supports Watch in app): '+$services.JoinLink)
+    Write-Output ('Optional localhost native control link: '+$services.LocalJoinLink)
     Write-Output 'Stop with scripts/Stop-TemporaryTunnel.ps1. This optional testing service adds Cloudflare website/signaling and Google STUN dependencies; no account, domain, relay or paid service is configured. CGNAT can still prevent video.'
 }catch{
     if($services){& (Join-Path $PSScriptRoot 'Stop-Local.ps1')}
