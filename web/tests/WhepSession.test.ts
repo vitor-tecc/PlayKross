@@ -31,6 +31,29 @@ function setup(response?: (request: RequestInfo | URL, init?: RequestInit) => Pr
   return { peer, stream, request, session: new WhepSession(deps) };
 }
 describe("WHEP ownership", () => {
+  it("UsesGatheredCandidatesWhenAnUnreachableInterfaceNeverCompletes", async () => {
+    const context = setup(); context.peer.iceGatheringState = "gathering";
+    context.peer.localDescription.sdp = "v=0\r\na=candidate:1 1 UDP 1234 192.0.2.1 12345 typ host\r\na=candidate:2 1 UDP 1234 203.0.113.1 23456 typ srflx raddr 192.0.2.1 rport 12345\r\n";
+    const stream = await context.session.start(grant, new AbortController().signal);
+    expect(stream.getTracks()).toHaveLength(1);
+    const offer = context.request.mock.calls.find(([, init]) => init?.method === "POST");
+    expect(offer?.[1]?.body).toContain("typ srflx");
+    await context.session.close();
+  });
+  it("StillFailsGatheringWithNoCandidates", async () => {
+    const context = setup(); context.peer.iceGatheringState = "gathering";
+    await expect(context.session.start(grant, new AbortController().signal)).rejects.toThrow(/gathering timed out/);
+    expect(context.request.mock.calls.some(([, init]) => init?.method === "POST")).toBe(false);
+  });
+  it("CancellationCannotSendAPartiallyGatheredOffer", async () => {
+    const context = setup(); context.peer.iceGatheringState = "gathering";
+    context.peer.localDescription.sdp += "a=candidate:1 1 UDP 1234 192.0.2.1 12345 typ host\r\n";
+    const controller = new AbortController();
+    const started = context.session.start(grant, controller.signal);
+    const rejected = expect(started).rejects.toMatchObject({ name: "AbortError" });
+    await new Promise(resolve => setTimeout(resolve, 10)); controller.abort(); await rejected;
+    expect(context.request.mock.calls.some(([, init]) => init?.method === "POST")).toBe(false);
+  });
   it("CloseDuringHandshakeDeletesLateResource", async () => {
     let finish!: (response: Response) => void; let started!: () => void;
     const entered = new Promise<void>(resolve => { started = resolve; });

@@ -49,7 +49,11 @@ export class WhepSession {
         }
       }
       await this.peer.setLocalDescription(await this.peer.createOffer());
-      await this.wait("icegatheringstatechange", () => this.peer?.iceGatheringState === "complete", "Candidate gathering timed out. Check relay configuration.");
+      // STUN on an unreachable secondary interface can outlive the deadline even
+      // when usable host/reflexive candidates already exist. Send that bounded
+      // snapshot; the subsequent ICE connection check still has to succeed.
+      await this.wait("icegatheringstatechange", () => this.peer?.iceGatheringState === "complete", "Candidate gathering timed out. Check relay configuration.", () => false,
+        () => /^a=candidate:/m.test(this.peer?.localDescription?.sdp ?? ""));
       const response = await this.request(endpoint, { method: "POST", headers: { Authorization: `Bearer ${grant.token}`, "Content-Type": "application/sdp" }, body: this.peer.localDescription?.sdp });
       if (response.status !== 201) throw new Error(`The stream could not be opened (${response.status}). It may have stopped, or the handshake grant expired.`);
       const location = response.headers.get("Location");
@@ -68,7 +72,7 @@ export class WhepSession {
   private request(url: URL, init: RequestInit): Promise<Response> {
     return this.deps.fetch(url, { ...init, credentials: "same-origin", signal: AbortSignal.any([this.abort.signal, AbortSignal.timeout(this.deps.timeoutMs)]) });
   }
-  private wait(event: string, ready: () => boolean, message: string, failed: () => boolean = () => false): Promise<void> {
+  private wait(event: string, ready: () => boolean, message: string, failed: () => boolean = () => false, acceptAtDeadline: () => boolean = () => false): Promise<void> {
     const peer = this.peer;
     if (!peer || this.abort.signal.aborted) return Promise.reject(new DOMException("Playback canceled", "AbortError"));
     if (failed()) return Promise.reject(new Error(message));
@@ -77,7 +81,7 @@ export class WhepSession {
       const cleanup = () => { clearTimeout(timer); peer.removeEventListener(event, changed); this.abort.signal.removeEventListener("abort", aborted); };
       const changed = () => { if (failed()) { cleanup(); reject(new Error(message)); } else if (ready()) { cleanup(); resolve(); } };
       const aborted = () => { cleanup(); reject(new DOMException("Playback canceled", "AbortError")); };
-      const timer = setTimeout(() => { cleanup(); reject(new Error(message)); }, this.deps.timeoutMs);
+      const timer = setTimeout(() => { cleanup(); if (acceptAtDeadline()) resolve(); else reject(new Error(message)); }, this.deps.timeoutMs);
       peer.addEventListener(event, changed); this.abort.signal.addEventListener("abort", aborted, { once: true });
       changed();
     });
