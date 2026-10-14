@@ -1,8 +1,10 @@
-# JKiller
+# PlayKross
+
+![PlayKross](assets/branding/playkross-logo.png)
 
 Self-hosted Windows broadcasting with browser viewers. The first implemented milestone provides one publisher per room: native Windows Graphics Capture, NVIDIA H.264 encoding, Opus application audio, MediaMTX forwarding, anonymous nicknames, settings controls, fullscreen, diagnostics and in-app viewing. Microphone capture is absent.
 
-**Milestone acceptance is still pending:** ten-minute performance/timing and real Discord exclusion need measured evidence; external phone testing awaits router access. Multiple broadcasters and the eight-viewer capacity milestone follow this gate. Current room limit is eight participants including the publisher, so it is not an eight-viewer capacity claim.
+**Milestone acceptance is still pending:** real Discord exclusion, calibrated audiovisual timing, review corrections and external phone testing remain pending. A ten-minute full-source 1080p60 synthetic loopback run is preserved; it does not prove internet or multi-viewer performance. Multiple broadcasters and the eight-viewer capacity milestone follow this gate. Current room limit is eight participants including the publisher, so it is not an eight-viewer capacity claim.
 
 On this already-prepared PC, run PowerShell 7 from the project folder:
 
@@ -32,3 +34,5 @@ One encoder feeds the media server; it forwards copies to viewers. This avoids e
 Automated checks do not prove real streaming performance. External mode deliberately reports pending until a separate-network viewer supplies real evidence.
 
 The native plugin and rebuilt OBS capture component retain their GPL source/licenses under `native/`; pinned upstream downloads and package locks record dependencies. This source tree is a development build, not a signed installer. Review [third-party components](docs/setup/windows.md#components-and-licenses) before distributing binaries.
+
+[GitHub development](docs/setup/github.md) · [Workspace size and safe cleanup](docs/setup/workspace-size.md)
