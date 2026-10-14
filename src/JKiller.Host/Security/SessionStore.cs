@@ -5,6 +5,7 @@ public sealed class SessionStore(TimeProvider clock)
     private sealed record Entry(SessionIdentity Identity, byte[] CredentialHash);
     private readonly object gate = new();
     private readonly Dictionary<Guid, Entry> entries = [];
+    public event Action<Guid>? Revoked;
     public (SessionIdentity Identity, string Token) Issue(Guid roomId)
     {
         lock (gate)
@@ -27,5 +28,5 @@ public sealed class SessionStore(TimeProvider clock)
     {
         lock (gate) return entries.TryGetValue(id, out var entry) && entry.Identity.ExpiresAt > clock.GetUtcNow() ? entry.Identity : null;
     }
-    public void Revoke(Guid id) { lock (gate) entries.Remove(id); }
+    public void Revoke(Guid id) { lock (gate) entries.Remove(id); Revoked?.Invoke(id); }
 }

@@ -15,6 +15,9 @@ public sealed class MediaGrantTests
         Assert.False(grants.Authorize(read.Token, stream.Path, "read", clock.Now));
         Assert.True(grants.Authorize(stream.Token, stream.Path, "publish", clock.Now));
         clock.Now = owner.ExpiresAt.AddSeconds(-1);
+        // Recreate a publication after the prior lease expires; this assertion
+        // isolates the media grant's session-expiry cap, not publisher liveness.
+        stream = rooms.ReservePublish(owner.SessionId);
         read = rooms.GetPlayback(owner.SessionId, stream.StreamId);
         Assert.False(grants.Authorize(read.Token, stream.Path, "read", owner.ExpiresAt));
     }

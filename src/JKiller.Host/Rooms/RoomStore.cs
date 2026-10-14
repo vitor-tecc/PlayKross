@@ -13,7 +13,7 @@ public sealed class RoomStore(SessionStore sessions, MediaGrantStore grants, Tim
         public Dictionary<Guid, string> Participants = [];
         public Dictionary<Guid, Publication> Streams = [];
     }
-    private sealed record Publication(Guid Id, Guid Owner, string Path);
+    private sealed record Publication(Guid Id, Guid Owner, string Path, long RenewedAt);
     private readonly RoomLimits limits = ValidateLimits(limits ?? new());
     private readonly object gate = new();
     private readonly Dictionary<Guid, Room> rooms = [];
@@ -50,11 +50,20 @@ public sealed class RoomStore(SessionStore sessions, MediaGrantStore grants, Tim
         if (publication is null)
         {
             if (room.Streams.Count >= limits.Publishers) throw new InvalidOperationException("This milestone allows one publisher per room.");
-            var id = Guid.NewGuid(); publication = new(id, sessionId, $"rooms/{room.Id:N}/streams/{id:N}/main");
+            var id = Guid.NewGuid(); publication = new(id, sessionId, $"rooms/{room.Id:N}/streams/{id:N}/main", clock.GetTimestamp());
             room.Streams.Add(id, publication); room.Revision++;
         }
+        room.Streams[publication.Id] = publication with { RenewedAt = clock.GetTimestamp() };
         var grant = grants.Issue(sessionId, publication.Path, "publish", sessions.FindActive(sessionId)!.ExpiresAt);
         return new PublishReservation(publication.Id, publication.Path, new Uri($"/media/{publication.Path}/whip", UriKind.Relative), grant.Token, grant.ExpiresAt);
+    });
+    public RoomSnapshot RenewPublish(Guid sessionId, Guid streamId) => Run(() =>
+    {
+        var room = RequireRoom(sessionId);
+        if (!room.Streams.TryGetValue(streamId, out var stream) || stream.Owner != sessionId)
+            throw new UnauthorizedAccessException("Publication lease is no longer owned by this session.");
+        room.Streams[streamId] = stream with { RenewedAt = clock.GetTimestamp() };
+        return Snapshot(room);
     });
     public RoomSnapshot StopPublish(Guid sessionId, Guid streamId) => Run(() =>
     {
@@ -87,6 +96,8 @@ public sealed class RoomStore(SessionStore sessions, MediaGrantStore grants, Tim
     {
         foreach (var room in rooms.Values)
         {
+            foreach (var stream in room.Streams.Values.Where(x => clock.GetElapsedTime(x.RenewedAt) >= TimeSpan.FromSeconds(60)).ToArray())
+            { room.Streams.Remove(stream.Id); room.Revision++; Revoke(stream.Path); }
             foreach (var id in room.Participants.Keys.Where(x => sessions.FindActive(x) is null).ToArray())
             {
                 foreach (var stream in room.Streams.Values.Where(x => x.Owner == id).ToArray()) { room.Streams.Remove(stream.Id); Revoke(stream.Path); }

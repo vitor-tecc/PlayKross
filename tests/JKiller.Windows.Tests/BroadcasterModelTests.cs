@@ -39,6 +39,7 @@ public sealed class BroadcasterModelTests
     private sealed class Catalog : IWindowsSourceCatalog { public Task<IReadOnlyList<SourceDescriptor>> ListSourcesAsync(CancellationToken token) => Task.FromResult<IReadOnlyList<SourceDescriptor>>([]); }
     private sealed class Room : IRoomClient
     {
+        public Task RenewPublishAsync(Guid id, CancellationToken token) => Task.CompletedTask;
         public Task<SessionGrant> JoinAsync(Uri uri, string invite, string nickname, CancellationToken token) => Task.FromResult(new SessionGrant(Guid.NewGuid(), Guid.NewGuid(), "session", DateTimeOffset.UtcNow.AddHours(1), new(Guid.NewGuid(), 1, [], [])));
         public Task<PublishReservation> ReservePublishAsync(CancellationToken token) => Task.FromResult(new PublishReservation(Guid.NewGuid(), "test", new("/media/test/whip", UriKind.Relative), "media", DateTimeOffset.UtcNow.AddMinutes(1)));
         public Task StopPublishAsync(Guid id, CancellationToken token) => Task.CompletedTask;

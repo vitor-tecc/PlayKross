@@ -30,6 +30,7 @@ public static class HostApplication
         builder.Services.AddSingleton(options);
         builder.Services.TryAddSingleton<TimeProvider>(TimeProvider.System);
         builder.Services.AddSingleton<SessionStore>(); builder.Services.AddSingleton<MediaGrantStore>(); builder.Services.AddSingleton<RoomStore>();
+        builder.Services.AddSingleton<RoomConnections>();
         builder.Services.AddSingleton<DiagnosticStore>(); builder.Services.TryAddSingleton<IHostTrafficReader, HostTrafficReader>();
         builder.Services.AddSingleton<MediaResourceStore>();
         builder.Services.AddSingleton<MediaSessionTracker>();
@@ -80,7 +81,7 @@ public static class HostApplication
         app.MapRoomEndpoints();
         app.MapDiagnostics();
         app.MapMediaProxy();
-        app.MapHub<RoomHub>("/hubs/room").RequireAuthorization();
+        app.MapHub<RoomHub>("/hubs/room", options => options.CloseOnAuthenticationExpiration = true).RequireAuthorization();
         app.MapGet("/health", () => Results.Ok(new { status = "ready" }));
         var bootstrap = app.Services.GetRequiredService<RoomStore>().CreateRoom();
         app.MapGet("/internal/bootstrap", (HttpContext context) =>

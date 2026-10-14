@@ -7,6 +7,18 @@ using Xunit;
 namespace JKiller.Windows.Tests;
 public sealed class RoomClientTests
 {
+    [Fact]
+    public async Task ExpiredInMemorySessionJoinsAnonymouslyAndGetsAFreshIdentity()
+    {
+        var clock = new Clock(); var original = Grant with { ExpiresAt = clock.Now.AddMinutes(1) };
+        var handler = new Handler(original); using var http = new HttpClient(handler);
+        var client = new RoomHttpClient(http, clock);
+        await client.JoinAsync(new("http://localhost:5000"), "invitation", "First", CancellationToken.None);
+        clock.Now = original.ExpiresAt;
+        handler.JoinGrant = Grant with { ExpiresAt = clock.Now.AddHours(1) };
+        await client.JoinAsync(new("http://localhost:5000"), "invitation", "Again", CancellationToken.None);
+        Assert.Null(handler.JoinCredentials[^1]); Assert.Equal(handler.JoinGrant.SessionId, client.Session!.SessionId);
+    }
     private static SessionGrant Grant => new(Guid.NewGuid(), Guid.NewGuid(), "secret-session-test", DateTimeOffset.UtcNow.AddHours(1), new(Guid.NewGuid(), 1, [], []));
     [Fact]
     public async Task SessionIsEncryptedAndBoundToServerAndExpiry()
@@ -56,9 +68,19 @@ public sealed class RoomClientTests
         await client.JoinAsync(new("http://localhost:5000"), "invitation", "Local host broadcaster", CancellationToken.None);
         await client.ReservePublishAsync(CancellationToken.None);
     }
+    [Fact]
+    public async Task JoiningAgainWhileActiveKeepsItsAuthentication()
+    {
+        var grant = Grant; var handler = new Handler(grant); using var http = new HttpClient(handler); var client = new RoomHttpClient(http);
+        await client.JoinAsync(new("http://localhost:5000"), "invitation", "First", CancellationToken.None);
+        await client.JoinAsync(new("http://localhost:5000"), "invitation", "Renamed", CancellationToken.None);
+        Assert.Equal(grant.SessionToken, handler.JoinCredentials[^1]); Assert.Equal(grant.SessionId, client.Session!.SessionId);
+    }
     private sealed class Clock : TimeProvider { public DateTimeOffset Now = DateTimeOffset.UtcNow; public override DateTimeOffset GetUtcNow() => Now; }
     private sealed class Handler(SessionGrant grant) : HttpMessageHandler
     {
+        public SessionGrant JoinGrant = grant;
+        public List<string?> JoinCredentials = [];
         public int Authenticated;
         public bool RequireNoOrigin;
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
@@ -67,11 +89,12 @@ public sealed class RoomClientTests
             if (RequireNoOrigin) Assert.False(request.Headers.Contains("Origin"));
             if (request.RequestUri.AbsolutePath == "/api/join")
             {
+                JoinCredentials.Add(request.Headers.Authorization?.Parameter);
                 var body = await request.Content!.ReadAsStringAsync(token); Assert.Contains("\"desktop\":true", body);
-                return new(HttpStatusCode.OK) { Content = JsonContent.Create(grant) };
+                return new(HttpStatusCode.OK) { Content = JsonContent.Create(JoinGrant) };
             }
-            Assert.Equal(grant.SessionToken, request.Headers.Authorization!.Parameter); Authenticated++;
-            return new(HttpStatusCode.OK) { Content = request.RequestUri.AbsolutePath == "/api/streams" ? JsonContent.Create(new PublishReservation(Guid.NewGuid(), "generated", new("/media/generated/whip", UriKind.Relative), "media", DateTimeOffset.UtcNow.AddMinutes(1))) : JsonContent.Create(grant.Room) };
+            Assert.Equal(JoinGrant.SessionToken, request.Headers.Authorization!.Parameter); Authenticated++;
+            return new(HttpStatusCode.OK) { Content = request.RequestUri.AbsolutePath == "/api/streams" ? JsonContent.Create(new PublishReservation(Guid.NewGuid(), "generated", new("/media/generated/whip", UriKind.Relative), "media", DateTimeOffset.UtcNow.AddMinutes(1))) : JsonContent.Create(JoinGrant.Room) };
         }
     }
 }

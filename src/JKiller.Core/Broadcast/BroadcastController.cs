@@ -16,6 +16,8 @@ public sealed class BroadcastController : IAsyncDisposable
     private long generation;
     private bool disposed, faulted;
     private BroadcastRequest? request;
+    private CancellationTokenSource? leaseCancellation;
+    private Task? leaseTask;
     public BroadcastController(IMediaEngine engine, IRoomClient room, Uri origin, TimeProvider clock)
     {
         this.engine = engine; this.room = room; this.origin = origin; this.clock = clock;
@@ -68,6 +70,12 @@ public sealed class BroadcastController : IAsyncDisposable
         // Retain ownership even when an uncooperative room response arrives after cancellation.
         if (StreamId is { } previous && previous != grant.StreamId) throw new InvalidOperationException("The room changed publication ownership during restart.");
         StreamId = grant.StreamId; Check(version, token);
+        await room.RenewPublishAsync(grant.StreamId, token); Check(version, token);
+        if (leaseTask is null)
+        {
+            leaseCancellation = new();
+            leaseTask = RenewLease(grant.StreamId, leaseCancellation.Token);
+        }
         Applied = await engine.PrepareAsync(next, token); Check(version, token);
         if (grant.ExpiresAt <= clock.GetUtcNow().AddSeconds(5))
         {
@@ -112,6 +120,9 @@ public sealed class BroadcastController : IAsyncDisposable
     private async Task CleanupAsync()
     {
         SetState(faulted ? BroadcastState.Faulted : BroadcastState.Stopping);
+        leaseCancellation?.Cancel();
+        if (leaseTask is not null) await leaseTask;
+        leaseCancellation?.Dispose(); leaseCancellation = null; leaseTask = null;
         using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(30));
         try { await engine.StopAsync(deadline.Token); }
         catch (Exception error) { LastError ??= error; faulted = true; }
@@ -122,6 +133,21 @@ public sealed class BroadcastController : IAsyncDisposable
             catch (Exception error) { LastError ??= error; faulted = true; }
         }
         SetState(faulted ? BroadcastState.Faulted : BroadcastState.Stopped);
+    }
+    private async Task RenewLease(Guid id, CancellationToken token)
+    {
+        try
+        {
+            while (true)
+            {
+                await Task.Delay(TimeSpan.FromSeconds(10), clock, token);
+                using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
+                deadline.CancelAfter(TimeSpan.FromSeconds(15));
+                await room.RenewPublishAsync(id, deadline.Token);
+            }
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested) { }
+        catch (Exception error) { if (!token.IsCancellationRequested) OnSafetyFault(this, new InvalidOperationException("Publication lease could not be renewed. Broadcasting stopped.", error)); }
     }
     private void OnSafetyFault(object? sender, Exception error)
     {

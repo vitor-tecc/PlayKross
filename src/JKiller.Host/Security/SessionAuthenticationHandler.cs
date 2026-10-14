@@ -16,7 +16,7 @@ public sealed class SessionAuthenticationHandler(IOptionsMonitor<AuthenticationS
         if (session is null) return Task.FromResult(AuthenticateResult.NoResult());
         var principal = new ClaimsPrincipal(new ClaimsIdentity([new Claim(ClaimTypes.NameIdentifier, session.SessionId.ToString()), new Claim("room", session.RoomId.ToString())], Scheme.Name));
         Context.Items[typeof(SessionIdentity)] = session;
-        return Task.FromResult(AuthenticateResult.Success(new AuthenticationTicket(principal, Scheme.Name)));
+        return Task.FromResult(AuthenticateResult.Success(new AuthenticationTicket(principal, new AuthenticationProperties { ExpiresUtc = session.ExpiresAt }, Scheme.Name)));
     }
     public static string? Bearer(HttpRequest request)
     {

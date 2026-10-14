@@ -6,6 +6,24 @@ using Xunit;
 namespace JKiller.Core.Tests;
 public sealed class BroadcastControllerTests
 {
+    [Fact]
+    public async Task PublicationMustHaveARenewedLeaseBeforeStartingMedia()
+    {
+        var media = new FakeMedia(); var room = new FakeRoom { FailRenewal = true };
+        await using var controller = Controller(media, room);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => controller.StartAsync(Request, CancellationToken.None));
+        Assert.Equal(0, media.Starts); Assert.Contains(room.Id, room.Stopped);
+    }
+    [Fact]
+    public async Task LostRenewalStopsAnAlreadyRunningEncoder()
+    {
+        var media = new FakeMedia(); var room = new FakeRoom(); var clock = new TestClock();
+        await using var controller = Controller(media, room, clock);
+        await controller.StartAsync(Request, CancellationToken.None);
+        room.FailRenewal = true; clock.FireTimer();
+        await WaitUntil(() => controller.State == BroadcastState.Faulted);
+        Assert.Equal(0, media.Live); Assert.Contains(room.Id, room.Stopped);
+    }
     private static BroadcastRequest Request => new(new("fixture", SourceKind.Window, 42, new(123, 456, "fixture.exe"), "Fixture"), new(null), new(1920, 1080, 60, 15));
     private static BroadcastController Controller(FakeMedia media, FakeRoom room, TestClock? clock = null) => new(media, room, new("http://localhost:5000"), clock ?? new());
     [Fact]
@@ -88,9 +106,25 @@ public sealed class BroadcastControllerTests
         Assert.Equal(0, media.Live); Assert.Equal(0, media.Starts);
     }
     private static async Task WaitUntil(Func<bool> condition) { using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(2)); while (!condition()) await Task.Delay(10, deadline.Token); }
-    private sealed class TestClock : TimeProvider { public DateTimeOffset Now = DateTimeOffset.UtcNow; public override DateTimeOffset GetUtcNow() => Now; }
+    private sealed class TestClock : TimeProvider
+    {
+        public DateTimeOffset Now = DateTimeOffset.UtcNow;
+        private TimerCallback? callback; private object? state;
+        public override DateTimeOffset GetUtcNow() => Now;
+        public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
+        { this.callback = callback; this.state = state; return new ManualTimer(); }
+        public void FireTimer() => callback!(state);
+        private sealed class ManualTimer : ITimer
+        {
+            public bool Change(TimeSpan dueTime, TimeSpan period) => true;
+            public void Dispose() { }
+            public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+        }
+    }
     private sealed class FakeRoom : IRoomClient
     {
+        public bool FailRenewal;
+        public Task RenewPublishAsync(Guid id, CancellationToken token) => FailRenewal ? Task.FromException(new InvalidOperationException("Lease lost.")) : Task.CompletedTask;
         public Guid Id = Guid.NewGuid(); public TestClock Clock = new(); public int Reserves; public List<Guid> Stopped = [];
         public Task<PublishReservation> ReservePublishAsync(CancellationToken token) { Reserves++; return Task.FromResult(new PublishReservation(Id, "generated", new("/media/generated/whip", UriKind.Relative), "grant-" + Reserves, Clock.Now.AddSeconds(60))); }
         public Task StopPublishAsync(Guid id, CancellationToken token) { Stopped.Add(id); return Task.CompletedTask; }

@@ -2,9 +2,27 @@ using System.Net;
 using System.Net.Http.Json;
 using JKiller.Contracts;
 using Xunit;
+using Microsoft.Extensions.DependencyInjection;
 namespace JKiller.Host.Tests;
 public sealed class RoomApiTests
 {
+    [Fact]
+    public async Task LeaseRenewalIsOwnerOnlyAndKeepsTheStreamAcrossRestartGrace()
+    {
+        await using var f = await HostFixture.Start(); var invite = f.Invite;
+        var owner = await f.Join(invite); var other = await f.Join(invite);
+        var publication = (await (await f.Client.SendAsync(f.Request(HttpMethod.Post, "/api/streams", owner.SessionToken))).Content.ReadFromJsonAsync<PublishReservation>())!;
+        var path = $"/api/streams/{publication.StreamId}/lease";
+        Assert.Equal(HttpStatusCode.Forbidden, (await f.Client.SendAsync(f.Request(HttpMethod.Post, path, other.SessionToken))).StatusCode);
+        f.Clock.Now = f.Clock.Now.AddSeconds(40);
+        Assert.Equal(HttpStatusCode.OK, (await f.Client.SendAsync(f.Request(HttpMethod.Post, path, owner.SessionToken))).StatusCode);
+        f.Clock.Now = f.Clock.Now.AddSeconds(40);
+        var rooms = f.App.Services.GetRequiredService<JKiller.Host.Rooms.RoomStore>(); rooms.SweepExpired();
+        Assert.Equal(publication.StreamId, Assert.Single(rooms.Snapshot(owner.SessionId).Streams).StreamId);
+        f.Clock.Now = f.Clock.Now.AddSeconds(21); rooms.SweepExpired();
+        Assert.Empty(rooms.Snapshot(owner.SessionId).Streams);
+        Assert.Equal(HttpStatusCode.Forbidden, (await f.Client.SendAsync(f.Request(HttpMethod.Post, path, owner.SessionToken))).StatusCode);
+    }
     [Fact]
     public async Task ReopeningTheSameInvitationReusesAuthenticatedSessionAndStreamOwnership()
     {

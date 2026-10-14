@@ -7,9 +7,22 @@ public sealed class TestClock : TimeProvider
 {
     public DateTimeOffset Now = new(2026, 10, 13, 12, 0, 0, TimeSpan.Zero);
     public override DateTimeOffset GetUtcNow() => Now;
+    public override long GetTimestamp() => Now.UtcTicks;
+    public override long TimestampFrequency => TimeSpan.TicksPerSecond;
 }
 public sealed class RoomStoreTests
 {
+    [Fact]
+    public void AbandonedPublicationIsReclaimedWithoutExpiringTheOwnersSession()
+    {
+        var store = Create(); var invite = store.CreateRoom(); var owner = store.Join(invite.Invite, "owner");
+        var other = store.Join(invite.Invite, "other"); var old = store.ReservePublish(owner.SessionId);
+        var revoked = new List<string>(); store.StreamRevoked += revoked.Add;
+        clock.Now = clock.Now.AddSeconds(61); store.SweepExpired();
+        Assert.Empty(store.Snapshot(owner.SessionId).Streams);
+        Assert.Equal(old.Path, Assert.Single(revoked));
+        Assert.NotEqual(old.StreamId, store.ReservePublish(other.SessionId).StreamId);
+    }
     [Fact]
     public void ExpirySweepNotifiesTheRemainingRoomWithARevisionedSnapshot()
     {
