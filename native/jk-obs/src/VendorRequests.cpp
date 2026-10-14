@@ -18,6 +18,7 @@ std::wstring Wide(const char* text) {
 void Status(obs_data_t*, obs_data_t* response, void*) {
     std::lock_guard lock(vendor_mutex);
     obs_data_set_bool(response, "armed", module_guard.Active());
+    obs_data_set_string(response, "stopReason", GuardStopReasonCode(module_guard.StopReason()));
     obs_data_set_bool(response, "graphSafe", AuditScene());
     obs_data_set_string(response, "audioSource", audio_source_name.c_str());
     DescribeAudioSource(audio_source_name.c_str(), response);
@@ -51,7 +52,7 @@ void Arm(obs_data_t* request, obs_data_t* response, void*) {
     }
 }
 void Disarm(obs_data_t*, obs_data_t* response, void*) { StopPublication(); obs_data_set_bool(response, "armed", false); }
-void Heartbeat(obs_data_t*, obs_data_t* response, void*) { last_heartbeat_ns.store(os_gettime_ns()); obs_data_set_bool(response, "armed", module_guard.Active()); }
+void Heartbeat(obs_data_t*, obs_data_t* response, void*) { last_heartbeat_ns.store(os_gettime_ns()); obs_data_set_bool(response, "armed", module_guard.Active()); obs_data_set_string(response, "stopReason", GuardStopReasonCode(module_guard.StopReason())); }
 }
 void RegisterVendorRequests() {
     vendor = obs_websocket_register_vendor("jkiller");

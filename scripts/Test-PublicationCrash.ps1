@@ -1,4 +1,5 @@
 #requires -Version 7.4
+param([switch]$SourceLoss)
 $ErrorActionPreference='Stop'
 $root=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $directory=Join-Path $root '.artifacts/live-flow'
@@ -20,6 +21,18 @@ try{
     $ready=Get-Content -Raw (Join-Path $directory 'ready.json') | ConvertFrom-Json
     $helper=Get-Process -Id $ready.helperPid
     if($helper.StartTime.ToFileTimeUtc().ToString() -ne $ready.helperCreation -or $helper.Path -ne (Join-Path $root '.runtime/obs/bin/64bit/obs64.exe')){throw 'Owned helper identity changed.'}
+    if($SourceLoss){
+        $clock=[Diagnostics.Stopwatch]::StartNew()
+        $fixture.Kill();$fixture.WaitForExit(2000)|Out-Null
+        if(-not $publisher.WaitForExit(10000)){throw 'Selected-source exit did not stop the publisher.'}
+        if(-not $helper.WaitForExit(5000)){throw 'Selected-source exit left the native helper running.'}
+        $errorText=Get-Content -Raw (Join-Path $directory 'crash-errors.log')
+        if($errorText -notmatch 'The selected screen or window became unavailable\.'){throw 'Real source loss did not preserve its actionable native reason.'}
+        $report=@{status='passed';topology='same-PC real WGC/native processes';captureMode='video-only';sourceLossStopSeconds=$clock.Elapsed.TotalSeconds;helperExited=$true;reason='video_source_lost'}
+        $report | ConvertTo-Json | Set-Content (Join-Path $root '.artifacts/source-loss.json')
+        $report | ConvertTo-Json -Compress | Write-Output
+        return
+    }
     $link=[Uri]$services.JoinLink
     $invitation=[Uri]::UnescapeDataString($link.Fragment.Substring(8))
     $observer=Invoke-RestMethod 'http://localhost:5000/api/join' -Method Post -ContentType 'application/json' -Body (@{invite=$invitation;nickname='Crash acceptance observer';desktop=$true}|ConvertTo-Json)

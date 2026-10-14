@@ -23,7 +23,7 @@ void Mixers(void*, calldata_t* data) {
     if (!Allowed(source)) calldata_set_int(data, "mixers", 0); // OBS reads this back before applying the route.
 }
 void Monitoring(void*, calldata_t* data) {
-    if (calldata_int(data, "type") != OBS_MONITORING_TYPE_NONE && module_guard.Active()) StopPublication();
+    if (calldata_int(data, "type") != OBS_MONITORING_TYPE_NONE && module_guard.Active()) StopPublication(GuardStopReason::AudioMonitoringEnabled);
 }
 void HookSource(void*, calldata_t* data) {
     auto* source = static_cast<obs_source_t*>(calldata_ptr(data, "source"));
@@ -52,7 +52,7 @@ void Tick(void*, float) {
         // Capture emissions stop synchronously through the retained controller binding.
         static std::atomic_bool closing{false};
         if (!closing.exchange(true)) {
-            controller_exit_ns.store(now); StopPublication();
+            controller_exit_ns.store(now); StopPublication(GuardStopReason::ControllerLost);
             obs_queue_task(OBS_TASK_UI, [](void*) {
                 const auto window = static_cast<HWND>(obs_frontend_get_main_window_handle());
                 if (window) PostMessageW(window, WM_CLOSE, 0, 0);
@@ -65,8 +65,10 @@ void Tick(void*, float) {
     }
     if (module_guard.Active()) {
         const auto heartbeat = last_heartbeat_ns.load();
-        if (!heartbeat || os_gettime_ns() - heartbeat > 2000000000ULL || !GuardVideoReady() || !AuditScene()) StopPublication();
-    } else if (obs_frontend_streaming_active()) StopPublication();
+        if (!heartbeat || os_gettime_ns() - heartbeat > 2000000000ULL) StopPublication(GuardStopReason::HeartbeatExpired);
+        else if (!GuardVideoReady()) StopPublication(GuardStopReason::VideoSourceLost);
+        else if (!AuditScene()) StopPublication(GuardStopReason::AudioGraphUnsafe);
+    } else if (obs_frontend_streaming_active() && !stopping.load()) StopPublication(GuardStopReason::UnarmedOutput);
 }
 void FrontendEvent(obs_frontend_event event, void*) {
     if (event == OBS_FRONTEND_EVENT_FINISHED_LOADING)
@@ -78,8 +80,11 @@ bool SourceAllowed(obs_source_t* source, std::uint64_t generation) {
     return module_guard.Allows({obs_source_get_unversioned_id(source), obs_source_get_name(source), generation, obs_source_get_monitoring_type(source) != OBS_MONITORING_TYPE_NONE});
 }
 bool AuditScene() { bool safe = true; obs_enum_sources(Audit, &safe); return safe; }
-void StopPublication() {
-    module_guard.Disarm();
+void StopPublication(GuardStopReason reason) {
+    const auto previous = module_guard.StopReason();
+    module_guard.Disarm(reason);
+    if (previous == GuardStopReason::None && reason != GuardStopReason::None)
+        blog(LOG_WARNING, "[PlayKross] capture stopped: %s", GuardStopReasonCode(module_guard.StopReason()));
     AuditScene();
     if (!stopping.exchange(true)) obs_queue_task(OBS_TASK_UI, [](void*) { StopAllAudioSources(); StopPipeline(); obs_frontend_streaming_stop(); stopping.store(false); }, nullptr, false);
 }

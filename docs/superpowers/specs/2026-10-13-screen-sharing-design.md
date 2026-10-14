@@ -4,6 +4,8 @@ Date: 2026-10-13 (America/Sao_Paulo)
 
 Status: Approved by the user on 2026-10-13, with microphone capture removed at their request. Implementation planning may proceed; the resulting plan still requires review before execution.
 
+2026-10-14 amendment: the user explicitly deferred audio (“you can skip that audio part for now to be honest”). Current M1 is video-only. Preserve the audio requirements below for a later approved implementation; do not capture system, Discord, incoming-stream or microphone audio. Audio/synchronization acceptance is deferred, not passed. Current video/external-performance and lifetime-safety gates remain required.
+
 ## 1. Intended outcome
 
 Build working software for friends to share gameplay and react together. Broadcasters use a native Windows application; viewers use modern browsers without installation or accounts. A broadcaster can watch other streams while publishing. The room host can initially be the user's PC and is independent of the broadcasters joining it.

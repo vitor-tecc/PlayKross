@@ -1,6 +1,8 @@
 # Milestone one remaining work
 
-Status on 2026-10-14: code corrections for R2–R7 are implemented and verified with non-interactive correctness tests. R1 has a fail-closed safety mitigation, **not restored application-audio functionality**. M1 remains unaccepted; capacity and multi-broadcaster work remain gated.
+Status on 2026-10-14: the user explicitly deferred audio after the live tests. **Current M1 is video-only**; audio stays disabled and its previous requirements remain future work. Corrections R2–R7 are verified. M1 remains pending its full external numerical/video-stability evidence; capacity and multiple broadcasters remain gated.
+
+Live tests subsequently authorized: native25/25, actual NVENC initialization, Edge/Firefox/WebView2 video-only smoke/recovery, real capped x264 fallback, full-source600-second capture/decode/presentation, controller-only crash/reclaim/stale-grant rejection, real source-loss diagnosis and fresh-room HTTPS desktop playback passed. The user confirmed moving smooth mobile-data video on iPhone14 Safari, Firefox and friends through the approved [temporary tunnel/STUN route](../setup/temporary-tunnel.md). External numeric ten-minute evidence is pending, and the first external source later lost its safety guard for an unresolved reason. This updates earlier deferrals rather than repeating completed tests. The [launch-based audio proposal](../superpowers/specs/2026-10-14-isolated-audio-design.md) was declined; audio work was then explicitly deferred.
 
 ## Work completed without opening user applications
 
@@ -10,15 +12,15 @@ Status on 2026-10-14: code corrections for R2–R7 are implemented and verified 
 - CPU fallback applies at most 720p30 and 4Mbps, preserving lower requested settings. Requested, applied and observed measurements remain separate.
 - Latency evidence retains multi-second decoded ages and needs at least 95% coverage. Upload-rate sampling uses a monotonic clock and consistent per-page completion timestamps.
 
-Use `./scripts/Verify.ps1 -Mode CodeOnly` on an occupied PC. It runs .NET tests (host integration uses in-memory HTTP/WebSockets), DOM/numeric frontend tests, builds the UI/frontend/native plugin and runs the twenty native tests without audio devices or child-process fixtures. Setup checks use temporary files. It does not start the broadcaster, browser, capture fixture, media server or timing source, and does not install its compiled plugin. Three native live/process tests are explicitly excluded. This verifies correctness, **not streaming performance**.
+Use `./scripts/Verify.ps1 -Mode CodeOnly` on an occupied PC. It runs .NET tests (host integration uses in-memory HTTP/WebSockets), DOM/numeric frontend tests, builds the UI/frontend/native plugin and runs selected native correctness tests without audio devices or child-process fixtures. Setup/lifecycle checks use isolated temporary files. It does not start the broadcaster, browser, capture fixture, media server or timing source, and does not install its compiled plugin. Three native live/process tests are explicitly excluded. Close the native UI before building it if it holds output DLLs. This verifies correctness, **not streaming performance**.
 
-## Next implementation prerequisite: restore safe application audio
+## Deferred: safe application audio
 
 Windows' documented `INCLUDE_TARGET_PROCESS_TREE` includes child processes. A root filename allowlist, ancestry check or polling snapshot cannot guarantee exclusion of a child that starts, plays and exits between checks. This is why current modes are video-only rather than claiming that Discord exclusion is solved. [Microsoft API semantics](https://learn.microsoft.com/en-us/windows/win32/api/audioclientactivationparams/ne-audioclientactivationparams-process_loopback_mode).
 
 Implement an enforceable source boundary before re-enabling audio. The acceptance contract is: selected app remains audible, ordinary/new/short-lived prohibited children and controller/viewer tree intersections cannot reach emitted PCM, access-denied/PID reuse/source changes fail closed, and the native entry point enforces the same policy independently. Do not solve this by altering Firefox/Discord, capturing all system output, subtracting mixed audio, or silently applying process restrictions to an already running game. Any boundary change needs its own small design and test-first implementation; the existing process-tree loopback can be reused only once those conditions can be enforced. No microphone is added.
 
-The existing LiveFlow/LocalMedia/Firefox/sustained audio probes explicitly request app audio and are currently blocked by the mitigation. Before running them later, either restore the approved safe boundary or add a clearly labeled video-only probe path that leaves every audio/synchronization gate pending. Do not change their audio assertions to pass silence or reuse historical results as new evidence.
+LiveFlow, Firefox, WebView2 and sustained probes now have an explicit `-VideoOnly` path. Default application-audio probes and the old combined LocalMedia suite remain blocked by the mitigation. Use the video-only paths for diagnostics; they leave audio/synchronization gates pending. Do not weaken audio assertions to pass silence or reuse historical results as new evidence.
 
 ## Tests deferred until the user is ready
 
@@ -29,4 +31,4 @@ The existing LiveFlow/LocalMedia/Firefox/sustained audio probes explicitly reque
 5. Configure public HTTPS and reachable media only when router/public-address conditions allow. Phone Wi-Fi off, ten-minute external report, real direct/relay evidence, losses/RTT/FPS and separate A/V timing. No domain is required by the existing optional IP-certificate profile, but external reachability/certification is still untested. Local tabs cannot satisfy this check.
 6. Reassess the [acceptance checklist](milestone-1-checklist.md) with fresh evidence for this revision. Only then accept M1 and write the detailed M2 plan for one/four/eight viewers. Multiple broadcasters/grid follow later.
 
-No live tests above were run during the 2026-10-14 code-only fix pass. Historical synthetic/Firefox reports remain preserved in [results](milestone-1-results.md) with their original revision/topology limitations. Deferred minors R8–R10 remain in the review backlog.
+The earlier CodeOnly fix pass did not run live tests; the later authorized results above supersede those deferrals. Next video work: gather ten-minute external viewer measurements, diagnose any repeated long-run stop using retained native stop codes, and reassess the video-only acceptance gate. The new real source-loss probe (`Test-PublicationCrash.ps1 -SourceLoss`) passed: helper exited and the native/desktop reason identified the selected window loss. Audio work is paused by user instruction. Historical reports remain preserved in [results](milestone-1-results.md); R8–R10 remain deferred.

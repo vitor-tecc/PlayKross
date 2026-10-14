@@ -168,7 +168,19 @@ public sealed class ObsMediaEngine(IOwnedObsProcess helper, Func<OwnedEngineHand
             {
                 await Task.Delay(500, token);
                 var state = await Vendor("Heartbeat", new { }, token);
-                if (!state.GetProperty("armed").GetBoolean()) throw new InvalidOperationException("Native source or safety guard was lost.");
+                if (!state.GetProperty("armed").GetBoolean())
+                {
+                    var code = state.TryGetProperty("stopReason", out var reason) && reason.ValueKind == JsonValueKind.String ? reason.GetString() : null;
+                    throw new InvalidOperationException(code switch
+                    {
+                        "heartbeat_timeout" => "The native capture heartbeat timed out.",
+                        "video_source_lost" => "The selected screen or window became unavailable.",
+                        "controller_lost" => "The broadcaster controller became unavailable.",
+                        "audio_graph_unsafe" or "audio_monitoring_enabled" => "Native audio routing verification failed. Capture stopped for safety.",
+                        "unarmed_output" => "Native output was active without an armed capture guard.",
+                        _ => "Native source or safety guard was lost."
+                    });
+                }
                 if (connected && !(await Vendor("GetPipelineState", new { }, token)).GetProperty("outputActive").GetBoolean())
                     throw new InvalidOperationException("The media connection ended. Start again to request a fresh publication grant.");
             }

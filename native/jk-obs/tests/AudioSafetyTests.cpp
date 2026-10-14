@@ -53,8 +53,30 @@ static void GuardDisarmsOnControllerDeath() {
     Require(!guard.Active(), "Controller exit must disarm capture");
     Require(!guard.Allows({"jk_process_audio", "Application audio", 1, false}), "Controller exit must prohibit output");
 }
+static void FirstStopReasonSurvivesCleanup() {
+    Probe probe;
+    auto binding = jk::ProcessBinding::Open(probe.lifetime->Identity(), probe);
+    jk::SceneGuard guard;
+    Require(guard.Arm(std::move(binding.binding), "", 1), "Video-only guard must arm");
+    guard.Disarm(jk::GuardStopReason::HeartbeatExpired);
+    guard.Disarm();
+    guard.Disarm(jk::GuardStopReason::VideoSourceLost);
+    Require(guard.StopReason() == jk::GuardStopReason::HeartbeatExpired, "Cleanup must retain the first cause of a stopped broadcast");
+}
+static void SuccessfulRearmClearsOldStopReason() {
+    Probe probe;
+    jk::SceneGuard guard;
+    guard.Disarm(jk::GuardStopReason::VideoSourceLost);
+    Require(!guard.Arm(nullptr, "", 1), "Invalid controller must not arm");
+    Require(guard.StopReason() == jk::GuardStopReason::VideoSourceLost, "Failed rearm must retain the old failure");
+    auto binding = jk::ProcessBinding::Open(probe.lifetime->Identity(), probe);
+    Require(guard.Arm(std::move(binding.binding), "", 2), "Valid fresh capture must arm");
+    Require(guard.StopReason() == jk::GuardStopReason::None, "New capture must not inherit a stale failure");
+}
 int main(int argc, char** argv) {
     std::map<std::string, std::function<void()>> cases{{"OverflowDropsOldestPcmWithin200ms", OverflowDropsOldestPcmWithin200ms}, {"NoBufferAfterSeal", NoBufferAfterSeal}, {"RejectsDeviceAndSystemSources", RejectsDeviceAndSystemSources}, {"GuardDisarmsOnControllerDeath", GuardDisarmsOnControllerDeath}};
+    cases.emplace("FirstStopReasonSurvivesCleanup", FirstStopReasonSurvivesCleanup);
+    cases.emplace("SuccessfulRearmClearsOldStopReason", SuccessfulRearmClearsOldStopReason);
     try { cases.at(argc == 2 ? argv[1] : "")(); std::cout << "PASS " << argv[1] << '\n'; return 0; }
     catch (const std::exception& error) { std::cerr << "FAIL: " << error.what() << '\n'; return 1; }
 }

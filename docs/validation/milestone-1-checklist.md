@@ -2,7 +2,9 @@
 
 Do not advance viewer capacity or multi-publisher work until the required checks pass. Each result must carry `passed`, `failed`, `pending`, or `inconclusive`, workload, duration, topology, versions, measurement method, uncertainty, and evidence files. Automated correctness, protocol smoke tests, and actual performance are separate records.
 
-2026-10-14 constraint: only `Verify -Mode CodeOnly` during the current work pass. Defer all app/browser/device/child-process/live-network fixtures. Unconfined app audio is disabled; restoring its enforced boundary is an implementation prerequisite, not a test that silence can pass. See [ordered remaining work](milestone-1-next-steps.md).
+2026-10-14 update: the user authorized live tests after the earlier CodeOnly pass. Fresh video-only local and600-second measurements passed; mobile-data Safari/Firefox/friend playback was reported working through the optional CGNAT profile. External numeric duration/path/loss/FPS evidence remains pending. Unconfined app audio stays disabled; its enforced boundary is an implementation prerequisite that silence cannot pass. See [ordered remaining work](milestone-1-next-steps.md).
+
+Later explicit user amendment: audio is deferred. M1 now accepts **video only**; audio timing, synthetic audio isolation and actual Discord audio checks below are future gates, not current completion requirements and not marked passed. Native/host/browser correctness, video performance, external numerical evidence, source lifetime and review remain required. Audio capture stays disabled.
 
 - Automated: .NET, native, browser tests and production builds; setup corruption/traversal, source ownership/lifetime, authorization/revocation and cleanup tests.
 - Local real media: native capture → NVENC H.264/Opus → MediaMTX → real browser; nonblank picture, explicit app audio, settings restart, nickname identity, fullscreen return and in-app watching/recovery.
@@ -22,9 +24,16 @@ Commands:
 ./scripts/Verify.ps1 -Mode CodeOnly
 ./scripts/Verify.ps1 -Mode LocalMedia
 ./scripts/Build-TimingSource.ps1
-./scripts/Test-Sustained.ps1 -GpuSource -Seconds 600
+./scripts/Test-LiveFlow.ps1 -VideoOnly
+./scripts/Test-InAppViewing.ps1 -VideoOnly
+./scripts/Test-Sustained.ps1 -GpuSource -Seconds 600 -VideoOnly
+./scripts/Test-PublicationCrash.ps1
+./scripts/Test-PublicationCrash.ps1 -SourceLoss
+./scripts/Test-TemporaryVideo.ps1 -Seconds 1800
 ./scripts/Verify.ps1 -Mode External -RoomLink 'https://PUBLIC_ADDRESS/#invite=...'
 ./tools/acceptance/Analyze-Timing.ps1 -Evidence .artifacts/acceptance/evidence.json
 ```
 
 The evidence validator cannot independently certify that measurements/human declarations are truthful. It prevents missing or mocked observations from becoming a passed milestone. Preserve numerical raw reports privately under `.artifacts/acceptance`, publish summaries without tokens, nicknames, addresses or executable paths, and retain failed/inconclusive runs alongside repeats.
+
+The legacy combined `Verify -Mode LocalMedia` still requests application audio and is deferred; use the explicit video-only probes above. The older full audio evidence validator has its original requirements and must not be represented as passing the amended video-only scope merely because audio is silent.

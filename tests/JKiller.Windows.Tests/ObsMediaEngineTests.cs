@@ -47,6 +47,21 @@ public sealed class ObsMediaEngineTests
         rpc.Publishing = false;
         await fault.Task.WaitAsync(TimeSpan.FromSeconds(2));
     }
+    [Theory]
+    [InlineData("heartbeat_timeout", "The native capture heartbeat timed out.")]
+    [InlineData("video_source_lost", "The selected screen or window became unavailable.")]
+    [InlineData("untrusted/private-detail", "Native source or safety guard was lost.")]
+    public async Task NativeStopCauseIsActionableWithoutReflectingUnknownDetails(string reason, string expected)
+    {
+        var rpc = new FakeRpc();
+        await using var engine = new ObsMediaEngine(new FakeHelper(), (_, _) => Task.FromResult<IObsRpcClient>(rpc));
+        var fault = new TaskCompletionSource<Exception>(TaskCreationOptions.RunContinuationsAsynchronously);
+        engine.SafetyFault += (_, error) => fault.TrySetResult(error);
+        await engine.PrepareAsync(Request, CancellationToken.None);
+        await engine.StartAsync(new("http://localhost:5000/whip"), "credential", CancellationToken.None);
+        rpc.UnarmedReason = reason;
+        Assert.Equal(expected, (await fault.Task.WaitAsync(TimeSpan.FromSeconds(2))).Message);
+    }
     private static BroadcastRequest Request => new(new("window", SourceKind.Window, 42, new(222, 333, @"C:\Game.exe"), "Game"), new(null), new(1920, 1080, 60, 15));
     [Fact]
     public async Task InvalidSettingsRejectedBeforeHelperLaunch()
@@ -132,6 +147,7 @@ public sealed class ObsMediaEngineTests
     {
         public bool FailNvenc, WrongReadback, DelayStart, Publishing, HandshakeFailed;
         public bool VideoReady = true;
+        public string? UnarmedReason;
         public TaskCompletionSource PipelinePolled = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public int Starts;
         public List<string> PreparedEncoders = [];
@@ -152,6 +168,7 @@ public sealed class ObsMediaEngineTests
             var vendor = data.GetProperty("requestType").GetString();
             var args = data.GetProperty("requestData");
             object response = new { success = true, armed = true, videoReady = true };
+            if (vendor == "Heartbeat" && UnarmedReason is not null) response = new { armed = false, stopReason = UnarmedReason };
             if (vendor == "GetCapabilities") response = new { encoders = new[] { new { id = "obs_nvenc_h264_tex" }, new { id = "obs_x264" }, new { id = "ffmpeg_opus" } }, sources = new[] { new { id = "jk_bound_capture" } }, services = new[] { new { id = "whip_custom" } } };
             if (vendor == "PreparePipeline")
             {
