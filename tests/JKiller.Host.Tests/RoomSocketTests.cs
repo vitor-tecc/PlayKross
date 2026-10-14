@@ -9,6 +9,29 @@ using Xunit;
 namespace JKiller.Host.Tests;
 public sealed class RoomSocketTests
 {
+    [Fact]
+    public async Task ActiveSocketStillReceivesRoomChangesForItsSession()
+    {
+        await using var f = await HostFixture.Start(); var viewer = await f.Join();
+        var client = f.App.GetTestServer().CreateWebSocketClient();
+        client.ConfigureRequest = request => request.Headers.Authorization = "Bearer " + viewer.SessionToken;
+        using var socket = await client.ConnectAsync(new Uri("wss://room.test/hubs/room"), CancellationToken.None);
+        await socket.SendAsync(Encoding.UTF8.GetBytes("{\"protocol\":\"json\",\"version\":1}\u001e"), WebSocketMessageType.Text, true, CancellationToken.None);
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+        var buffer = new byte[16384];
+        while (true)
+        {
+            var received = await socket.ReceiveAsync(buffer.AsMemory(), deadline.Token);
+            if (Encoding.UTF8.GetString(buffer, 0, received.Count).Contains("\"target\":\"room\"")) break;
+        }
+        f.App.Services.GetRequiredService<RoomStore>().Rename(viewer.SessionId, "ACTIVE-UPDATE");
+        while (true)
+        {
+            var received = await socket.ReceiveAsync(buffer.AsMemory(), deadline.Token);
+            Assert.Equal(WebSocketMessageType.Text, received.MessageType);
+            if (Encoding.UTF8.GetString(buffer, 0, received.Count).Contains("ACTIVE-UPDATE")) break;
+        }
+    }
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

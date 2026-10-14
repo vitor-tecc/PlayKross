@@ -6,7 +6,7 @@ Test system: Windows 11 build 26200, Ryzen 7 7700X / 32 GB RAM, RTX 5070 with dr
 
 | Check | Status | Evidence / limits |
 |---|---|---|
-| Code-only review corrections | passed | .NET135 (Core53/Windows40/Host42), frontend16, native20/20 selected; three native device/child-process tests explicitly deferred. UI/frontend/plugin builds passed. Native audio eligibility disabled; no live performance inference |
+| Code-only review corrections | passed | .NET136 (Core53/Windows40/Host43), frontend16, native20/20 selected; three native device/child-process tests explicitly deferred. UI/frontend/plugin builds passed. Native audio eligibility disabled; no live performance inference |
 | Native capture / browser playback | passed locally | Real Geometry Dash and synthetic 720p30/1080p60 smoke, nonblank numerical pixels, H.264/Opus, fullscreen return; game audio energy was zero |
 | In-app watching while publishing | passed locally | Real WebView2 decode, stable cookie/session/nickname, fullscreen return, off-origin cancellation and renderer-crash recovery |
 | Installed Firefox local viewing | passed short interface-mode smoke | Firefox157.0.1 default media preferences; real720p/1080p H.264/Opus decode progress, nonblank pixels, sound selection and fullscreen return. Requires explicit Ethernet media interface on this PC; default loopback failed. Presented FPS unavailable in this headless test. See [investigation](firefox-local-viewing.md) |
