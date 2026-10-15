@@ -12,6 +12,7 @@ export const roomApi = {
   me: (signal: AbortSignal) => request<SessionOverview>("/api/me", { signal }),
   join: (invite: string, nickname: string, signal: AbortSignal) => request<SessionGrant>("/api/join", { method: "POST", signal, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ invite, nickname }) }),
   rename: (nickname: string, signal: AbortSignal) => request<RoomSnapshot>("/api/me/nickname", { method: "POST", signal, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ nickname }) }),
+  leave: (signal: AbortSignal) => request<RoomSnapshot>("/api/me/leave", { method: "POST", signal }),
   playback: (id: string, signal: AbortSignal) => request<PlaybackGrant>(`/api/streams/${encodeURIComponent(id)}/playback`, { signal }),
   watchRoom: async (changed: (snapshot: RoomSnapshot) => void, signal: AbortSignal) => {
     const hub = new HubConnectionBuilder().withUrl("/hubs/room").configureLogging(LogLevel.None).withAutomaticReconnect([1000, 2000, 4000]).build();

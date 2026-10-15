@@ -19,7 +19,7 @@ std::wstring Wide(const char* text) {
 bool ForbiddenImage(const std::wstring& image) {
     std::wstring name = std::filesystem::path(image).filename().wstring();
     for (auto& ch : name) ch = static_cast<wchar_t>(std::towlower(ch));
-    return name.find(L"discord") != std::wstring::npos || name.find(L"jkiller") != std::wstring::npos ||
+    return name.find(L"discord") != std::wstring::npos || name.find(L"jkiller") != std::wstring::npos || name.find(L"playkross") != std::wstring::npos ||
         name == L"obs64.exe" || name == L"chrome.exe" || name == L"msedge.exe" || name == L"msedgewebview2.exe" ||
         name == L"firefox.exe" || name == L"brave.exe" || name == L"opera.exe" || name == L"chromium.exe" ||
         name == L"steamwebhelper.exe" || name == L"explorer.exe" || name == L"rundll32.exe" || name == L"dllhost.exe";
@@ -72,14 +72,13 @@ struct AudioSource final : AudioSink {
 };
 std::mutex sources_mutex;
 std::map<obs_source_t*, AudioSource*> sources;
-const char* Name(void*) { return "JKiller application audio (process only)"; }
+const char* Name(void*) { return "PlayKross experimental audio (application and children)"; }
 void* Create(obs_data_t* settings, obs_source_t* source) {
     auto context = std::make_unique<AudioSource>(source, static_cast<std::uint64_t>(obs_data_get_int(settings, "selection_generation")));
     try {
-        // Defense in depth: source creation through libobs must not bypass the
-        // control-plane input policy and activate an unconfined process tree.
+        // The independent native policy must also hold when bypassing the UI.
         if (!AllowsCreateInput("jk_process_audio"))
-            throw std::runtime_error("Application audio disabled: no enforced process-tree exclusion boundary.");
+            throw std::runtime_error("Application audio input is disabled.");
         const long long pid = obs_data_get_int(settings, "pid");
         if (pid <= 0 || pid > UINT32_MAX || static_cast<std::uint32_t>(pid) == GetCurrentProcessId()) throw std::runtime_error("Select an eligible application; OBS itself cannot be captured.");
         const std::string creation = obs_data_get_string(settings, "creation_filetime");
@@ -88,6 +87,7 @@ void* Create(obs_data_t* settings, obs_source_t* source) {
         if (used != creation.size()) throw std::runtime_error("Invalid application creation identity.");
         ProcessToken token{static_cast<std::uint32_t>(pid), created, Wide(obs_data_get_string(settings, "image_path"))};
         if (ForbiddenImage(token.image_path)) throw std::runtime_error("Discord, browser hosts and room playback cannot be audio sources.");
+        if (!AllowsExperimentalAudioImage(token.image_path)) throw std::runtime_error("This application is not supported for experimental audio. Use video only.");
         const auto controller = ControllerIdentity();
         if (!controller || BelongsToOwnerTree(token, controller->pid)) throw std::runtime_error("Room playback and the controller's process tree cannot be captured.");
         auto result = ProcessBinding::Open(token);

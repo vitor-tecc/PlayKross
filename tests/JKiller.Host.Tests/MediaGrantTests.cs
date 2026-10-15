@@ -9,6 +9,7 @@ public sealed class MediaGrantTests
     {
         var clock = new TestClock(); var sessions = new SessionStore(clock); var grants = new MediaGrantStore(clock); var rooms = new RoomStore(sessions, grants, clock);
         var invite = rooms.CreateRoom(); var owner = rooms.Join(invite.Invite, "owner"); var viewer = rooms.Join(invite.Invite, "viewer");
+        rooms.Connect(owner.SessionId, "owner-tab");
         var stream = rooms.ReservePublish(owner.SessionId);
         var read = rooms.GetPlayback(viewer.SessionId, stream.StreamId);
         rooms.RevokeSession(viewer.SessionId);

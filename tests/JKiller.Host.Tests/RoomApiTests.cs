@@ -11,6 +11,7 @@ public sealed class RoomApiTests
     {
         await using var f = await HostFixture.Start(); var invite = f.Invite;
         var owner = await f.Join(invite); var other = await f.Join(invite);
+        f.App.Services.GetRequiredService<JKiller.Host.Rooms.RoomStore>().Connect(owner.SessionId, "owner-tab");
         var publication = (await (await f.Client.SendAsync(f.Request(HttpMethod.Post, "/api/streams", owner.SessionToken))).Content.ReadFromJsonAsync<PublishReservation>())!;
         var path = $"/api/streams/{publication.StreamId}/lease";
         Assert.Equal(HttpStatusCode.Forbidden, (await f.Client.SendAsync(f.Request(HttpMethod.Post, path, other.SessionToken))).StatusCode);

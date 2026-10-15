@@ -17,6 +17,7 @@ public sealed class RoomStoreTests
     {
         var store = Create(); var invite = store.CreateRoom(); var owner = store.Join(invite.Invite, "owner");
         var other = store.Join(invite.Invite, "other"); var old = store.ReservePublish(owner.SessionId);
+        store.Connect(owner.SessionId, "owner-tab"); store.Connect(other.SessionId, "other-tab");
         var revoked = new List<string>(); store.StreamRevoked += revoked.Add;
         clock.Now = clock.Now.AddSeconds(61); store.SweepExpired();
         Assert.Empty(store.Snapshot(owner.SessionId).Streams);
@@ -27,7 +28,8 @@ public sealed class RoomStoreTests
     public void ExpirySweepNotifiesTheRemainingRoomWithARevisionedSnapshot()
     {
         var store = Create(); var room = store.CreateRoom(); var owner = store.Join(room.Invite, "owner"); store.ReservePublish(owner.SessionId);
-        clock.Now = clock.Now.AddHours(1); store.Join(room.Invite, "viewer");
+        store.Connect(owner.SessionId, "owner-tab");
+        clock.Now = clock.Now.AddHours(1); var viewer = store.Join(room.Invite, "viewer"); store.Connect(viewer.SessionId, "viewer-tab");
         var changes = new List<JKiller.Contracts.RoomSnapshot>(); store.Changed += changes.Add;
         clock.Now = owner.ExpiresAt; store.SweepExpired();
         var snapshot = Assert.Single(changes);

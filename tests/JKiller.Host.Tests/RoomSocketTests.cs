@@ -39,7 +39,9 @@ public sealed class RoomSocketTests
     {
         await using var f = await HostFixture.Start(); var invite = f.Invite;
         var viewer = await f.Join(invite);
+        var rooms = f.App.Services.GetRequiredService<RoomStore>(); rooms.Connect(viewer.SessionId, "initial-tab");
         f.Clock.Now = f.Clock.Now.AddHours(1); var friend = await f.Join(invite);
+        rooms.Connect(friend.SessionId, "friend-tab");
         var client = f.App.GetTestServer().CreateWebSocketClient();
         client.ConfigureRequest = request => request.Headers.Authorization = "Bearer " + viewer.SessionToken;
         using var socket = await client.ConnectAsync(new Uri("wss://room.test/hubs/room"), CancellationToken.None);

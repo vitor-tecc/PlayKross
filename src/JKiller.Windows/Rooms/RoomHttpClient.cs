@@ -34,6 +34,17 @@ public sealed class RoomHttpClient(HttpClient http, TimeProvider? timeProvider =
         Restore(roomUri, grant); return grant;
     }
     public Task<RoomSnapshot> RenameAsync(string nickname, CancellationToken token) => Auth<RoomSnapshot>(HttpMethod.Post, "/api/me/nickname", new { nickname }, token);
+    public async Task HeartbeatAsync(CancellationToken token) => await Auth<RoomSnapshot>(HttpMethod.Post, "/api/me/presence", null, token);
+    public async Task LeaveAsync(CancellationToken token)
+    {
+        try
+        {
+            if (Session is not null && Session.ExpiresAt > clock.GetUtcNow())
+                await Auth<RoomSnapshot>(HttpMethod.Post, "/api/me/leave", null, token);
+        }
+        catch (InvalidOperationException) when (Session?.ExpiresAt <= clock.GetUtcNow()) { /* Expiry can race the send check. */ }
+        finally { Session = null; Origin = null; }
+    }
     public Task<PublishReservation> ReservePublishAsync(CancellationToken token) => Auth<PublishReservation>(HttpMethod.Post, "/api/streams", null, token);
     public async Task RenewPublishAsync(Guid id, CancellationToken token) => await Auth<RoomSnapshot>(HttpMethod.Post, $"/api/streams/{id:D}/lease", null, token);
     public async Task StopPublishAsync(Guid id, CancellationToken token) => await Auth<RoomSnapshot>(HttpMethod.Delete, $"/api/streams/{id:D}", null, token);

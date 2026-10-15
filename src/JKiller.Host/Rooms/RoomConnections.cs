@@ -8,30 +8,47 @@ namespace JKiller.Host.Rooms;
 public sealed class RoomConnections : IDisposable
 {
     private readonly SessionStore sessions;
+    private readonly RoomStore rooms;
     private readonly object gate = new();
     private readonly Dictionary<string, (Guid Session, HubCallerContext Context)> connections = [];
-    public RoomConnections(SessionStore sessions) { this.sessions = sessions; sessions.Revoked += Revoke; }
+    public RoomConnections(SessionStore sessions, RoomStore rooms) { this.sessions = sessions; this.rooms = rooms; sessions.Revoked += Revoke; }
     public void Add(SessionIdentity session, HubCallerContext context)
     {
-        lock (gate)
+        rooms.Connect(session.SessionId, context.ConnectionId);
+        try
         {
-            if (sessions.FindActive(session.SessionId) is null || connections.Count >= 4096 || connections.Values.Count(x => x.Session == session.SessionId) >= 8)
-            { context.Abort(); throw new UnauthorizedAccessException("Room subscription is unavailable."); }
-            connections.Add(context.ConnectionId, (session.SessionId, context));
+            lock (gate)
+            {
+                if (sessions.FindActive(session.SessionId) is null || connections.Count >= 4096 || connections.Values.Count(x => x.Session == session.SessionId) >= 8)
+                    throw new UnauthorizedAccessException("Room subscription is unavailable.");
+                connections.Add(context.ConnectionId, (session.SessionId, context));
+            }
         }
+        catch { rooms.Disconnect(session.SessionId, context.ConnectionId); context.Abort(); throw; }
     }
-    public void Remove(string id) { lock (gate) connections.Remove(id); }
+    public void Remove(string id)
+    {
+        (Guid Session, HubCallerContext Context) removed;
+        lock (gate) if (!connections.Remove(id, out removed)) return;
+        rooms.Disconnect(removed.Session, id);
+    }
     private void Revoke(Guid id)
     {
+        HubCallerContext[] removed;
         lock (gate)
-            foreach (var entry in connections.Where(x => x.Value.Session == id).ToArray())
-            { connections.Remove(entry.Key); entry.Value.Context.Abort(); }
+        {
+            removed = connections.Values.Where(x => x.Session == id).Select(x => x.Context).ToArray();
+            foreach (var context in removed) connections.Remove(context.ConnectionId);
+        }
+        // Session revocation also removes membership. No RoomStore callback is
+        // needed here; abort outside our lock to avoid lock-order inversions.
+        foreach (var context in removed) context.Abort();
     }
     public void Sweep()
     {
-        lock (gate)
-            foreach (var entry in connections.Where(x => sessions.FindActive(x.Value.Session) is null).ToArray())
-            { connections.Remove(entry.Key); entry.Value.Context.Abort(); }
+        Guid[] expired;
+        lock (gate) expired = connections.Values.Select(x => x.Session).Distinct().ToArray();
+        foreach (var id in expired) if (sessions.FindActive(id) is null) Revoke(id);
     }
     public Task SendAsync(IHubContext<RoomHub> hub, RoomSnapshot snapshot, CancellationToken token = default)
     {
@@ -42,6 +59,8 @@ public sealed class RoomConnections : IDisposable
     public void Dispose()
     {
         sessions.Revoked -= Revoke;
-        lock (gate) { foreach (var entry in connections.Values) entry.Context.Abort(); connections.Clear(); }
+        (Guid Session, HubCallerContext Context)[] removed;
+        lock (gate) { removed = connections.Values.ToArray(); connections.Clear(); }
+        foreach (var entry in removed) { rooms.Disconnect(entry.Session, entry.Context.ConnectionId); entry.Context.Abort(); }
     }
 }

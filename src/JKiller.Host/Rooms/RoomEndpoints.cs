@@ -15,7 +15,7 @@ public static class RoomEndpoints
             {
                 var credential = SessionAuthenticationHandler.Bearer(context.Request);
                 if (credential is null || !credential.StartsWith("s.", StringComparison.Ordinal)) credential = context.Request.Cookies[SessionAuthenticationHandler.CookieName];
-                session = new(previous.RoomId, previous.SessionId, credential!, previous.ExpiresAt, rooms.Rename(previous.SessionId, request.Nickname));
+                session = new(previous.RoomId, previous.SessionId, credential!, previous.ExpiresAt, rooms.Rejoin(previous.SessionId, request.Nickname));
             }
             else session = rooms.Join(request.Invite, request.Nickname);
             context.Response.Cookies.Append(SessionAuthenticationHandler.CookieName, session.SessionToken, new CookieOptions { HttpOnly = true, Secure = options.PublicOrigin.Scheme == "https", SameSite = SameSiteMode.Strict, Path = "/", Expires = session.ExpiresAt, IsEssential = true });
@@ -28,6 +28,14 @@ public static class RoomEndpoints
             return Results.Ok(new { sessionId = session.SessionId, expiresAt = session.ExpiresAt, room = rooms.Snapshot(session.SessionId) });
         }).RequireAuthorization();
         app.MapGet("/api/room", (HttpContext context, RoomStore rooms) => Results.Ok(rooms.Snapshot(SessionAuthenticationHandler.Require(context).SessionId))).RequireAuthorization();
+        app.MapPost("/api/me/presence", (HttpContext context, RoomStore rooms) =>
+            Results.Ok(rooms.Heartbeat(SessionAuthenticationHandler.Require(context).SessionId))).RequireAuthorization();
+        app.MapPost("/api/me/leave", (HttpContext context, RoomStore rooms) =>
+        {
+            var snapshot = rooms.Leave(SessionAuthenticationHandler.Require(context).SessionId);
+            context.Response.Cookies.Delete(SessionAuthenticationHandler.CookieName, new CookieOptions { Path = "/" });
+            return Results.Ok(snapshot);
+        }).RequireAuthorization();
         app.MapPost("/api/me/nickname", async (RenameRequest request, HttpContext context, RoomStore rooms, IHubContext<RoomHub> hub, RoomConnections connections) =>
         {
             var snapshot = rooms.Rename(SessionAuthenticationHandler.Require(context).SessionId, request.Nickname); await connections.SendAsync(hub, snapshot); return Results.Ok(snapshot);

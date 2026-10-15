@@ -30,8 +30,8 @@ public sealed class ObsMediaEngine(IOwnedObsProcess helper, Func<OwnedEngineHand
             if (prepared is not null || rpc is not null) throw new InvalidOperationException("Stop the current capture before preparing another selection.");
             var validation = StreamSettings.Validate(request.Settings);
             if (!validation.IsValid) throw new ArgumentException(string.Join(" ", validation.Errors), nameof(request));
-            if (request.Audio.Application is not null)
-                throw new InvalidOperationException("Application audio is disabled until an enforced process-tree boundary is available. Use video-only capture.");
+            if (request.Audio.Application is { } selectedAudio && !JKiller.Core.Capture.AudioPolicy.EvaluateApplication(selectedAudio, Environment.ProcessId).Allowed)
+                throw new InvalidOperationException(JKiller.Core.Capture.AudioPolicy.EvaluateApplication(selectedAudio, Environment.ProcessId).Reason);
             if (request.Video.NativeHandle == 0 || (request.Video.Kind == SourceKind.Window && request.Video.Process is null))
                 throw new InvalidOperationException("Select an identifiable live display or window.");
             var handle = await helper.StartAsync(cancellationToken);
@@ -40,6 +40,8 @@ public sealed class ObsMediaEngine(IOwnedObsProcess helper, Func<OwnedEngineHand
             bool Has(string category, string id) => capabilities.GetProperty(category).EnumerateArray().Any(x => x.GetProperty("id").GetString() == id);
             if (!Has("sources", "jk_bound_capture") || !Has("services", "whip_custom") || !Has("encoders", "ffmpeg_opus"))
                 throw new InvalidOperationException("Pinned native capture, WHIP or Opus component unavailable.");
+            if (request.Audio.Application is not null && !Has("sources", "jk_process_audio"))
+                throw new InvalidOperationException("The native application-audio component is unavailable; select audio off.");
             var settings = request.Settings;
             async Task ConfigureVideo()
             {

@@ -19,6 +19,8 @@ public class BroadcasterModel(Func<bool, IMediaEngine> engineFactory, IRoomClien
     private bool disposed;
     private CancellationTokenSource? diagnosticsCancellation;
     private Task? diagnosticsTask;
+    private CancellationTokenSource? presenceCancellation;
+    private Task? presenceTask;
     private string observedText = "Observed: unavailable until broadcasting.";
     public string ObservedText { get => observedText; private set { observedText = value; Notify(); } }
     private string status = "Join a room and select a source. Nothing is captured until Start.";
@@ -32,21 +34,11 @@ public class BroadcasterModel(Func<bool, IMediaEngine> engineFactory, IRoomClien
     public string Status { get => status; private set { status = value; Notify(); } }
     public string AppliedText => controller?.Applied is { } applied ? $"Applied: {applied.Settings.Width}×{applied.Settings.Height}, {applied.Settings.Fps} FPS target, {applied.Settings.BitrateMbps} Mbps target; {applied.Encoder}/{applied.Codec}. Hardware initialized: {applied.HardwareVerified}. Delivered FPS/bitrate require measurement." : "No active encoder.";
     public bool CaptureLive => controller?.State == BroadcastState.Broadcasting;
+    public bool IsJoined => origin is not null;
     public static AudioEligibility AudioEligibilityFor(SourceDescriptor? source)
     {
-        if (source is null) return new(false, "Audio is temporarily disabled until application-only exclusion can be enforced. Video remains available.");
-        var image = source.Process?.ExecutablePath ?? "";
-        var name = Path.GetFileName(image.Replace('/', '\\'));
-        var classification = name.ToLowerInvariant() switch
-        {
-            "discord.exe" => ProcessClassification.Discord,
-            "chrome.exe" or "msedge.exe" or "firefox.exe" or "brave.exe" or "opera.exe" => ProcessClassification.Browser,
-            "geometrydash.exe" when image.Replace('/', '\\').EndsWith(@"\steamapps\common\Geometry Dash\GeometryDash.exe", StringComparison.OrdinalIgnoreCase) => ProcessClassification.VerifiedApplication,
-            "capturefixture.exe" => ProcessClassification.VerifiedApplication,
-            _ => ProcessClassification.Unknown
-        };
-        if (source.Process?.Pid == Environment.ProcessId) classification = ProcessClassification.OwnProcessTree;
-        return AudioPolicy.Evaluate(source, classification);
+        if (source is null) return new(false, "Audio off. Select a supported application to opt into experimental audio.");
+        return AudioPolicy.EvaluateApplication(source.Process, Environment.ProcessId);
     }
     public event PropertyChangedEventHandler? PropertyChanged;
     protected void Notify([CallerMemberName] string? name = null) => PropertyChanged?.Invoke(this, new(name));
@@ -55,12 +47,17 @@ public class BroadcasterModel(Func<bool, IMediaEngine> engineFactory, IRoomClien
     {
         ObjectDisposedException.ThrowIf(disposed, this);
         if (CaptureLive) throw new InvalidOperationException("Stop broadcasting before changing rooms.");
-        await ReleaseControllerAsync();
         var parsed = RoomHttpClient.ParseLink(RoomLink);
-        if (room is RoomHttpClient client && vault is not null && await vault.RestoreAsync(parsed.Origin, token) is { } saved) client.Restore(saved.Origin, saved.Grant);
+        if (origin is not null && origin != parsed.Origin) await LeaveRoomCore(token);
+        if (origin is null && room is RoomHttpClient client && vault is not null && await vault.RestoreAsync(parsed.Origin, token) is { } saved) client.Restore(saved.Origin, saved.Grant);
         var joined = await room.JoinAsync(parsed.Origin, parsed.Invite, Nickname, token); origin = parsed.Origin;
+        await StopPresenceAsync();
+        await ReleaseControllerAsync();
+        Notify(nameof(IsJoined));
+        presenceCancellation = new(); presenceTask = MaintainPresence(presenceCancellation.Token);
+        await room.HeartbeatAsync(token);
         if (vault is not null) await vault.SaveAsync(new(origin, joined), token);
-        Status = "Joined. Select video, then Start. Application audio is temporarily disabled for exclusion safety.";
+        Status = "Joined. Select video, then Start. Audio stays off unless you select a supported app; it is experimental.";
         await RefreshAsync(token);
     }
     public async Task RenameAsync(CancellationToken token) { await room.RenameAsync(Nickname, token); Status = "Nickname updated; your session identity stays the same."; }
@@ -91,6 +88,47 @@ public class BroadcasterModel(Func<bool, IMediaEngine> engineFactory, IRoomClien
         await controller.ChangeSettingsAsync(Settings, token);
     }
     public async Task StopAsync(CancellationToken token) { await StopDiagnostics(); if (controller is not null) await controller.StopAsync(token); }
+    public Task LeaveAsync(CancellationToken token)
+    {
+        ObjectDisposedException.ThrowIf(disposed, this);
+        return LeaveRoomCore(token);
+    }
+    private async Task MaintainPresence(CancellationToken token)
+    {
+        while (!token.IsCancellationRequested)
+        {
+            try
+            {
+                await Task.Delay(TimeSpan.FromSeconds(5), token);
+                using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token); deadline.CancelAfter(TimeSpan.FromSeconds(5));
+                await room.HeartbeatAsync(deadline.Token);
+            }
+            catch (OperationCanceledException) when (token.IsCancellationRequested) { break; }
+            catch (Exception error) when (error is HttpRequestException or OperationCanceledException)
+            {
+                // A temporary network interruption may recover within the server's
+                // reconnect grace. Publication has its separate fail-closed lease.
+                if (!disposed) Status = "Room connection interrupted; trying to reconnect.";
+            }
+            catch (Exception error) when (error is InvalidOperationException or InvalidDataException or System.Text.Json.JsonException)
+            {
+                if (!disposed) Status = "Room presence could not be renewed. Join the room again.";
+                break;
+            }
+        }
+    }
+    private async Task StopPresenceAsync()
+    {
+        presenceCancellation?.Cancel();
+        if (presenceTask is not null) await presenceTask;
+        presenceCancellation?.Dispose(); presenceCancellation = null; presenceTask = null;
+    }
+    private async Task LeaveRoomCore(CancellationToken token)
+    {
+        await StopPresenceAsync(); await ReleaseControllerAsync();
+        try { if (origin is not null) await room.LeaveAsync(token); }
+        finally { origin = null; Notify(nameof(IsJoined)); Status = "Left room."; Notify(nameof(CaptureLive)); }
+    }
     public async Task<RedactedReport> ExportDiagnosticsAsync(CancellationToken token) => room is RoomHttpClient client ? await client.ExportDiagnosticsAsync(token) : throw new InvalidOperationException("Diagnostic export requires a room connection.");
     private async Task Observe(ObsMediaEngine native, CancellationToken token)
     {
@@ -137,5 +175,11 @@ public class BroadcasterModel(Func<bool, IMediaEngine> engineFactory, IRoomClien
         if (controller is not null) { controller.BroadcastStateChanged -= OnState; await controller.DisposeAsync(); controller = null; }
         if (engine is IAsyncDisposable disposable) await disposable.DisposeAsync(); engine = null;
     }
-    public async ValueTask DisposeAsync() { if (disposed) return; disposed = true; await ReleaseControllerAsync(); }
+    public async ValueTask DisposeAsync()
+    {
+        if (disposed) return; disposed = true;
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+        try { await LeaveRoomCore(deadline.Token); }
+        catch (Exception error) when (error is HttpRequestException or OperationCanceledException) { /* Server presence expires if close cannot reach it. */ }
+    }
 }

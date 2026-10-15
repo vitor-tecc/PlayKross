@@ -46,6 +46,7 @@ public partial class MainWindow : Window
         finally { command = null; SetControls(); }
     }
     private async void JoinClick(object sender, RoutedEventArgs args) => await Run(model!.JoinAsync);
+    private async void LeaveClick(object sender, RoutedEventArgs args) => await Run(async token => { viewingWindow?.Close(); await model!.LeaveAsync(token); });
     private async void RenameClick(object sender, RoutedEventArgs args) => await Run(model!.RenameAsync);
     private async void RefreshClick(object sender, RoutedEventArgs args) => await Run(model!.RefreshAsync);
     private async void ExportClick(object sender, RoutedEventArgs args) => await Run(async token =>

@@ -8,12 +8,24 @@ namespace JKiller.Windows.Tests;
 public sealed class ObsMediaEngineTests
 {
     [Fact]
-    public async Task DirectEngineAudioRequestCannotBypassUnconfinedTreePolicy()
+    public async Task DirectEngineAudioRequestCannotBypassSupportedApplicationPolicy()
     {
         var helper = new FakeHelper(); var rpc = new FakeRpc();
         await using var engine = new ObsMediaEngine(helper, (_, _) => Task.FromResult<IObsRpcClient>(rpc));
         await Assert.ThrowsAsync<InvalidOperationException>(() => engine.PrepareAsync(Request with { Audio = new(Request.Video.Process) }, CancellationToken.None));
         Assert.Equal(0, helper.Starts);
+    }
+    [Fact]
+    public async Task ExperimentalAudioUsesExactSelectedProcessWithoutSystemLoopback()
+    {
+        var rpc = new FakeRpc();
+        await using var engine = new ObsMediaEngine(new FakeHelper(), (_, _) => Task.FromResult<IObsRpcClient>(rpc));
+        var process = new ProcessIdentity(222, 333, @"C:\Steam\steamapps\common\Geometry Dash\GeometryDash.exe");
+        await engine.PrepareAsync(Request with { Audio = new(process) }, CancellationToken.None);
+        Assert.Equal("jk_process_audio", rpc.AudioKind);
+        Assert.Equal(222, rpc.AudioSettings.GetProperty("pid").GetInt32());
+        Assert.Equal("333", rpc.AudioSettings.GetProperty("creation_filetime").GetString());
+        Assert.Equal(process.ExecutablePath, rpc.AudioSettings.GetProperty("image_path").GetString());
     }
     [Fact]
     public async Task AudioBytesAloneDoNotReportVideoBroadcastReady()
@@ -152,6 +164,8 @@ public sealed class ObsMediaEngineTests
         public int Starts;
         public List<string> PreparedEncoders = [];
         public JsonElement VideoSettings;
+        public JsonElement AudioSettings;
+        public string? AudioKind;
         public JsonElement Transform = JsonSerializer.SerializeToElement(new { });
         public string? VideoKind;
         private JsonElement videoOutput = JsonSerializer.SerializeToElement(new { outputWidth = 1920, outputHeight = 1080, fpsNumerator = 60, fpsDenominator = 1 });
@@ -161,6 +175,7 @@ public sealed class ObsMediaEngineTests
         {
             if (requestType == "SetVideoSettings") videoOutput = data.Clone();
             if (requestType == "CreateInput" && data.GetProperty("inputName").GetString() == "JK Video") { VideoSettings = data.GetProperty("inputSettings").Clone(); VideoKind = data.GetProperty("inputKind").GetString(); }
+            if (requestType == "CreateInput" && data.GetProperty("inputName").GetString() == "JK Application Audio") { AudioSettings = data.GetProperty("inputSettings").Clone(); AudioKind = data.GetProperty("inputKind").GetString(); }
             if (requestType == "GetSceneItemList") return JsonSerializer.SerializeToElement(new { sceneItems = new[] { new { sourceName = "JK Video", sceneItemId = 1 } } });
             if (requestType == "SetSceneItemTransform") Transform = data.GetProperty("sceneItemTransform").Clone();
             if (requestType == "GetVideoSettings") return JsonSerializer.SerializeToElement(new { outputWidth = WrongReadback ? 1280 : videoOutput.GetProperty("outputWidth").GetInt32(), outputHeight = videoOutput.GetProperty("outputHeight").GetInt32(), fpsNumerator = videoOutput.GetProperty("fpsNumerator").GetInt32(), fpsDenominator = 1 });
@@ -169,7 +184,7 @@ public sealed class ObsMediaEngineTests
             var args = data.GetProperty("requestData");
             object response = new { success = true, armed = true, videoReady = true };
             if (vendor == "Heartbeat" && UnarmedReason is not null) response = new { armed = false, stopReason = UnarmedReason };
-            if (vendor == "GetCapabilities") response = new { encoders = new[] { new { id = "obs_nvenc_h264_tex" }, new { id = "obs_x264" }, new { id = "ffmpeg_opus" } }, sources = new[] { new { id = "jk_bound_capture" } }, services = new[] { new { id = "whip_custom" } } };
+            if (vendor == "GetCapabilities") response = new { encoders = new[] { new { id = "obs_nvenc_h264_tex" }, new { id = "obs_x264" }, new { id = "ffmpeg_opus" } }, sources = new[] { new { id = "jk_bound_capture" }, new { id = "jk_process_audio" } }, services = new[] { new { id = "whip_custom" } } };
             if (vendor == "PreparePipeline")
             {
                 var encoder = args.GetProperty("encoder").GetString()!; PreparedEncoders.Add(encoder);

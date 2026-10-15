@@ -8,6 +8,42 @@ namespace JKiller.Windows.Tests;
 public sealed class BroadcasterModelTests
 {
     [Fact]
+    public async Task JoinedIdleAppRenewsPresenceWithoutStartingCapture()
+    {
+        var room = new Room(); var media = new Media();
+        await using var model = new BroadcasterModel(_ => media, room, new Catalog()) { RoomLink = "http://localhost:5000/#invite=test" };
+        await model.JoinAsync(CancellationToken.None);
+        Assert.Equal(1, room.Heartbeats); Assert.Equal(0, media.Prepares);
+    }
+    [Fact]
+    public async Task ClosingNativeAppReleasesItsRoomMembershipOnce()
+    {
+        var room = new Room();
+        var model = new BroadcasterModel(_ => new Media(), room, new Catalog()) { RoomLink = "http://localhost:5000/#invite=test" };
+        await model.JoinAsync(CancellationToken.None);
+        await model.DisposeAsync(); await model.DisposeAsync();
+        Assert.Equal(1, room.Leaves);
+    }
+    [Fact]
+    public async Task RejectedRoomLinkDoesNotCancelTheExistingPresenceLease()
+    {
+        var room = new Room();
+        await using var model = new BroadcasterModel(_ => new Media(), room, new Catalog()) { RoomLink = "http://localhost:5000/#invite=test" };
+        await model.JoinAsync(CancellationToken.None); model.RoomLink = "invalid";
+        await Assert.ThrowsAsync<ArgumentException>(() => model.JoinAsync(CancellationToken.None));
+        await Task.Delay(TimeSpan.FromSeconds(6));
+        Assert.True(model.IsJoined); Assert.True(room.Heartbeats >= 2);
+    }
+    [Fact]
+    public async Task ExpiredPresenceCannotPreventCloseCleanup()
+    {
+        var room = new Room();
+        var model = new BroadcasterModel(_ => new Media(), room, new Catalog()) { RoomLink = "http://localhost:5000/#invite=test" };
+        await model.JoinAsync(CancellationToken.None); room.ExpirePresence = true;
+        await Task.Delay(TimeSpan.FromSeconds(6));
+        await model.DisposeAsync(); Assert.Equal(1, room.Leaves);
+    }
+    [Fact]
     public async Task CaptureCannotStartBeforeJoiningAndExplicitVideoSelection()
     {
         var media = new Media(); var model = new BroadcasterModel(_ => media, new Room(), new Catalog());
@@ -39,6 +75,10 @@ public sealed class BroadcasterModelTests
     private sealed class Catalog : IWindowsSourceCatalog { public Task<IReadOnlyList<SourceDescriptor>> ListSourcesAsync(CancellationToken token) => Task.FromResult<IReadOnlyList<SourceDescriptor>>([]); }
     private sealed class Room : IRoomClient
     {
+        public int Heartbeats, Leaves;
+        public bool ExpirePresence;
+        public Task HeartbeatAsync(CancellationToken token) { Interlocked.Increment(ref Heartbeats); if (ExpirePresence) throw new InvalidOperationException("Session expired."); return Task.CompletedTask; }
+        public Task LeaveAsync(CancellationToken token) { Interlocked.Increment(ref Leaves); return Task.CompletedTask; }
         public Task RenewPublishAsync(Guid id, CancellationToken token) => Task.CompletedTask;
         public Task<SessionGrant> JoinAsync(Uri uri, string invite, string nickname, CancellationToken token) => Task.FromResult(new SessionGrant(Guid.NewGuid(), Guid.NewGuid(), "session", DateTimeOffset.UtcNow.AddHours(1), new(Guid.NewGuid(), 1, [], [])));
         public Task<PublishReservation> ReservePublishAsync(CancellationToken token) => Task.FromResult(new PublishReservation(Guid.NewGuid(), "test", new("/media/test/whip", UriKind.Relative), "media", DateTimeOffset.UtcNow.AddMinutes(1)));
