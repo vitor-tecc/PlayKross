@@ -45,7 +45,14 @@ public sealed class RoomHttpClient(HttpClient http, TimeProvider? timeProvider =
         catch (InvalidOperationException) when (Session?.ExpiresAt <= clock.GetUtcNow()) { /* Expiry can race the send check. */ }
         finally { Session = null; Origin = null; }
     }
-    public Task<PublishReservation> ReservePublishAsync(CancellationToken token) => Auth<PublishReservation>(HttpMethod.Post, "/api/streams", null, token);
+    public async Task<PublishReservation> ReservePublishAsync(CancellationToken token)
+    {
+        try { return await Auth<PublishReservation>(HttpMethod.Post, "/api/streams", null, token); }
+        catch (HttpRequestException error) when (error.StatusCode == System.Net.HttpStatusCode.Conflict)
+        {
+            throw new InvalidOperationException("This version allows one broadcaster per room. Stop the current stream before starting another. Watching your friend's stream is still supported.", error);
+        }
+    }
     public async Task RenewPublishAsync(Guid id, CancellationToken token) => await Auth<RoomSnapshot>(HttpMethod.Post, $"/api/streams/{id:D}/lease", null, token);
     public async Task StopPublishAsync(Guid id, CancellationToken token) => await Auth<RoomSnapshot>(HttpMethod.Delete, $"/api/streams/{id:D}", null, token);
     public Task<PlaybackGrant> GetPlaybackAsync(Guid id, CancellationToken token) => Auth<PlaybackGrant>(HttpMethod.Get, $"/api/streams/{id:D}/playback", null, token);

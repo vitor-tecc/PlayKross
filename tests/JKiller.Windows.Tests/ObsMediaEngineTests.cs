@@ -7,6 +7,17 @@ namespace JKiller.Windows.Tests;
 
 public sealed class ObsMediaEngineTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task H264WithoutRepeatedSetupHeadersCannotBePublished(bool cpuFallback)
+    {
+        var rpc = new FakeRpc { FailNvenc = cpuFallback, RepeatHeaders = false };
+        await using var engine = new ObsMediaEngine(new FakeHelper(), (_, _) => Task.FromResult<IObsRpcClient>(rpc), allowCpuFallback: cpuFallback);
+        var error = await Assert.ThrowsAsync<InvalidDataException>(() => engine.PrepareAsync(Request, CancellationToken.None));
+        Assert.Contains("header", error.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.False(rpc.Publishing);
+    }
     [Fact]
     public async Task DirectEngineAudioRequestCannotBypassSupportedApplicationPolicy()
     {
@@ -159,6 +170,7 @@ public sealed class ObsMediaEngineTests
     {
         public bool FailNvenc, WrongReadback, DelayStart, Publishing, HandshakeFailed;
         public bool VideoReady = true;
+        public bool RepeatHeaders = true;
         public string? UnarmedReason;
         public TaskCompletionSource PipelinePolled = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public int Starts;
@@ -188,7 +200,7 @@ public sealed class ObsMediaEngineTests
             if (vendor == "PreparePipeline")
             {
                 var encoder = args.GetProperty("encoder").GetString()!; PreparedEncoders.Add(encoder);
-                response = new { success = !(FailNvenc && encoder.Contains("nvenc")), encoder, codec = "h264", hardwareInitialized = encoder.Contains("nvenc"), bitrateKbps = args.GetProperty("bitrateKbps").GetInt32(), bFrames = 0, lookahead = false };
+                response = new { success = !(FailNvenc && encoder.Contains("nvenc")), encoder, codec = "h264", hardwareInitialized = encoder.Contains("nvenc"), bitrateKbps = args.GetProperty("bitrateKbps").GetInt32(), bFrames = 0, lookahead = false, repeatHeaders = RepeatHeaders };
             }
             if (vendor == "StartPipeline") { Starts++; StartEntered.TrySetResult(); if (DelayStart) await CompleteStart.Task; Publishing = true; }
             if (vendor is "StopPipeline" or "Disarm") Publishing = false;

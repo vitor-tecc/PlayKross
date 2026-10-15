@@ -82,6 +82,8 @@ public sealed class ObsMediaEngine(IOwnedObsProcess helper, Func<OwnedEngineHand
             if (!encoded.GetProperty("success").GetBoolean()) throw new InvalidOperationException("NVENC could not initialize. CPU encoding requires explicitly selecting the fallback.");
             if (encoded.GetProperty("bitrateKbps").GetInt32() != settings.EncoderKbps || encoded.GetProperty("bFrames").GetInt32() != 0 || encoded.GetProperty("lookahead").GetBoolean())
                 throw new InvalidDataException("Encoder readback does not match the low-latency configuration.");
+            if (!encoded.TryGetProperty("repeatHeaders", out var headers) || headers.ValueKind != JsonValueKind.True)
+                throw new InvalidDataException("H.264 setup header repetition is unavailable. Use the complete updated PlayKross package so browser viewers can decode the stream.");
             var deadline = DateTimeOffset.UtcNow.AddSeconds(10);
             JsonElement captureState;
             while (!(captureState = await Vendor("GetSafetyStatus", new { }, cancellationToken)).GetProperty("videoReady").GetBoolean())

@@ -8,6 +8,15 @@ namespace JKiller.Windows.Tests;
 public sealed class RoomClientTests
 {
     [Fact]
+    public async Task SecondPublisherConflictExplainsTheCurrentRoomLimit()
+    {
+        var handler = new Handler(Grant) { PublishStatus = HttpStatusCode.Conflict };
+        using var http = new HttpClient(handler); var client = new RoomHttpClient(http);
+        await client.JoinAsync(new("http://localhost:5000"), "invitation", "Player", CancellationToken.None);
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => client.ReservePublishAsync(CancellationToken.None));
+        Assert.Contains("one broadcaster", error.Message, StringComparison.OrdinalIgnoreCase);
+    }
+    [Fact]
     public async Task ExpiredInMemorySessionJoinsAnonymouslyAndGetsAFreshIdentity()
     {
         var clock = new Clock(); var original = Grant with { ExpiresAt = clock.Now.AddMinutes(1) };
@@ -106,6 +115,7 @@ public sealed class RoomClientTests
         public int Authenticated;
         public List<string> AuthenticatedPaths = [];
         public bool RequireNoOrigin;
+        public HttpStatusCode? PublishStatus;
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
         {
             Assert.Empty(request.RequestUri!.Query); Assert.Empty(request.RequestUri.Fragment);
@@ -118,6 +128,7 @@ public sealed class RoomClientTests
             }
             Assert.Equal(JoinGrant.SessionToken, request.Headers.Authorization!.Parameter); Authenticated++;
             AuthenticatedPaths.Add(request.RequestUri.AbsolutePath);
+            if (request.RequestUri.AbsolutePath == "/api/streams" && PublishStatus is { } status) return new(status);
             return new(HttpStatusCode.OK) { Content = request.RequestUri.AbsolutePath == "/api/streams" ? JsonContent.Create(new PublishReservation(Guid.NewGuid(), "generated", new("/media/generated/whip", UriKind.Relative), "media", DateTimeOffset.UtcNow.AddMinutes(1))) : JsonContent.Create(JoinGrant.Room) };
         }
     }

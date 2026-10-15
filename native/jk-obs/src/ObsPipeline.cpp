@@ -57,6 +57,7 @@ void Describe(obs_data_t* response) {
     auto* settings = obs_encoder_get_settings(video);
     obs_data_set_int(response, "bitrateKbps", obs_data_get_int(settings, "bitrate"));
     obs_data_set_int(response, "bFrames", obs_data_get_int(settings, "bf")); obs_data_set_bool(response, "lookahead", obs_data_get_bool(settings, "lookahead"));
+    obs_data_set_bool(response, "repeatHeaders", obs_data_get_bool(settings, "repeat_headers"));
     obs_data_release(settings);
     if (output) {
         obs_data_set_int(response, "sentMediaBytes", static_cast<long long>(obs_output_get_total_bytes(output)));
@@ -79,6 +80,9 @@ void Prepare(obs_data_t* request, obs_data_t* response, void*) {
     auto* settings = obs_data_create();
     obs_data_set_int(settings, "bitrate", bitrate); obs_data_set_int(settings, "max_bitrate", bitrate); obs_data_set_int(settings, "keyint_sec", 1);
     obs_data_set_int(settings, "bf", 0); obs_data_set_bool(settings, "lookahead", false); obs_data_set_string(settings, "rate_control", "CBR");
+    // Match OBS WHIPService::ApplyEncoderSettings before encoder initialization.
+    // Browser readers joining later need SPS/PPS on subsequent keyframes too.
+    obs_data_set_bool(settings, "repeat_headers", true);
     obs_data_set_string(settings, "profile", "high");
     if (id == "obs_x264") { obs_data_set_string(settings, "preset", "veryfast"); obs_data_set_string(settings, "tune", "zerolatency"); obs_data_set_string(settings, "x264opts", "bframes=0:rc-lookahead=0:sync-lookahead=0"); }
     else { obs_data_set_string(settings, "preset", "p4"); obs_data_set_string(settings, "tune", "ll"); obs_data_set_string(settings, "multipass", "disabled"); obs_data_set_bool(settings, "adaptive_quantization", false); }
@@ -95,6 +99,11 @@ void Prepare(obs_data_t* request, obs_data_t* response, void*) {
         obs_encoder_set_video(video, obs_get_video()); obs_encoder_set_audio(audio, obs_get_audio());
         obs_output_set_video_encoder(output, video); obs_output_set_audio_encoder(output, audio, 0);
         initialized = obs_output_initialize_encoders(output, 0);
+        if (initialized) {
+            auto* applied = obs_encoder_get_settings(video);
+            blog(LOG_INFO, "[PlayKross] Shared H.264 encoder initialized: %s; repeat_headers=%s", id.c_str(), obs_data_get_bool(applied, "repeat_headers") ? "true" : "false");
+            obs_data_release(applied);
+        }
     }
     generation = static_cast<std::uint64_t>(requested_generation);
     Describe(response);
