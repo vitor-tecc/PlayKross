@@ -31,6 +31,7 @@ jobs:
           ./tests/setup/HolePunchingChecks.ps1
           ./tests/setup/TemporaryTunnelChecks.ps1
           ./tests/setup/TunnelLifecycleChecks.ps1
+          ./tests/setup/PortablePackageChecks.ps1
   browser:
     name: Browser correctness and production build
     runs-on: ubuntu-latest

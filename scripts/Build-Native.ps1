@@ -1,4 +1,4 @@
-param([switch]$Test,[switch]$Plugin,[switch]$NonInteractive,[switch]$NoInstall)
+param([switch]$Test,[switch]$Plugin,[switch]$NonInteractive,[switch]$NoInstall,[ValidateSet('Debug','Release')][string]$Configuration = 'Debug')
 $ErrorActionPreference = 'Stop'
 $projectRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $vswhere = 'C:/Program Files (x86)/Microsoft Visual Studio/Installer/vswhere.exe'
@@ -49,15 +49,15 @@ if ($Plugin) {
 }
 & $cmake -S (Join-Path $projectRoot 'native/jk-obs') -B $buildRoot -G $generator -A x64 @extra
 if ($LASTEXITCODE -ne 0) { throw 'Native configuration failed.' }
-& $cmake --build $buildRoot --config Debug --parallel
+& $cmake --build $buildRoot --config $Configuration --parallel
 if ($LASTEXITCODE -ne 0) { throw 'Native build failed.' }
 if ($Plugin -and -not $NoInstall) {
-    Copy-Item -LiteralPath (Join-Path $buildRoot 'Debug/jk-obs.dll') -Destination (Join-Path $projectRoot '.runtime/obs/obs-plugins/64bit/jk-obs.dll')
+    Copy-Item -LiteralPath (Join-Path $buildRoot ($Configuration + '/jk-obs.dll')) -Destination (Join-Path $projectRoot '.runtime/obs/obs-plugins/64bit/jk-obs.dll')
 }
 if ($Test) {
     # These three tests start an audio tone or a child-process fixture. Never
     # include them in a code-only pass on the user's occupied machine.
     $selection = if ($NonInteractive) { @('-E','^(AudioLoopback\.|ProcessBinding\.RealProcessExitCannotRebind$|LocalControl\.wrong-owner$)') } else { @() }
-    & $ctest --test-dir $buildRoot -C Debug --output-on-failure @selection
+    & $ctest --test-dir $buildRoot -C $Configuration --output-on-failure @selection
     if ($LASTEXITCODE -ne 0) { throw 'Native tests failed.' }
 }

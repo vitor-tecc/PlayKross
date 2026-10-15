@@ -1,5 +1,7 @@
 # Milestone one results
 
+Update on 2026-10-14: the user requested a portable ZIP, presence cleanup, and explicitly approved restoring experimental application-and-child-process audio while skipping live tests. Audio is off by default; supported Steam Geometry Dash only, direct Discord/browser selection blocked, future-child exclusion not guaranteed. Historical disabled-audio results below describe their measured revisions. No new sound, Discord exclusion, streaming performance or clean-PC launch is claimed for the portable package. See [portable instructions](../setup/portable.md) and [remaining gates](milestone-1-next-steps.md).
+
 **Video-only M1 acceptance: pending.** The user authorized live testing and subsequently deferred audio. Local video smoke and ten-minute GPU-source measurements passed; the optional CGNAT route delivered moving video to the user's iPhone14 Safari over mobile data, Firefox and friends (user reports). External ten-minute numeric performance/stability evidence remains required. Audio restoration/Discord audio-exclusion/calibrated A/V are deferred, not passed. See [review status](milestone-1-review.md) and [remaining work](milestone-1-next-steps.md). Do not advance to capacity or multiple broadcasters yet.
 
 Test system: Windows 11 build 26200, Ryzen 7 7700X / 32 GB RAM, RTX 5070 with driver 617.14; .NET SDK 10.0.401, OBS 32.2.2, MediaMTX 1.21.2, Edge/WebView2 155.0.4283.45. Reported 250 Mbps internet upload was not measured by these loopback tests. NVIDIA device-wide encoder activity included other applications.
