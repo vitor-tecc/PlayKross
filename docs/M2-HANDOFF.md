@@ -2,7 +2,7 @@
 
 M1 has practical acceptance with known limitations as of 2026-10-16. Start with [the current roadmap](ROADMAP.md). This handoff describes the next scope; it is not an approved detailed M2 implementation plan.
 
-The user revised the scope again on 2026-10-16: concurrent broadcasting is now M2's main goal, fixed per-room people limits and eight-viewer testing are removed, and fullscreen bars must hide automatically. The user approved the [revised M2 design](superpowers/specs/2026-10-16-milestone-2-design.md). The [implementation plan](superpowers/plans/2026-10-16-milestone-2.md) is ready for review and execution-method selection; product implementation has not begun.
+The user revised the scope again on 2026-10-16: concurrent broadcasting is now M2's main goal, fixed per-room people limits and eight-viewer testing are removed, and fullscreen bars must hide automatically. The user approved the [revised M2 design](superpowers/specs/2026-10-16-milestone-2-design.md) and [implementation plan](superpowers/plans/2026-10-16-milestone-2.md), selecting subagent-driven execution. Implementation is in progress; task review and functional verification remain required.
 
 ## Git baseline and attribution
 
@@ -21,7 +21,7 @@ The earlier required one/four/eight-viewer capacity matrix, external eight-viewe
 
 Working broadcast audio is also required for M2 acceptance. An experimental selector or silent audio track does not satisfy this requirement. See the revised audio requirements below.
 
-Continue from the approved M2 design and review the small-step implementation plan with validation criteria. Obtain plan approval and an execution-method selection, then implement test-first using Superpowers with review and verification. Do not restart design or M1 work without a relevant requirement change, regression or unresolved question.
+Continue the approved small-step implementation plan using Superpowers subagent-driven development, test-first changes, review and verification. Do not restart design, plan approval or M1 work without a relevant requirement change, regression or unresolved question.
 
 ## Revised M2 audio requirements (2026-10-16)
 

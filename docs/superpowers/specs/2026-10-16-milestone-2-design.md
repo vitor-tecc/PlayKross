@@ -2,7 +2,7 @@
 
 Date: 2026-10-16 (America/Sao_Paulo)
 
-Status: Approved by the user on 2026-10-16. The user replaced the earlier viewer-capacity milestone with concurrent broadcasting, removed the room-size cap and eight-viewer testing requirement, and requested fullscreen controls that hide automatically. This document replaces the previous proposal in this file. The [implementation plan](../plans/2026-10-16-milestone-2.md) awaits review and execution-method selection; product implementation has not begun.
+Status: Approved by the user on 2026-10-16. The user replaced the earlier viewer-capacity milestone with concurrent broadcasting, removed the room-size cap and eight-viewer testing requirement, and requested fullscreen controls that hide automatically. This document replaces the previous proposal in this file. The [implementation plan](../plans/2026-10-16-milestone-2.md) is approved for subagent-driven execution; implementation is in progress.
 
 Baseline: M1 integration `1ec3c3d`; documentation work continues on `codex/m2-design` in the existing project folder. Use the repository-local contributor identity and the GPT-6.1 Sol agent policy in [AGENTS.md](../../../AGENTS.md).
 
