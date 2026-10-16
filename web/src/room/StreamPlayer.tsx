@@ -4,8 +4,8 @@ import { WhepSession } from "../media/WhepSession";
 import { observePlayer, type ViewerDiagnostics } from "../media/playerDiagnostics";
 import { DiagnosticsPanel } from "./DiagnosticsPanel";
 import { useFullscreenChrome } from "./useFullscreenChrome";
-export interface StreamPlayerProps { streamId: string; nickname: string; getPlayback: (id: string, signal: AbortSignal) => Promise<PlaybackGrant> }
-export function StreamPlayer({ streamId, nickname, getPlayback }: StreamPlayerProps) {
+export interface StreamPlayerProps { streamId: string; nickname: string; getPlayback: (id: string, signal: AbortSignal) => Promise<PlaybackGrant>; audioBlocked?: boolean }
+export function StreamPlayer({ streamId, nickname, getPlayback, audioBlocked = false }: StreamPlayerProps) {
   const panel = useRef<HTMLDivElement>(null); const video = useRef<HTMLVideoElement>(null);
   const [watch, setWatch] = useState(false); const [retry, setRetry] = useState(0); const [sound, setSound] = useState(false);
   const [status, setStatus] = useState("Ready to watch"); const [error, setError] = useState(false); const [fullscreen, setFullscreen] = useState(false);
@@ -62,7 +62,7 @@ export function StreamPlayer({ streamId, nickname, getPlayback }: StreamPlayerPr
   }, [streamId, getPlayback, watch, retry]);
   const play = async (enableSound = false) => {
     if (!video.current) return;
-    if (enableSound) { setSound(!sound); video.current.muted = sound; }
+    if (enableSound && !audioBlocked) { setSound(!sound); video.current.muted = sound; }
     try { await video.current.play(); } catch { setStatus("Playback was blocked. Press Play again to allow it."); }
   };
   const toggleFullscreen = async () => {
@@ -71,12 +71,13 @@ export function StreamPlayer({ streamId, nickname, getPlayback }: StreamPlayerPr
   };
   return <div className={`stream-card${chrome.visible ? "" : " fullscreen-chrome-hidden"}`} ref={panel} data-stream-id={streamId} {...chrome.surfaceProps}>
     <div className="stream-heading stream-overlay stream-overlay-top" {...chrome.overlayProps}><strong>{nickname}</strong><span>{status === "Playing" ? "Live" : "Stream"}</span></div>
-    <div className="video-surface"><video ref={video} autoPlay playsInline muted={!sound} aria-label={`${nickname}'s stream`} onPlaying={() => setStatus("Playing")} onWaiting={() => watch && setStatus("Waiting for frames")} /></div>
+    <div className="video-surface"><video ref={video} autoPlay playsInline muted={audioBlocked || !sound} aria-label={`${nickname}'s stream`} onPlaying={() => setStatus("Playing")} onWaiting={() => watch && setStatus("Waiting for frames")} /></div>
     <div className="stream-overlay stream-overlay-bottom" {...chrome.overlayProps}>
     <div className="stream-status" role="status">{status}</div>
+    {audioBlocked && <div className="stream-status" role="status">Room sound is muted to prevent recapture. Stop system audio sharing to restore sound, or use application audio.</div>}
     <div className="stream-controls">
       <button onClick={() => setWatch(!watch)}>{watch ? "Stop watching" : "Watch stream"}</button>
-      {watch && <><button onClick={() => { void play(); }}>Play</button><button onClick={() => { void play(true); }}>{sound ? "Mute" : "Enable sound"}</button></>}
+      {watch && <><button onClick={() => { void play(); }}>Play</button><button disabled={audioBlocked} title={audioBlocked ? "Stop system audio sharing to restore room sound." : undefined} onClick={() => { void play(true); }}>{sound && !audioBlocked ? "Mute" : "Enable sound"}</button></>}
       {error && <button onClick={() => setRetry(value => value + 1)}>Retry</button>}
       <button onClick={() => { void toggleFullscreen(); }}>{fullscreen ? "Return to room" : "Fullscreen"}</button>
     </div>

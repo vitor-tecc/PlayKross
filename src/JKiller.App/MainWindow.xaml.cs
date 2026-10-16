@@ -11,6 +11,7 @@ public partial class MainWindow : Window
 {
     private readonly HttpClient http = new(new HttpClientHandler { AllowAutoRedirect = false, UseCookies = false });
     private MainWindowViewModel? model;
+    private readonly JKiller.Windows.Viewing.PlaybackAudioGate playbackAudioGate = new();
     private RoomHttpClient? roomClient;
     private string root = "";
     private Window? viewingWindow;
@@ -25,7 +26,7 @@ public partial class MainWindow : Window
             for (var directory = new DirectoryInfo(AppContext.BaseDirectory); directory is not null; directory = directory.Parent)
                 if (File.Exists(Path.Combine(directory.FullName, "config/dependencies.json"))) { root = directory.FullName; break; }
         }
-        roomClient = new(http); model = new(root, roomClient); DataContext = model;
+        roomClient = new(http); model = new(root, roomClient, playbackAudioGate); DataContext = model;
         model.PropertyChanged += (_, args) => Dispatcher.InvokeAsync(() =>
         {
             if (args.PropertyName == nameof(model.CaptureLive)) SetControls();
@@ -113,7 +114,7 @@ public partial class MainWindow : Window
     private async void WatchClick(object sender, RoutedEventArgs args) => await Run(async token =>
     {
         var parsed = new Uri(model!.RoomLink); viewingWindow?.Close();
-        var viewer = new Viewing.RoomWebView(root, roomClient!);
+        var viewer = new Viewing.RoomWebView(root, roomClient!, playbackAudioGate);
         var window = new Window { Title = "PlayKross • Room viewer", Width = 1000, Height = 740, Content = viewer, Owner = this }; viewingWindow = window;
         var previousState = WindowState.Normal; var previousStyle = WindowStyle.SingleBorderWindow;
         viewer.FullscreenChanged += (_, _) => { if (viewer.IsFullscreen) { previousState = window.WindowState; previousStyle = window.WindowStyle; window.WindowStyle = WindowStyle.None; window.WindowState = WindowState.Maximized; } else { window.WindowStyle = previousStyle; window.WindowState = previousState; } };

@@ -230,14 +230,110 @@ public sealed class ObsMediaEngineTests
         await engine.StopAsync(CancellationToken.None);
     }
 
+    [Fact]
+    public async Task SystemPrepareAwaitsMuteBeforeCapture()
+    {
+        var events = new List<string>(); var playback = new JKiller.Windows.Viewing.PlaybackAudioGate();
+        var muted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously); var continueMute = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var viewer = playback.Register(async (blocked, _) => { if (blocked) { muted.TrySetResult(); await continueMute.Task; } events.Add(blocked ? "mute" : "unmute"); });
+        var helper = new FakeHelper { Events = events }; var rpc = new FakeRpc { Events = events };
+        await using var engine = new ObsMediaEngine(helper, (_, _) => Task.FromResult<IObsRpcClient>(rpc), playbackAudioGate: playback);
+        var preparing = engine.PrepareAsync(SystemRequest, CancellationToken.None);
+        await muted.Task.WaitAsync(TimeSpan.FromSeconds(2)); Assert.Equal(0, helper.Starts); Assert.Null(rpc.AudioKind);
+        continueMute.SetResult(); await preparing; await engine.StopAsync(CancellationToken.None);
+        Assert.True(events.IndexOf("mute") < events.IndexOf("helper start"));
+        Assert.True(events.IndexOf("helper start") < events.IndexOf("capture"));
+        Assert.True(events.IndexOf("helper stop") < events.LastIndexOf("unmute"));
+    }
+    [Theory]
+    [InlineData(false)] [InlineData(true)]
+    public async Task FailureAndStopReleaseMuteOnlyAfterHelperStops(bool failedStart)
+    {
+        var playback = new JKiller.Windows.Viewing.PlaybackAudioGate(); var events = new List<string>();
+        using var viewer = playback.Register((blocked, _) => { events.Add(blocked ? "mute" : "unmute"); return Task.CompletedTask; });
+        var helper = new FakeHelper { Events = events }; var rpc = new FakeRpc { HandshakeFailed = failedStart };
+        await using var engine = new ObsMediaEngine(helper, (_, _) => Task.FromResult<IObsRpcClient>(rpc), playbackAudioGate: playback);
+        await engine.PrepareAsync(SystemRequest, CancellationToken.None); Assert.True(playback.IsBlocked);
+        if (failedStart) await Assert.ThrowsAsync<InvalidOperationException>(() => engine.StartAsync(new("http://localhost/whip"), "credential", CancellationToken.None));
+        else await engine.StopAsync(CancellationToken.None);
+        Assert.False(playback.IsBlocked); Assert.True(events.IndexOf("helper stop") < events.LastIndexOf("unmute"));
+        // A new preparation must receive a fresh lease; duplicate cleanup cannot release it.
+        rpc.HandshakeFailed = false; await engine.PrepareAsync(SystemRequest, CancellationToken.None); Assert.True(playback.IsBlocked);
+    }
+    [Fact]
+    public async Task CancelledCleanupStillStopsHelper()
+    {
+        var playback = new JKiller.Windows.Viewing.PlaybackAudioGate(); var helper = new FakeHelper(); var rpc = new FakeRpc { CancelOnArm = true };
+        using var cancellation = new CancellationTokenSource(); rpc.Cancellation = cancellation;
+        await using var engine = new ObsMediaEngine(helper, (_, _) => Task.FromResult<IObsRpcClient>(rpc), playbackAudioGate: playback);
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => engine.PrepareAsync(SystemRequest, cancellation.Token));
+        Assert.Equal(1, helper.Stops); Assert.False(helper.StopTokenCancelled); Assert.False(playback.IsBlocked);
+    }
+    [Fact]
+    public async Task RpcDisposeFailureCannotSkipHelperStop()
+    {
+        var playback = new JKiller.Windows.Viewing.PlaybackAudioGate(); var helper = new FakeHelper(); var rpc = new FakeRpc { FailDispose = true };
+        await using var engine = new ObsMediaEngine(helper, (_, _) => Task.FromResult<IObsRpcClient>(rpc), playbackAudioGate: playback);
+        await engine.PrepareAsync(SystemRequest, CancellationToken.None);
+        await Assert.ThrowsAsync<IOException>(() => engine.StopAsync(CancellationToken.None));
+        Assert.Equal(1, helper.Stops); Assert.False(playback.IsBlocked);
+    }
+    [Fact]
+    public async Task FailedHelperStopRetainsMuteAndRefusesReplacementUntilReleaseConfirmed()
+    {
+        var playback = new JKiller.Windows.Viewing.PlaybackAudioGate(); var helper = new FakeHelper { FailStop = true }; var rpc = new FakeRpc();
+        await using var engine = new ObsMediaEngine(helper, (_, _) => Task.FromResult<IObsRpcClient>(rpc), playbackAudioGate: playback);
+        await engine.PrepareAsync(SystemRequest, CancellationToken.None);
+        await Assert.ThrowsAsync<IOException>(() => engine.StopAsync(CancellationToken.None)); Assert.True(playback.IsBlocked);
+        await Assert.ThrowsAnyAsync<Exception>(() => engine.PrepareAsync(SystemRequest, CancellationToken.None)); Assert.Equal(1, helper.Starts);
+        helper.FailStop = false; await engine.StopAsync(CancellationToken.None); Assert.False(playback.IsBlocked);
+    }
+    [Fact]
+    public async Task ApplicationCaptureDoesNotMuteViewers()
+    {
+        var playback = new JKiller.Windows.Viewing.PlaybackAudioGate();
+        await using var engine = new ObsMediaEngine(new FakeHelper(), (_, _) => Task.FromResult<IObsRpcClient>(new FakeRpc()), playbackAudioGate: playback);
+        await engine.PrepareAsync(Request with { Audio = new(AudioMode.Application, Request.Video.Process) }, CancellationToken.None);
+        Assert.False(playback.IsBlocked);
+    }
+    [Fact]
+    public async Task FailedViewerMutePreventsHelperLaunch()
+    {
+        var playback = new JKiller.Windows.Viewing.PlaybackAudioGate(); var helper = new FakeHelper();
+        using var viewer = playback.Register((blocked, _) => blocked ? Task.FromException(new IOException("mute failed")) : Task.CompletedTask);
+        await using var engine = new ObsMediaEngine(helper, (_, _) => Task.FromResult<IObsRpcClient>(new FakeRpc()), playbackAudioGate: playback);
+        await Assert.ThrowsAsync<IOException>(() => engine.PrepareAsync(SystemRequest, CancellationToken.None));
+        Assert.Equal(0, helper.Starts); Assert.False(playback.IsBlocked);
+    }
+    [Fact]
+    public async Task SafetyFaultStopsHelperBeforeUnmutingAndDoesNotReleaseOtherEngineLease()
+    {
+        var playback = new JKiller.Windows.Viewing.PlaybackAudioGate(); var events = new List<string>();
+        using var viewer = playback.Register((blocked, _) => { events.Add(blocked ? "mute" : "unmute"); return Task.CompletedTask; });
+        var rpc = new FakeRpc(); var helper = new FakeHelper { Events = events };
+        await using var faulting = new ObsMediaEngine(helper, (_, _) => Task.FromResult<IObsRpcClient>(rpc), playbackAudioGate: playback);
+        await using var other = new ObsMediaEngine(new FakeHelper(), (_, _) => Task.FromResult<IObsRpcClient>(new FakeRpc()), playbackAudioGate: playback);
+        await faulting.PrepareAsync(SystemRequest, CancellationToken.None); await other.PrepareAsync(SystemRequest, CancellationToken.None);
+        var fault = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        faulting.SafetyFault += (_, _) => fault.TrySetResult(); rpc.UnarmedReason = "video_source_lost";
+        await fault.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        // Wait for the same serialized cleanup after the asynchronous heartbeat fault.
+        await faulting.StopAsync(CancellationToken.None);
+        Assert.True(playback.IsBlocked); Assert.Equal("helper stop", events[^1]);
+        await other.StopAsync(CancellationToken.None); Assert.False(playback.IsBlocked); Assert.Equal("unmute", events[^1]);
+    }
+    private static BroadcastRequest SystemRequest => Request with { Video = new("display", SourceKind.Monitor, 8, null, "Display"), Audio = new(AudioMode.SystemOutput, RenderEndpointId: "render:selected") };
     private sealed class FakeHelper : IOwnedObsProcess
     {
         public int Stops, Starts;
-        public Task<OwnedEngineHandle> StartAsync(CancellationToken cancellationToken) { Starts++; return Task.FromResult(new OwnedEngineHandle(new(1, 2, "obs64.exe"), "test", new(100, 200, "JKiller.exe"))); }
-        public Task StopAsync(CancellationToken cancellationToken) { Stops++; return Task.CompletedTask; }
+        public List<string>? Events; public bool FailStop, StopTokenCancelled;
+        public Task<OwnedEngineHandle> StartAsync(CancellationToken cancellationToken) { Starts++; Events?.Add("helper start"); return Task.FromResult(new OwnedEngineHandle(new(1, 2, "obs64.exe"), "test", new(100, 200, "JKiller.exe"))); }
+        public Task StopAsync(CancellationToken cancellationToken) { Stops++; StopTokenCancelled = cancellationToken.IsCancellationRequested; if (FailStop) throw new IOException("helper stop failed"); Events?.Add("helper stop"); return Task.CompletedTask; }
     }
-    private sealed class FakeRpc : IObsRpcClient
+    private sealed class FakeRpc : IObsRpcClient, IAsyncDisposable
     {
+        public List<string>? Events; public bool FailDispose;
+        public ValueTask DisposeAsync() => FailDispose ? ValueTask.FromException(new IOException("RPC dispose failed")) : ValueTask.CompletedTask;
         public bool FailNvenc, WrongReadback, DelayStart, Publishing, HandshakeFailed;
         public bool VideoReady = true;
         public bool RepeatHeaders = true;
@@ -259,6 +355,7 @@ public sealed class ObsMediaEngineTests
         public TaskCompletionSource CompleteStart = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public async Task<JsonElement> RequestAsync(string requestType, JsonElement data, CancellationToken cancellationToken)
         {
+            if (requestType == "CreateInput") Events?.Add("capture");
             if (requestType == "SetVideoSettings") videoOutput = data.Clone();
             if (requestType == "CreateInput" && data.GetProperty("inputName").GetString() == "JK Video") { VideoSettings = data.GetProperty("inputSettings").Clone(); VideoKind = data.GetProperty("inputKind").GetString(); }
             if (requestType == "CreateInput" && data.GetProperty("inputName").GetString() != "JK Video") { AudioSettings = data.GetProperty("inputSettings").Clone(); AudioKind = data.GetProperty("inputKind").GetString(); }

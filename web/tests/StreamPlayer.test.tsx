@@ -22,6 +22,33 @@ beforeEach(() => {
   document.exitFullscreen = vi.fn(async () => { Object.defineProperty(document, "fullscreenElement", { configurable: true, value: null }); document.dispatchEvent(new Event("fullscreenchange")); });
 });
 afterEach(() => { cleanup(); document.head.querySelectorAll("style").forEach(style => style.remove()); vi.restoreAllMocks(); });
+it("BlockedPlayerCannotEnableSound", async () => {
+  const user = userEvent.setup(); const getPlayback = vi.fn(async () => ({ streamId: "a" }) as PlaybackGrant);
+  const view = render(<StreamPlayer streamId="a" nickname="Alice" getPlayback={getPlayback} audioBlocked />);
+  await user.click(screen.getByRole("button", { name: "Watch stream" }));
+  const button = screen.getByRole("button", { name: "Enable sound" }) as HTMLButtonElement;
+  expect(button.disabled).toBe(true); await user.click(button);
+  expect(view.container.querySelector("video")!.muted).toBe(true);
+  expect(screen.getByText(/Stop system audio sharing/)).toBeDefined();
+  view.rerender(<StreamPlayer streamId="a" nickname="Alice" getPlayback={getPlayback} audioBlocked={false} />);
+  expect(view.container.querySelector("video")!.muted).toBe(true); expect(button.disabled).toBe(false);
+});
+it("UnblockingRestoresSoundChoice", async () => {
+  const user = userEvent.setup(); const getPlayback = vi.fn(async () => ({ streamId: "a" }) as PlaybackGrant);
+  const player = (blocked: boolean) => <StreamPlayer streamId="a" nickname="Alice" getPlayback={getPlayback} audioBlocked={blocked} />;
+  const view = render(player(false));
+  await user.click(screen.getByRole("button", { name: "Watch stream" }));
+  await user.click(screen.getByRole("button", { name: "Enable sound" }));
+  const video = view.container.querySelector("video")!; expect(video.muted).toBe(false);
+  await user.click(screen.getByRole("button", { name: "Fullscreen" }));
+  const fullscreenCard = document.fullscreenElement;
+  view.rerender(player(true)); expect(video.muted).toBe(true);
+  view.rerender(player(true)); expect(video.muted).toBe(true);
+  view.rerender(player(false)); expect(video.muted).toBe(false);
+  expect(document.fullscreenElement).toBe(fullscreenCard);
+  expect(view.container.querySelector("video")).toBe(video); expect(mocks.sessions).toHaveLength(1);
+  expect(mocks.sessions[0]!.close).not.toHaveBeenCalled(); expect(video.srcObject).toBe(mocks.media);
+});
 it("FullscreenReturnsToRoomAndRenamePreservesThePlayingStream", async () => {
   const user = userEvent.setup(); const getPlayback = vi.fn(async () => ({ streamId: "stream" }) as PlaybackGrant);
   const view = render(<StreamPlayer streamId="stream" nickname="Alice" getPlayback={getPlayback} />);

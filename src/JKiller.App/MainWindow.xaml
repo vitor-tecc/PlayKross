@@ -16,7 +16,7 @@
       <TextBlock Text="System render output — fixed until you select another output"/>
       <ComboBox x:Name="AudioOutput" ItemsSource="{Binding AudioOutputs}" DisplayMemberPath="DisplayName" SelectionChanged="AudioOutputChanged" IsEnabled="False"/>
       <TextBlock TextWrapping="Wrap" Text="{Binding AudioEligibility.Reason}"/>
-      <TextBlock Margin="0,8,0,0" TextWrapping="Wrap" Text="Application audio captures the selected app and its child processes. System output captures mixed playback from the selected device, including Discord and incoming room audio; avoid feedback. No microphone is captured. Initialized capture and counters do not prove viewer audibility."/>
+      <TextBlock Margin="0,8,0,0" TextWrapping="Wrap" Text="Application audio captures the selected app and its child processes. System output captures mixed playback from the selected device, including Discord. In-app room sound is muted during system sharing. External browsers and other playback can still be captured; route them to a different output or choose application audio. No microphone is captured. Initialized capture and counters do not prove viewer audibility."/>
       <CheckBox Margin="0,12,0,0" IsChecked="{Binding AllowCpuFallback}" Content="Allow CPU encoding if NVENC initialization fails (may cost game performance)"/>
     </StackPanel>
     <StackPanel x:Name="SettingsControls"><TextBlock Margin="0,20,0,6" FontWeight="SemiBold" Text="Requested output settings"/>

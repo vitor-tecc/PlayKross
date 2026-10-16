@@ -3,11 +3,14 @@ using JKiller.Core.Media;
 using JKiller.Core.Settings;
 using System.Globalization;
 using System.Text.Json;
+using JKiller.Windows.Viewing;
 
 namespace JKiller.Windows.Obs;
 
-public sealed class ObsMediaEngine(IOwnedObsProcess helper, Func<OwnedEngineHandle, CancellationToken, Task<IObsRpcClient>> connect, bool allowCpuFallback = false) : IMediaEngine, IAsyncDisposable
+public sealed class ObsMediaEngine(IOwnedObsProcess helper, Func<OwnedEngineHandle, CancellationToken, Task<IObsRpcClient>> connect, bool allowCpuFallback = false, IPlaybackAudioGate? playbackAudioGate = null) : IMediaEngine, IAsyncDisposable
 {
+    private readonly IPlaybackAudioGate playbackGate = playbackAudioGate ?? new PlaybackAudioGate();
+    private IAsyncDisposable? playbackLease;
     private readonly SemaphoreSlim gate = new(1);
     private IObsRpcClient? rpc;
     private AppliedMediaSettings? prepared;
@@ -18,8 +21,8 @@ public sealed class ObsMediaEngine(IOwnedObsProcess helper, Func<OwnedEngineHand
     private volatile bool connected;
     public event EventHandler<Exception>? SafetyFault;
 
-    public ObsMediaEngine(OwnedObsProcess helper, bool allowCpuFallback = false)
-        : this(helper, async (handle, token) => await ObsRpcClient.ConnectAsync(handle.PipeName, handle.Identity, token), allowCpuFallback) { }
+    public ObsMediaEngine(OwnedObsProcess helper, bool allowCpuFallback = false, IPlaybackAudioGate? playbackAudioGate = null)
+        : this(helper, async (handle, token) => await ObsRpcClient.ConnectAsync(handle.PipeName, handle.Identity, token), allowCpuFallback, playbackAudioGate) { }
 
     public async Task<AppliedMediaSettings> PrepareAsync(BroadcastRequest request, CancellationToken cancellationToken)
     {
@@ -27,13 +30,16 @@ public sealed class ObsMediaEngine(IOwnedObsProcess helper, Func<OwnedEngineHand
         var current = Interlocked.Read(ref epoch);
         try
         {
-            if (prepared is not null || rpc is not null) throw new InvalidOperationException("Stop the current capture before preparing another selection.");
+            if (prepared is not null || rpc is not null || playbackLease is not null) throw new InvalidOperationException("Stop the current capture before preparing another selection.");
             var validation = StreamSettings.Validate(request.Settings);
             if (!validation.IsValid) throw new ArgumentException(string.Join(" ", validation.Errors), nameof(request));
             var audioEligibility = JKiller.Core.Capture.AudioPolicy.EvaluateSelection(request.Audio, request.Video.Kind, Environment.ProcessId);
             if (!audioEligibility.Allowed) throw new InvalidOperationException(audioEligibility.Reason);
             if (request.Video.NativeHandle == 0 || (request.Video.Kind == SourceKind.Window && request.Video.Process is null))
                 throw new InvalidOperationException("Select an identifiable live display or window.");
+            // Sources begin capture during CreateInput. Await native viewer mute before even
+            // starting the helper, rather than waiting for the later StartPipeline operation.
+            if (request.Audio.Mode == AudioMode.SystemOutput) playbackLease = await playbackGate.AcquireAsync(cancellationToken);
             var handle = await helper.StartAsync(cancellationToken);
             rpc = await connect(handle, cancellationToken);
             var capabilities = await Vendor("GetCapabilities", new { }, cancellationToken);
@@ -212,7 +218,12 @@ public sealed class ObsMediaEngine(IOwnedObsProcess helper, Func<OwnedEngineHand
             }
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested) { }
-        catch (Exception error) { Interlocked.Increment(ref epoch); SafetyFault?.Invoke(this, error); _ = StopAsync(CancellationToken.None); }
+        catch (Exception error) { Interlocked.Increment(ref epoch); SafetyFault?.Invoke(this, error); _ = StopAfterFault(); }
+    }
+    private async Task StopAfterFault()
+    {
+        try { await StopAsync(CancellationToken.None); }
+        catch (Exception error) { SafetyFault?.Invoke(this, error); }
     }
     private async Task Cleanup()
     {
@@ -222,11 +233,21 @@ public sealed class ObsMediaEngine(IOwnedObsProcess helper, Func<OwnedEngineHand
         heartbeatCancellation?.Dispose(); heartbeatCancellation = null; heartbeat = null; prepared = null;
         try { if (rpc is not null) await Vendor("Disarm", new { }, CancellationToken.None); }
         catch (Exception) { /* Killing this owned helper remains the final safety boundary. */ }
-        finally
+        Exception? disposalError = null;
+        var client = rpc; rpc = null;
+        try { if (client is IAsyncDisposable disposable) await disposable.DisposeAsync(); }
+        catch (Exception error) { disposalError = error; }
+        try { await helper.StopAsync(CancellationToken.None); }
+        catch (Exception error)
         {
-            if (rpc is IAsyncDisposable disposable) await disposable.DisposeAsync();
-            rpc = null; await helper.StopAsync(CancellationToken.None);
+            // Unknown helper lifetime: retain this operation's mute lease for a later retry.
+            if (disposalError is not null) throw new AggregateException(disposalError, error);
+            throw;
         }
+        var lease = Interlocked.Exchange(ref playbackLease, null);
+        try { if (lease is not null) await lease.DisposeAsync(); }
+        catch (Exception error) { if (disposalError is not null) throw new AggregateException(disposalError, error); throw; }
+        if (disposalError is not null) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(disposalError).Throw();
     }
     public async ValueTask DisposeAsync() => await StopAsync(CancellationToken.None);
 }

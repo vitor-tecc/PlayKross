@@ -8,9 +8,24 @@ using System.Security.AccessControl;
 using System.Security.Principal;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 namespace JKiller.App.Viewing;
-public sealed class RoomWebView(string root, RoomHttpClient room) : Grid, IDisposable
+public sealed class RoomWebView : Grid, IDisposable
 {
+    private readonly string root;
+    private readonly RoomHttpClient room;
+    private readonly PlaybackAudioGate playbackGate;
+    private readonly IDisposable playbackRegistration;
+    private bool playbackBlocked;
+    private readonly SemaphoreSlim playbackScriptGate = new(1);
+    private string? playbackScriptId;
+    private readonly TextBlock playbackNotice = new() { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(12), Background = System.Windows.Media.Brushes.White, Foreground = System.Windows.Media.Brushes.Black, VerticalAlignment = VerticalAlignment.Top, Visibility = Visibility.Collapsed };
+    public RoomWebView(string root, RoomHttpClient room, PlaybackAudioGate playbackAudioGate)
+    {
+        this.root = root; this.room = room; playbackGate = playbackAudioGate;
+        playbackBlocked = playbackGate.IsBlocked;
+        playbackRegistration = playbackGate.Register(SetPlaybackAudioBlockedAsync);
+    }
     private WebView2? browser;
     private Uri? currentRoom;
     private RoomWebViewPolicy? policy;
@@ -29,20 +44,24 @@ public sealed class RoomWebView(string root, RoomHttpClient room) : Grid, IDispo
         try
         {
             if (string.IsNullOrEmpty(CoreWebView2Environment.GetAvailableBrowserVersionString())) throw new InvalidOperationException("Install Microsoft's Evergreen WebView2 Runtime to use the in-app viewer. Browser viewing remains available.");
-            browser?.Dispose(); Children.Clear(); currentRoom = roomUri; policy = new(parsed.Origin);
+            browser?.Dispose(); Children.Clear(); playbackScriptId = null; currentRoom = roomUri; policy = new(parsed.Origin);
             var profile = Path.Combine(root, ".runtime/webview", Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(parsed.Origin.AbsoluteUri))));
             var info = Directory.CreateDirectory(profile); var acl = new DirectorySecurity(); acl.SetAccessRuleProtection(true, false);
             var user = WindowsIdentity.GetCurrent().User ?? throw new InvalidOperationException("Windows identity unavailable.");
             foreach (var sid in new[] { user, new SecurityIdentifier(WellKnownSidType.LocalSystemSid, null) }) acl.AddAccessRule(new(sid, FileSystemRights.FullControl, InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit, PropagationFlags.None, AccessControlType.Allow));
             info.SetAccessControl(acl);
-            var created = new WebView2(); browser = created; Children.Add(created);
+            var created = new WebView2(); browser = created; Children.Add(created); Children.Add(playbackNotice); Panel.SetZIndex(playbackNotice, 1);
             var environment = await CoreWebView2Environment.CreateAsync(null, profile);
             token.ThrowIfCancellationRequested(); if (disposed) { created.Dispose(); return; }
             await created.EnsureCoreWebView2Async(environment);
             token.ThrowIfCancellationRequested(); if (disposed) { created.Dispose(); return; }
             var core = created.CoreWebView2; core.Settings.AreHostObjectsAllowed = false; core.Settings.IsWebMessageEnabled = false;
+            playbackBlocked = playbackGate.IsBlocked;
+            core.IsMuted = playbackBlocked;
+            core.IsMutedChanged += (_, _) => { if (playbackBlocked && !disposed && core.IsMuted == false) core.IsMuted = true; };
             core.Settings.AreDevToolsEnabled = false; core.Settings.AreDefaultContextMenusEnabled = false;
-            core.NavigationStarting += (_, args) => args.Cancel = !Uri.TryCreate(args.Uri, UriKind.Absolute, out var uri) || !policy.AllowsNavigation(uri);
+            core.NavigationStarting += (_, args) => { core.IsMuted = playbackBlocked; args.Cancel = !Uri.TryCreate(args.Uri, UriKind.Absolute, out var uri) || !policy.AllowsNavigation(uri); };
+            core.NavigationCompleted += async (_, _) => { try { await RefreshPlaybackScriptAsync(core); } catch (Exception) { ShowPlaybackNotice(); } };
             core.FrameNavigationStarting += (_, args) => args.Cancel = !Uri.TryCreate(args.Uri, UriKind.Absolute, out var uri) || !policy.AllowsNavigation(uri);
             core.NewWindowRequested += (_, args) => args.Handled = !policy.AllowsPopup;
             core.PermissionRequested += (_, args) => { args.State = CoreWebView2PermissionState.Deny; args.SavesInProfile = false; args.Handled = true; };
@@ -53,9 +72,60 @@ public sealed class RoomWebView(string root, RoomHttpClient room) : Grid, IDispo
             var cookie = core.CookieManager.CreateCookie("jk-session", session.SessionToken, parsed.Origin.Host, "/");
             cookie.IsHttpOnly = true; cookie.IsSecure = parsed.Origin.Scheme == "https"; cookie.SameSite = CoreWebView2CookieSameSiteKind.Strict; cookie.Expires = session.ExpiresAt.UtcDateTime;
             core.CookieManager.AddOrUpdateCookie(cookie);
+            await RefreshPlaybackScriptAsync(core);
+            token.ThrowIfCancellationRequested(); if (disposed) return;
+            // Async initialization can overlap acquire/release; consult the shared state once
+            // more immediately before navigation. Native mute is the authoritative boundary.
+            playbackBlocked = playbackGate.IsBlocked; core.IsMuted = playbackBlocked;
             core.Navigate(roomUri.AbsoluteUri);
         }
         finally { opening = false; }
+    }
+    public Task SetPlaybackAudioBlockedAsync(bool blocked, CancellationToken token) => Dispatcher.InvokeAsync(async () =>
+    {
+        token.ThrowIfCancellationRequested(); if (disposed) return;
+        playbackBlocked = blocked;
+        if (browser?.CoreWebView2 is not { } core) return;
+        // A native mute failure propagates to AcquireAsync and prevents capture startup.
+        core.IsMuted = blocked;
+        await RefreshPlaybackScriptAsync(core);
+    }, System.Windows.Threading.DispatcherPriority.Send, token).Task.Unwrap();
+
+    private async Task RefreshPlaybackScriptAsync(CoreWebView2 core)
+    {
+        await playbackScriptGate.WaitAsync();
+        try
+        {
+            if (disposed || browser?.CoreWebView2 != core) return;
+            var script = PlaybackScript(playbackBlocked);
+            var previous = playbackScriptId;
+            var added = await core.AddScriptToExecuteOnDocumentCreatedAsync(script);
+            if (disposed || browser?.CoreWebView2 != core) return;
+            playbackScriptId = added;
+            if (previous is not null) core.RemoveScriptToExecuteOnDocumentCreated(previous);
+            var result = await core.ExecuteScriptAsync(script);
+            // Before the first navigation, about:blank is expected and receives no room flag.
+            if (currentRoom is not null && Uri.TryCreate(core.Source, UriKind.Absolute, out var source) && policy?.AllowsNavigation(source) == true && result != "true")
+                throw new InvalidOperationException("Viewer sound controls could not be updated.");
+            playbackNotice.Visibility = Visibility.Collapsed;
+        }
+        catch (Exception) { ShowPlaybackNotice(); }
+        finally { playbackScriptGate.Release(); }
+    }
+
+    private string PlaybackScript(bool blocked)
+    {
+        var origin = JsonSerializer.Serialize(room.Origin!.GetLeftPart(UriPartial.Authority));
+        var value = blocked ? "true" : "false";
+        return $"(()=>{{if(location.origin!=={origin})return false;Object.defineProperty(window,'playkrossPlaybackAudioBlocked',{{value:{value},configurable:true}});window.dispatchEvent(new CustomEvent('playkross-playback-audio-blocked',{{detail:{value}}}));return true;}})()";
+    }
+    private void ShowPlaybackNotice()
+    {
+        if (disposed) return;
+        playbackNotice.Text = playbackBlocked
+            ? "Room sound is muted during system audio sharing. Reload the viewer to refresh sound controls, or stop system audio sharing to restore sound."
+            : "Viewer sound controls could not be refreshed. Reload the viewer to restore your sound choice.";
+        playbackNotice.Visibility = Visibility.Visible;
     }
     private void ShowRecovery(string message)
     {
@@ -65,5 +135,5 @@ public sealed class RoomWebView(string root, RoomHttpClient room) : Grid, IDispo
         retry.Click += async (_, _) => { try { if (currentRoom is not null) await OpenRoomAsync(currentRoom, CancellationToken.None); } catch (Exception error) { MessageBox.Show(error.Message, "PlayKross viewer"); } };
         panel.Children.Add(retry); Children.Clear(); Children.Add(panel);
     }
-    public void Dispose() { disposed = true; browser?.Dispose(); browser = null; Children.Clear(); }
+    public void Dispose() { disposed = true; playbackRegistration.Dispose(); browser?.Dispose(); browser = null; Children.Clear(); }
 }

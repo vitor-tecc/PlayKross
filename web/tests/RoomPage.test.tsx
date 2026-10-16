@@ -4,7 +4,7 @@ import type { RoomSnapshot } from "../src/api/contracts";
 import { RoomPage } from "../src/room/RoomPage";
 const api = vi.hoisted(() => ({ me: vi.fn(), join: vi.fn(), rename: vi.fn(), leave: vi.fn(), playback: vi.fn(), watchRoom: vi.fn(async (_changed: (room: RoomSnapshot) => void, _signal: AbortSignal) => async () => {}) }));
 vi.mock("../src/api/roomApi", () => ({ roomApi: api, RoomApiError: class extends Error { status = 401; } }));
-afterEach(() => { cleanup(); sessionStorage.clear(); history.replaceState(null, "", "/"); vi.clearAllMocks(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
+afterEach(() => { cleanup(); delete window.playkrossPlaybackAudioBlocked; sessionStorage.clear(); history.replaceState(null, "", "/"); vi.clearAllMocks(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 it("AnExplicitInvitationSelectsItsRoomInsteadOfRestoringAnotherRoom", async () => {
   history.replaceState(null, "", "/#invite=new-invitation");
   api.me.mockResolvedValue({ sessionId: "old-session", expiresAt: "later", room: { roomId: "old-room", revision: 1, participants: [{ sessionId: "old-session", nickname: "friend" }], streams: [] } });
@@ -74,6 +74,14 @@ it("RemovingOneBroadcastAndRenamingTheOtherClosesOnlyTheRemovedPeer", async () =
   fireEvent.click(within(cards[1]!).getByRole("button", { name: "Watch stream" }));
   await waitFor(() => expect(peers.map(peer => peer.connectionState)).toEqual(["connected", "connected"]));
   const bVideo = cards[1]!.querySelector("video")!; const bMedia = bVideo.srcObject;
+  fireEvent.click(within(cards[1]!).getByRole("button", { name: "Enable sound" }));
+  expect(bVideo.muted).toBe(false);
+  act(() => { window.playkrossPlaybackAudioBlocked = true; window.dispatchEvent(new CustomEvent("playkross-playback-audio-blocked", { detail: true })); });
+  expect(bVideo.muted).toBe(true); expect(cards[0]!.querySelector("video")!.muted).toBe(true);
+  for (const card of cards) expect((within(card).getByRole("button", { name: "Enable sound" }) as HTMLButtonElement).disabled).toBe(true);
+  act(() => { window.playkrossPlaybackAudioBlocked = false; window.dispatchEvent(new CustomEvent("playkross-playback-audio-blocked", { detail: false })); });
+  expect(bVideo.muted).toBe(false); expect(cards[0]!.querySelector("video")!.muted).toBe(true);
+  expect(peers).toHaveLength(2); expect(bVideo.srcObject).toBe(bMedia);
   const changed = api.watchRoom.mock.calls[0]![0];
   act(() => changed({ ...room, revision: 2, streams: [room.streams[1]!] }));
   await waitFor(() => expect(peers[0]!.connectionState).toBe("closed"));

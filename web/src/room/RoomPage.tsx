@@ -2,7 +2,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { RoomSnapshot, SessionOverview } from "../api/contracts";
 import { roomApi, RoomApiError } from "../api/roomApi";
 import { StreamPlayer } from "./StreamPlayer";
+import { useHostPlaybackAudioBlocked } from "../media/hostPlaybackAudio";
 export function RoomPage() {
+  const audioBlocked = useHostPlaybackAudioBlocked();
   const [invite] = useState(() => new URLSearchParams(location.hash.slice(1)).get("invite") ?? sessionStorage.getItem("jk-invite") ?? "");
   const [explicitInvitation] = useState(() => new URLSearchParams(location.hash.slice(1)).has("invite"));
   const [session, setSession] = useState<SessionOverview | null>(null); const [nickname, setNickname] = useState("");
@@ -71,7 +73,7 @@ export function RoomPage() {
     {message && <div className="notice" role="status">{message}</div>}
     {loading ? <p>Restoring your room session…</p> : !session ? <section className="join-card"><h1>Join your friends</h1><p>Choose a nickname. No account needed.</p><form onSubmit={event => { event.preventDefault(); void join(); }}><label htmlFor="nickname">Nickname</label><input id="nickname" value={nickname} onChange={event => setNickname(event.target.value)} maxLength={1024} autoComplete="nickname" required autoFocus /><button disabled={busy} type="submit">{busy ? "Joining…" : "Join room"}</button></form></section> : <>
       <section className="room-toolbar"><form onSubmit={event => { event.preventDefault(); void rename(); }}><label htmlFor="rename">Your nickname</label><input id="rename" value={nickname} onChange={event => setNickname(event.target.value)} maxLength={1024} required /><button disabled={busy}>Save</button></form>{invite && <button onClick={() => { void copyLink(); }}>Copy room link</button>}<button disabled={busy} onClick={() => { void leave(); }}>Leave room</button></section>
-      <section className="room-grid" aria-label="Room streams">{session.room.streams.map(stream => <StreamPlayer key={stream.streamId} streamId={stream.streamId} nickname={stream.nickname} getPlayback={getPlayback} />)}{session.room.streams.length === 0 && <div className="empty-room"><h1>The room is ready</h1><p>Start a broadcast from the Windows app. Viewers can stay in this browser.</p></div>}</section>
+      <section className="room-grid" aria-label="Room streams">{session.room.streams.map(stream => <StreamPlayer key={stream.streamId} streamId={stream.streamId} nickname={stream.nickname} getPlayback={getPlayback} audioBlocked={audioBlocked} />)}{session.room.streams.length === 0 && <div className="empty-room"><h1>The room is ready</h1><p>Start a broadcast from the Windows app. Viewers can stay in this browser.</p></div>}</section>
       <footer className="room-footer"><span>In the room</span>{session.room.participants.map(participant => <span className="participant" key={participant.sessionId}>{participant.nickname}{participant.sessionId === session.sessionId ? " · you" : ""}</span>)}</footer>
     </>}
   </main>;
