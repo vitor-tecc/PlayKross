@@ -15,6 +15,7 @@ private:
     struct Impl;
     mutable std::mutex mutex_;
     std::shared_ptr<Impl> impl_;
+    std::shared_ptr<Impl> pending_;
     std::unique_ptr<IEndpointCaptureClient> client_;
 };
 }

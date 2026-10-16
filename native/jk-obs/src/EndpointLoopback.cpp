@@ -78,13 +78,34 @@ EndpointLoopback::EndpointLoopback(std::unique_ptr<IEndpointCaptureClient> clien
     : client_(client ? std::move(client) : MakeEndpointCaptureClient()) {}
 EndpointLoopback::~EndpointLoopback() { Stop(); }
 CaptureResult EndpointLoopback::Start(const std::wstring& id, ProcessBinding& controller, AudioSink& sink) {
-    Stop();
-    std::promise<CaptureResult> promise;
-    auto result = promise.get_future();
-    auto state = std::make_shared<Impl>(*client_, controller, sink);
+    std::shared_ptr<Impl> state, previous;
     {
         std::lock_guard lock(mutex_);
+        state = std::make_shared<Impl>(*client_, controller, sink);
+        // The unique state pointer is this startup's reservation. Publish it
+        // before old-worker teardown so Stop can cancel the pending generation.
+        if (pending_) pending_->Cancel();
+        pending_ = state;
+        previous = impl_;
+        if (previous) previous->Cancel();
+    }
+    if (previous) previous->Join();
+#ifdef JK_ENDPOINT_STARTUP_BARRIER
+    JK_ENDPOINT_STARTUP_BARRIER();
+#endif
+    std::promise<CaptureResult> promise;
+    auto result = promise.get_future();
+    {
+        std::lock_guard lock(mutex_);
+        if (pending_ != state || state->Cancelled()) {
+            state->Cancel();
+            if (pending_ == state) pending_.reset();
+            return {false, "Selected output capture was cancelled before setup."};
+        }
         impl_ = state;
+        pending_.reset();
+        // Publish and install atomically with respect to Stop's snapshot. The
+        // worker alone accesses the client; old workers have already joined.
         state->worker = std::thread([state, id, promise = std::move(promise)]() mutable { state->Run(id, std::move(promise)); });
     }
     if (result.wait_for(std::chrono::seconds(6)) != std::future_status::ready) {
@@ -96,8 +117,13 @@ CaptureResult EndpointLoopback::Start(const std::wstring& id, ProcessBinding& co
 }
 void EndpointLoopback::Stop() {
     std::shared_ptr<Impl> state;
-    { std::lock_guard lock(mutex_); state = impl_; }
-    if (state) { state->Cancel(); state->Join(); }
+    {
+        std::lock_guard lock(mutex_);
+        if (pending_) { pending_->Cancel(); pending_.reset(); }
+        state = impl_;
+        if (state) state->Cancel();
+    }
+    if (state) state->Join();
 }
 bool EndpointLoopback::Running() const { std::lock_guard lock(mutex_); return impl_ && impl_->running.load(); }
 std::string EndpointLoopback::Error() const {
