@@ -34,6 +34,7 @@ test("real native H264 and process-only Opus reach one Edge viewer", async ({ pa
   await info.attach("protocol-evidence", { body: JSON.stringify({ browser: browser.version(), ...metrics }, null, 2), contentType: "application/json" });
   console.log(JSON.stringify({ browser: browser.version(), ...metrics }));
   await page.getByRole("button", { name: "Fullscreen", exact: true }).click();
+  await video.hover();
   await page.getByRole("button", { name: "Return to room" }).click();
   await expect.poll(() => video.evaluate(element => (element as HTMLVideoElement).videoWidth)).toBe(1280);
   await writeFile(resolve("../.artifacts/protocol/revoke-publication"), "revoke");
