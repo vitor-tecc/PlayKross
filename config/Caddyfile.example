@@ -1,0 +1,17 @@
+{
+	admin 127.0.0.1:2019
+	storage file_system {
+		root .runtime/caddy
+	}
+}
+https://{$JKILLER_PUBLIC_HOST} {
+	tls {
+		issuer acme {
+			dir https://acme-v02.api.letsencrypt.org/directory
+			profile shortlived
+		}
+	}
+	@private path /internal* /debug* /metrics*
+	respond @private 404
+	reverse_proxy 127.0.0.1:5000
+}

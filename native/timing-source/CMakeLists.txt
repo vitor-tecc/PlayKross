@@ -1,0 +1,6 @@
+cmake_minimum_required(VERSION 3.25)
+project(JKTimingSource LANGUAGES CXX)
+add_executable(CaptureFixture WIN32 TimingSource.cpp)
+target_compile_features(CaptureFixture PRIVATE cxx_std_20)
+target_compile_definitions(CaptureFixture PRIVATE UNICODE _UNICODE NOMINMAX)
+target_link_libraries(CaptureFixture PRIVATE d3d11 dxgi winmm)

@@ -1,0 +1,34 @@
+<Window x:Class="JKiller.App.MainWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Title="PlayKross • Native broadcaster" Icon="Assets/playkross-logo.png" Width="980" Height="820" MinWidth="750" MinHeight="600" Closing="WindowClosing">
+  <ScrollViewer VerticalScrollBarVisibility="Auto"><StackPanel Margin="24">
+    <StackPanel Orientation="Horizontal" Margin="0,0,0,10"><Image Source="Assets/playkross-logo.png" Width="76" Height="76" Margin="0,0,18,0"/><StackPanel VerticalAlignment="Center"><TextBlock FontSize="30" FontWeight="Bold" Foreground="{StaticResource PlayKrossYellow}" Text="PlayKross"/><TextBlock FontSize="18" Text="Share a window. Watch together."/></StackPanel></StackPanel>
+    <TextBlock Margin="0,8,0,18" TextWrapping="Wrap" Text="Paste your host's room link to broadcast or watch together. The room host runs separately; viewers can also use a browser."/>
+    <StackPanel x:Name="ConnectionControls"><TextBlock Text="Room link"/><TextBox x:Name="Link" AutomationProperties.AutomationId="RoomLink" Text="{Binding RoomLink, UpdateSourceTrigger=PropertyChanged}"/>
+      <TextBlock Margin="0,10,0,0" Text="Nickname"/><TextBox Text="{Binding Nickname, UpdateSourceTrigger=PropertyChanged}"/>
+      <WrapPanel><Button x:Name="JoinButton" Content="Join room" Click="JoinClick"/><Button Content="Leave room" Click="LeaveClick" IsEnabled="{Binding IsJoined}"/><Button Content="Change nickname" Click="RenameClick"/><Button Content="Copy room link" Click="CopyClick"/><Button Content="Open browser viewer" Click="ViewClick"/><Button Content="Watch in app" Click="WatchClick"/></WrapPanel>
+    </StackPanel>
+    <StackPanel x:Name="SelectionControls"><TextBlock Margin="0,16,0,4" FontWeight="SemiBold" Text="Video source — required"/>
+      <ComboBox x:Name="VideoSource" AutomationProperties.AutomationId="VideoSource" ItemsSource="{Binding Sources}" DisplayMemberPath="DisplayName" SelectedItem="{Binding Video}"/>
+      <Button HorizontalAlignment="Left" Content="Refresh sources" Click="RefreshClick"/>
+      <TextBlock Margin="0,10,0,4" FontWeight="SemiBold" Text="Application audio — experimental, off by default"/>
+      <ComboBox x:Name="AudioSource" ItemsSource="{Binding Sources}" DisplayMemberPath="DisplayName" SelectedItem="{Binding Audio}" SelectionChanged="AudioChanged"/>
+      <Button HorizontalAlignment="Left" Content="Turn audio off" Click="AudioOffClick"/>
+      <TextBlock x:Name="AudioReason" TextWrapping="Wrap" Text="Audio off. Select Geometry Dash from its Steam installation to opt in. Other apps currently stay video-only."/>
+      <TextBlock Margin="0,8,0,0" TextWrapping="Wrap" Text="Experimental audio captures the selected app and its child processes. Direct Discord/browser selection is blocked; future child exclusion is not guaranteed. Keep Discord and room playback outside that process tree. No microphone or system output is captured."/>
+      <CheckBox Margin="0,12,0,0" IsChecked="{Binding AllowCpuFallback}" Content="Allow CPU encoding if NVENC initialization fails (may cost game performance)"/>
+    </StackPanel>
+    <StackPanel x:Name="SettingsControls"><TextBlock Margin="0,20,0,6" FontWeight="SemiBold" Text="Requested output settings"/>
+      <WrapPanel><ComboBox x:Name="Resolution" Width="130" SelectedIndex="2" SelectionChanged="PresetChanged"><ComboBoxItem Content="480p" Tag="480"/><ComboBoxItem Content="720p" Tag="720"/><ComboBoxItem Content="1080p" Tag="1080"/></ComboBox>
+        <ComboBox x:Name="Fps" Width="130" Margin="8,0" SelectedIndex="1" SelectionChanged="PresetChanged"><ComboBoxItem Content="30 FPS" Tag="30"/><ComboBoxItem Content="60 FPS" Tag="60"/></ComboBox></WrapPanel>
+      <TextBlock x:Name="BitrateLabel" Margin="0,10,0,0" Text="15 Mbps requested (megabits per second)"/>
+      <Slider x:Name="Bitrate" Minimum="1" Maximum="25" TickFrequency="0.5" IsSnapToTickEnabled="True" Value="15" ValueChanged="BitrateChanged"/>
+      <TextBlock TextWrapping="Wrap" Text="Changing settings briefly stops and restarts capture with the same stream identity. Requested bitrate is a target; actual network bitrate and viewer playback can differ."/>
+      <Button Content="Apply settings (restart)" HorizontalAlignment="Left" Click="ApplyClick"/>
+    </StackPanel>
+    <WrapPanel Margin="0,18,0,0"><Button x:Name="StartButton" Content="Start broadcast" Click="StartClick"/><Button Content="Stop broadcast" Click="StopClick"/></WrapPanel>
+    <TextBlock Text="{Binding Status}" FontWeight="SemiBold" TextWrapping="Wrap" Margin="0,12,0,8"/>
+    <TextBlock Text="{Binding AppliedText}" TextWrapping="Wrap"/>
+    <TextBlock Text="{Binding ObservedText}" TextWrapping="Wrap" Margin="0,8,0,0"/>
+    <Button HorizontalAlignment="Left" Content="Export room diagnostics" Click="ExportClick"/>
+    <TextBlock Margin="0,12,0,0" TextWrapping="Wrap" Text="This first milestone supports one broadcaster per room. Multi-stream rooms and higher viewer counts follow measured validation."/>
+  </StackPanel></ScrollViewer>
+</Window>

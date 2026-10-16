@@ -1,0 +1,11 @@
+.tools/
+.runtime/
+.artifacts/
+.superpowers/
+**/bin/
+**/obj/
+**/node_modules/
+web/dist/
+*.user
+*.local.json
+TestResults/

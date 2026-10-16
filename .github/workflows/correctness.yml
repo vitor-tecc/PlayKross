@@ -1,0 +1,69 @@
+name: Correctness
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: correctness-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  dotnet:
+    name: Windows .NET tests and native UI build
+    runs-on: windows-2025
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+        with:
+          dotnet-version: '10.0.401'
+      - run: dotnet restore JKiller.sln --locked-mode
+      - run: dotnet test JKiller.sln --no-restore --nologo
+      - run: dotnet build src/JKiller.App/JKiller.App.csproj --no-restore --nologo
+      - shell: pwsh
+        run: |
+          ./tests/setup/SetupChecks.ps1
+          ./tests/setup/CleanupChecks.ps1
+          ./tests/setup/MediaInterfaceChecks.ps1
+          ./tests/setup/HolePunchingChecks.ps1
+          ./tests/setup/TemporaryTunnelChecks.ps1
+          ./tests/setup/TunnelLifecycleChecks.ps1
+          ./tests/setup/PortablePackageChecks.ps1
+  browser:
+    name: Browser correctness and production build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - run: npm ci
+        working-directory: web
+      - run: npm test -- --run
+        working-directory: web
+      - run: npm run build
+        working-directory: web
+  native:
+    name: Native process, queue and capture-policy tests
+    runs-on: windows-2025
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - shell: pwsh
+        run: |
+          ./scripts/Build-Native.ps1
+          $vswhere='C:/Program Files (x86)/Microsoft Visual Studio/Installer/vswhere.exe'
+          $installation=& $vswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          $ctest=Join-Path $installation 'Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/ctest.exe'
+          & $ctest --test-dir .artifacts/native -C Debug --output-on-failure -E '^AudioLoopback\.'
+          if ($LASTEXITCODE -ne 0) { throw 'Native correctness tests failed.' }
+# Hosted runners do not validate NVENC, capture smoothness, audio isolation or external-network delivery.

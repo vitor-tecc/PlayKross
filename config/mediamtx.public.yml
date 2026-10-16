@@ -1,0 +1,38 @@
+logLevel: warn
+logDestinations: [stdout]
+dumpPackets: false
+readTimeout: 10s
+writeTimeout: 10s
+writeQueueSize: 512
+authMethod: http
+authInternalUsers: []
+authHTTPAddress: http://127.0.0.1:5001/internal/media-auth
+authHTTPExclude: []
+api: true
+apiAddress: 127.0.0.1:9997
+apiAllowOrigins: []
+metrics: true
+metricsAddress: 127.0.0.1:9998
+metricsAllowOrigins: []
+pprof: false
+playback: false
+rtsp: false
+rtmp: false
+hls: false
+srt: false
+moq: false
+webrtc: true
+webrtcAddress: 127.0.0.1:8889
+webrtcAllowOrigins: []
+webrtcLocalUDPAddress: :8189
+webrtcLocalTCPAddress: ""
+webrtcIPsFromInterfaces: false
+# Start-Local -PublicOrigin generates the real public host plus loopback here.
+webrtcAdditionalHosts: [127.0.0.1]
+webrtcICEServers2: []
+pathDefaults:
+  source: publisher
+  overridePublisher: false
+  record: false
+paths:
+  "~^rooms/[0-9a-f]{32}/streams/[0-9a-f]{32}/main$": {}

@@ -1,0 +1,135 @@
+using System.Net;
+using System.Net.Http.Json;
+using JKiller.Contracts;
+using JKiller.Windows.Rooms;
+using JKiller.Windows.Security;
+using Xunit;
+namespace JKiller.Windows.Tests;
+public sealed class RoomClientTests
+{
+    [Fact]
+    public async Task SecondPublisherConflictExplainsTheCurrentRoomLimit()
+    {
+        var handler = new Handler(Grant) { PublishStatus = HttpStatusCode.Conflict };
+        using var http = new HttpClient(handler); var client = new RoomHttpClient(http);
+        await client.JoinAsync(new("http://localhost:5000"), "invitation", "Player", CancellationToken.None);
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => client.ReservePublishAsync(CancellationToken.None));
+        Assert.Contains("one broadcaster", error.Message, StringComparison.OrdinalIgnoreCase);
+    }
+    [Fact]
+    public async Task ExpiredInMemorySessionJoinsAnonymouslyAndGetsAFreshIdentity()
+    {
+        var clock = new Clock(); var original = Grant with { ExpiresAt = clock.Now.AddMinutes(1) };
+        var handler = new Handler(original); using var http = new HttpClient(handler);
+        var client = new RoomHttpClient(http, clock);
+        await client.JoinAsync(new("http://localhost:5000"), "invitation", "First", CancellationToken.None);
+        clock.Now = original.ExpiresAt;
+        handler.JoinGrant = Grant with { ExpiresAt = clock.Now.AddHours(1) };
+        await client.JoinAsync(new("http://localhost:5000"), "invitation", "Again", CancellationToken.None);
+        Assert.Null(handler.JoinCredentials[^1]); Assert.Equal(handler.JoinGrant.SessionId, client.Session!.SessionId);
+    }
+    private static SessionGrant Grant => new(Guid.NewGuid(), Guid.NewGuid(), "secret-session-test", DateTimeOffset.UtcNow.AddHours(1), new(Guid.NewGuid(), 1, [], []));
+    [Fact]
+    public async Task SessionIsEncryptedAndBoundToServerAndExpiry()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "jk-vault-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var vault = new SessionVault(directory); var grant = Grant;
+            await vault.SaveAsync(new(new("https://room.example"), grant), CancellationToken.None);
+            Assert.Equal(grant.SessionId, (await vault.RestoreAsync(new("https://room.example"), CancellationToken.None))!.Grant.SessionId);
+            Assert.Null(await vault.RestoreAsync(new("https://other.example"), CancellationToken.None));
+            Assert.DoesNotContain(grant.SessionToken, System.Text.Encoding.UTF8.GetString(await File.ReadAllBytesAsync(Path.Combine(directory, "session.dpapi"))));
+            await File.WriteAllBytesAsync(Path.Combine(directory, "session.dpapi"), [1, 2, 3]);
+            Assert.Null(await vault.RestoreAsync(new("https://room.example"), CancellationToken.None));
+        }
+        finally { if (Directory.Exists(directory)) Directory.Delete(directory, true); }
+    }
+    [Fact]
+    public async Task ExpiredSavedSessionCannotBeRestored()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "jk-vault-" + Guid.NewGuid().ToString("N")); var clock = new Clock();
+        try
+        {
+            var vault = new SessionVault(directory, clock); var grant = Grant;
+            await vault.SaveAsync(new(new("http://localhost:5000"), grant), CancellationToken.None); clock.Now = grant.ExpiresAt.AddSeconds(1);
+            Assert.Null(await vault.RestoreAsync(new("http://localhost:5000"), CancellationToken.None));
+        }
+        finally { if (Directory.Exists(directory)) Directory.Delete(directory, true); }
+    }
+    [Theory]
+    [InlineData("http://outside.example/#invite=test")]
+    [InlineData("https://name:password@room.example/#invite=test")]
+    [InlineData("https://room.example/path?token=test#invite=test")]
+    public void UnsafeRoomLinksAreRejected(string link) => Assert.Throws<ArgumentException>(() => RoomHttpClient.ParseLink(link));
+    [Fact]
+    public async Task RenameAndReservationKeepSameSessionWithoutCredentialInUrl()
+    {
+        var grant = Grant; var handler = new Handler(grant); using var http = new HttpClient(handler); var client = new RoomHttpClient(http);
+        await client.JoinAsync(new("http://localhost:5000"), "invitation", "Before", CancellationToken.None);
+        await client.RenameAsync("After", CancellationToken.None); await client.ReservePublishAsync(CancellationToken.None);
+        Assert.Equal(grant.SessionId, client.Session!.SessionId); Assert.Equal(2, handler.Authenticated);
+    }
+    [Fact]
+    public async Task NativeBearerRequestsDoNotPretendToBeBrowserOriginRequests()
+    {
+        var handler = new Handler(Grant) { RequireNoOrigin = true }; using var http = new HttpClient(handler); var client = new RoomHttpClient(http);
+        await client.JoinAsync(new("http://localhost:5000"), "invitation", "Local host broadcaster", CancellationToken.None);
+        await client.ReservePublishAsync(CancellationToken.None);
+    }
+    [Fact]
+    public async Task JoiningAgainWhileActiveKeepsItsAuthentication()
+    {
+        var grant = Grant; var handler = new Handler(grant); using var http = new HttpClient(handler); var client = new RoomHttpClient(http);
+        await client.JoinAsync(new("http://localhost:5000"), "invitation", "First", CancellationToken.None);
+        await client.JoinAsync(new("http://localhost:5000"), "invitation", "Renamed", CancellationToken.None);
+        Assert.Equal(grant.SessionToken, handler.JoinCredentials[^1]); Assert.Equal(grant.SessionId, client.Session!.SessionId);
+    }
+    private sealed class Clock : TimeProvider { public DateTimeOffset Now = DateTimeOffset.UtcNow; public override DateTimeOffset GetUtcNow() => Now; }
+    [Fact]
+    public async Task LeavingAnExpiredSessionClearsLocalStateWithoutSendingRejectedCredentials()
+    {
+        var clock = new Clock(); var grant = Grant with { ExpiresAt = clock.Now.AddMinutes(1) };
+        var handler = new Handler(grant); using var http = new HttpClient(handler); var client = new RoomHttpClient(http, clock);
+        await client.JoinAsync(new("http://localhost:5000"), "invitation", "First", CancellationToken.None);
+        clock.Now = grant.ExpiresAt;
+        await client.LeaveAsync(CancellationToken.None);
+        Assert.Null(client.Session); Assert.Null(client.Origin); Assert.Empty(handler.AuthenticatedPaths);
+    }
+    [Fact]
+    public async Task HeartbeatAndLeaveUseAuthenticationAndSuccessfulLeaveClearsTheSession()
+    {
+        var handler = new Handler(Grant); using var http = new HttpClient(handler); var client = new RoomHttpClient(http);
+        await client.JoinAsync(new("http://localhost:5000"), "invitation", "First", CancellationToken.None);
+        await ((JKiller.Core.Rooms.IRoomClient)client).HeartbeatAsync(CancellationToken.None);
+        await ((JKiller.Core.Rooms.IRoomClient)client).LeaveAsync(CancellationToken.None);
+        Assert.Null(client.Session); Assert.Null(client.Origin);
+        Assert.Equal(new[] { "/api/me/presence", "/api/me/leave" }, handler.AuthenticatedPaths);
+        await client.JoinAsync(new("http://localhost:5000"), "invitation", "Again", CancellationToken.None);
+        Assert.Null(handler.JoinCredentials[^1]);
+    }
+    private sealed class Handler(SessionGrant grant) : HttpMessageHandler
+    {
+        public SessionGrant JoinGrant = grant;
+        public List<string?> JoinCredentials = [];
+        public int Authenticated;
+        public List<string> AuthenticatedPaths = [];
+        public bool RequireNoOrigin;
+        public HttpStatusCode? PublishStatus;
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
+        {
+            Assert.Empty(request.RequestUri!.Query); Assert.Empty(request.RequestUri.Fragment);
+            if (RequireNoOrigin) Assert.False(request.Headers.Contains("Origin"));
+            if (request.RequestUri.AbsolutePath == "/api/join")
+            {
+                JoinCredentials.Add(request.Headers.Authorization?.Parameter);
+                var body = await request.Content!.ReadAsStringAsync(token); Assert.Contains("\"desktop\":true", body);
+                return new(HttpStatusCode.OK) { Content = JsonContent.Create(JoinGrant) };
+            }
+            Assert.Equal(JoinGrant.SessionToken, request.Headers.Authorization!.Parameter); Authenticated++;
+            AuthenticatedPaths.Add(request.RequestUri.AbsolutePath);
+            if (request.RequestUri.AbsolutePath == "/api/streams" && PublishStatus is { } status) return new(status);
+            return new(HttpStatusCode.OK) { Content = request.RequestUri.AbsolutePath == "/api/streams" ? JsonContent.Create(new PublishReservation(Guid.NewGuid(), "generated", new("/media/generated/whip", UriKind.Relative), "media", DateTimeOffset.UtcNow.AddMinutes(1))) : JsonContent.Create(JoinGrant.Room) };
+        }
+    }
+}

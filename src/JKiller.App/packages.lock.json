@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "dependencies": {
+    "net10.0-windows10.0.26100": {
+      "Microsoft.Web.WebView2": {
+        "type": "Direct",
+        "requested": "[1.0.4258.31, )",
+        "resolved": "1.0.4258.31",
+        "contentHash": "sHVZ2MQrHT1J3q5/6csn0fIP27rzpTO/RRC+wPQDrZheB7T4t2n+vVbY6SdCKr4WRV9s/gmBM3PPMWWJtoDzMg=="
+      },
+      "jkiller.contracts": {
+        "type": "Project"
+      },
+      "jkiller.core": {
+        "type": "Project",
+        "dependencies": {
+          "JKiller.Contracts": "[1.0.0, )"
+        }
+      },
+      "jkiller.windows": {
+        "type": "Project",
+        "dependencies": {
+          "JKiller.Core": "[1.0.0, )"
+        }
+      }
+    }
+  }
+}
