@@ -3,11 +3,11 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { useFullscreenChrome } from "../src/room/useFullscreenChrome";
 
-function Harness({ fullscreen = false, attention = false }) {
+function Harness({ fullscreen = false, attention = false, showFirst = true }) {
   const chrome = useFullscreenChrome(fullscreen, attention);
   return <div data-testid="surface" {...chrome.surfaceProps}>
     <output>{chrome.visible ? "visible" : "hidden"}</output>
-    <div data-testid="overlay" {...chrome.overlayProps}><button>First</button><button>Last</button></div>
+    <div data-testid="overlay" {...chrome.overlayProps}>{showFirst && <button>First</button>}<button>Last</button></div>
     <button>Outside overlay</button>
   </div>;
 }
@@ -81,6 +81,27 @@ it("TouchAndErrorsRevealControls", () => {
   fireEvent.touchStart(screen.getByTestId("surface")); visible(); advance(2000); hidden();
   view.rerender(<Harness fullscreen attention />); visible(); advance(8000); visible();
   view.rerender(<Harness fullscreen />); advance(1999); visible(); advance(1); hidden();
+});
+
+it("RemovedKeyboardControlReleasesFocusHoldWhenAttentionResolves", () => {
+  const view = render(<Harness fullscreen attention />);
+  fireEvent.keyDown(document, { key: "Tab" });
+  act(() => screen.getByRole("button", { name: "First" }).focus());
+  advance(4000); visible();
+  view.rerender(<Harness fullscreen showFirst={false} />);
+  expect(document.activeElement).toBe(document.body);
+  advance(1999); visible(); advance(1); hidden();
+});
+
+it("MovementReconcilesFocusAfterKeyboardControlRemovalWithoutBlur", () => {
+  const view = render(<Harness fullscreen />);
+  fireEvent.keyDown(document, { key: "Tab" });
+  act(() => screen.getByRole("button", { name: "First" }).focus());
+  advance(4000); visible();
+  view.rerender(<Harness fullscreen showFirst={false} />);
+  expect(document.activeElement).toBe(document.body);
+  fireEvent.pointerMove(screen.getByTestId("surface"));
+  advance(1999); visible(); advance(1); hidden();
 });
 
 it("ExitAndUnmountClearTimers", () => {

@@ -107,6 +107,37 @@ it("BlockedPlayRequiresAttentionButRoutinePlaybackStatusDoesNot", async () => {
   } finally { vi.useRealTimers(); }
 });
 
+it("KeyboardRetryRemovalReleasesFullscreenFocusHold", async () => {
+  const user = userEvent.setup();
+  const grant: PlaybackGrant = { streamId: "a", path: "rooms/room/streams/a/main", whepUri: "/media/rooms/room/streams/a/main/whep", token: "grant-a", expiresAt: "later" };
+  const getPlayback = vi.fn(async () => grant);
+  for (let attempt = 0; attempt < 4; attempt++) getPlayback.mockRejectedValueOnce(new Error("Playback unavailable"));
+  const view = render(<StreamPlayer streamId="a" nickname="Alice" getPlayback={getPlayback} />);
+  const card = view.container.querySelector<HTMLElement>(".stream-card")!;
+  vi.useFakeTimers();
+  try {
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Watch stream" })); });
+    for (const delay of [1000, 2000, 4000]) await act(async () => { await vi.advanceTimersByTimeAsync(delay); });
+    const retry = screen.getByRole("button", { name: "Retry" });
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Fullscreen" })); });
+    fireEvent.keyDown(document, { key: "Tab" }); act(() => retry.focus());
+    expect(document.activeElement).toBe(retry);
+    // Testing Library's keyboard wrapper needs real timers in this Vitest environment.
+    vi.useRealTimers();
+    await user.keyboard("{Enter}");
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+    expect(document.activeElement).toBe(document.body);
+    expect(card.querySelector("video")!.srcObject).toBe(mocks.media);
+    // Movement cancels the real idle timer and starts a deterministic fake-clock deadline.
+    vi.useFakeTimers({ shouldClearNativeTimers: true });
+    fireEvent.pointerMove(card);
+    act(() => vi.advanceTimersByTime(1999));
+    expect(card.classList.contains("fullscreen-chrome-hidden")).toBe(false);
+    act(() => vi.advanceTimersByTime(1));
+    expect(card.classList.contains("fullscreen-chrome-hidden")).toBe(true);
+  } finally { vi.useRealTimers(); }
+});
+
 it("StoppingOneCardKeepsTheOtherCardPlayingAcrossRename", async () => {
   const user = userEvent.setup();
   const getPlayback = vi.fn(async (streamId: string) => ({ streamId, path: `rooms/room/streams/${streamId}/main`, whepUri: `/media/rooms/room/streams/${streamId}/main/whep`, token: `grant-${streamId}`, expiresAt: "later" }));

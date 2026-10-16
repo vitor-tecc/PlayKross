@@ -26,6 +26,10 @@ export function useFullscreenChrome(fullscreen: boolean, attentionRequired: bool
   }, []);
   const reveal = useCallback(() => {
     if (!active.current) return;
+    // Removing a focused conditional control need not dispatch blur.
+    if (focusedControl.current && (!focusedControl.current.isConnected || focusedControl.current !== document.activeElement)) {
+      focusedControl.current = null; keyboardFocus.current = false;
+    }
     clearIdle(); setVisible(true);
     if (!attention.current && !hover.current && !pressed.current && !keyboardFocus.current) {
       timer.current = setTimeout(() => { timer.current = null; setVisible(false); }, FULLSCREEN_IDLE_MS);
