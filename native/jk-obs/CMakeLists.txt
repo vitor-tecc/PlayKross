@@ -58,3 +58,12 @@ target_link_libraries(AudioSafetyTests PRIVATE jk_process)
 foreach(name OverflowDropsOldestPcmWithin200ms NoBufferAfterSeal OnlyArmedModeIdentityCanEmit OffAllowsNoAudioRoute StaleGenerationAndMonitoringDenied ControllerDeathDeniesBothModes InvalidSelectionsCannotArm FirstStopReasonSurvivesCleanup SuccessfulRearmClearsOldStopReason)
   add_test(NAME AudioSafety.${name} COMMAND AudioSafetyTests ${name})
 endforeach()
+# Device-free integration boundary: compile actual routing/audit/diagnostics code
+# against test-only OBS and process-loopback adapters (no runtime/device loading).
+add_executable(AudioContextTests tests/AudioContextTests.cpp)
+target_include_directories(AudioContextTests BEFORE PRIVATE tests/audio-harness)
+target_compile_definitions(AudioContextTests PRIVATE UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
+target_link_libraries(AudioContextTests PRIVATE jk_process user32)
+foreach(name SameNameReplacementFailsSelectedAudit SameNameReplacementDiagnosticsUnavailable OriginalContextAppliesMixersThenAuditsAndDescribes)
+  add_test(NAME AudioContext.${name} COMMAND AudioContextTests ${name})
+endforeach()

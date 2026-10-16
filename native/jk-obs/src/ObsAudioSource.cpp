@@ -131,17 +131,29 @@ void StopAllAudioSources() {
     }
 }
 void DescribeAudioSource(const char* name, obs_data_t* response) {
-    std::lock_guard lock(sources_mutex);
-    for (const auto& [source, context] : sources) if (std::string(obs_source_get_name(source)) == name) {
-        obs_data_set_bool(response, "audioRunning", context->capture.Running());
-        obs_data_set_int(response, "capturedAudioFrames", static_cast<long long>(context->captured_frames.load()));
-        obs_data_set_int(response, "emittedAudioFrames", static_cast<long long>(context->emitted_frames.load()));
-        const auto error = context->startup_error.empty() ? context->capture.Error() : context->startup_error;
-        obs_data_set_string(response, "audioError", error.c_str());
-        return;
+    std::optional<AudioRoute> route;
+    bool running = false;
+    long long captured = 0, emitted = 0;
+    std::string error;
+    {
+        std::lock_guard lock(sources_mutex);
+        for (const auto& [source, context] : sources) if (std::string(obs_source_get_name(source)) == name) {
+            route = AudioRoute{obs_source_get_unversioned_id(source), obs_source_get_name(source), context->generation,
+                obs_source_get_monitoring_type(source) != OBS_MONITORING_TYPE_NONE, AudioMode::Application, context->identity_key};
+            running = context->capture.Running();
+            captured = static_cast<long long>(context->captured_frames.load());
+            emitted = static_cast<long long>(context->emitted_frames.load());
+            error = context->startup_error.empty() ? context->capture.Error() : context->startup_error;
+            break;
+        }
     }
-    obs_data_set_bool(response, "audioRunning", false);
-    obs_data_set_string(response, "audioError", "Application audio source is not available.");
+    // Counters and identity are one snapshot. Authorize outside the registry lock
+    // before publishing any field, so a replacement cannot impersonate selection.
+    const bool matches = route && module_guard.Allows(*route);
+    obs_data_set_bool(response, "audioRunning", matches && running);
+    obs_data_set_int(response, "capturedAudioFrames", matches ? captured : 0);
+    obs_data_set_int(response, "emittedAudioFrames", matches ? emitted : 0);
+    obs_data_set_string(response, "audioError", matches ? error.c_str() : "Selected audio source is not available.");
 }
 std::optional<AudioRoute> SelectedAudioRoute(const char* name, std::uint64_t generation, std::uint32_t owner_pid) {
     if (!name || !*name) return std::nullopt;

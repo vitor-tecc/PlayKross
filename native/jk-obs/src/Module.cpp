@@ -75,7 +75,12 @@ bool AuditScene() {
     // A missing/stopped selected source is unsafe even after its mixer was muted,
     // or after OBS removed it entirely (and enumeration cannot visit it).
     const auto selected = module_guard.SelectedAudio();
-    bool safe = !selected || AudioSourceReady(selected->source_name.c_str(), selected->generation, 0);
+    bool safe = true;
+    if (selected) {
+        safe = AudioSourceReady(selected->source_name.c_str(), selected->generation, 0);
+        const auto ready = safe ? SelectedAudioRoute(selected->source_name.c_str(), selected->generation, 0) : std::nullopt;
+        safe = ready && module_guard.Allows(*ready);
+    }
     obs_enum_sources(Audit, &safe);
     return safe;
 }
