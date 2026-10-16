@@ -76,12 +76,37 @@ static void OriginalContextAppliesMixersThenAuditsAndDescribes() {
     Require(response.bools["audioRunning"] && response.ints["capturedAudioFrames"] == 800 && response.ints["emittedAudioFrames"] == 400,
         "Original selected context supplies its running status and counters");
 }
+static void SystemContextUsesSelectedEndpointAndRejectsChanges() {
+    for (const std::string change : {"endpoint", "mode", "generation"}) {
+        Probe probe; obs_source_t source{"System audio", "jk_system_audio"};
+        jk::AudioSource context{&source, 7, jk::AudioMode::SystemOutput};
+        auto bound = jk::ProcessBinding::Open(probe.token, probe);
+        context.binding = std::move(bound.binding); context.endpoint_id = L"render:selected";
+        context.identity_key = "endpoint:render:selected";
+        jk::sources.emplace(&source, &context); harness_sources = {&source};
+        auto owner = jk::ProcessBinding::Open(probe.token, probe);
+        jk::AudioRoute route{"jk_system_audio", "System audio", 7, false, jk::AudioMode::SystemOutput, "endpoint:render:selected"};
+        Require(jk::module_guard.Arm(std::move(owner.binding), route, 7), "System route arms");
+        Require(!jk::AuditScene() && source.mixers == 1 && jk::AuditScene(), "Owned system context must participate in selected audit");
+        Require(!jk::AudioSourceReady("System audio", 7, 99), "System context must reject a different controller owner");
+        Require(jk::SourceAllowed(&source, 7) && !jk::SourceAllowed(&source, 6), "Only current system generation may emit");
+        obs_data_t response; jk::DescribeSelectedAudio(&response);
+        Require(response.strings["audioMode"] == "SystemOutput" && response.strings["audioIdentity"] == "endpoint:render:selected" && response.bools["audioRunning"], "System diagnostics must retain selected endpoint identity");
+        obs_data_t settings; settings.ints["selection_generation"]=7; settings.strings["endpoint_id"] = change == "endpoint" ? "render:other" : "render:selected";
+        if (change == "mode") settings.strings["audio_mode"] = "Application";
+        if (change == "generation") settings.ints["selection_generation"] = 8;
+        jk::Update(&context, &settings);
+        Require(!jk::SourceAllowed(&source, 7) && !context.binding->CanEmit(), "Changing endpoint, mode, or generation must stop and seal original context");
+        jk::module_guard.Disarm(); jk::sources.clear(); harness_sources.clear();
+    }
+}
 int main(int argc, char** argv) {
     try {
         const std::string name = argc == 2 ? argv[1] : "";
         if (name == "SameNameReplacementFailsSelectedAudit") SameNameReplacementFailsSelectedAudit();
         else if (name == "SameNameReplacementDiagnosticsUnavailable") SameNameReplacementDiagnosticsUnavailable();
         else if (name == "OriginalContextAppliesMixersThenAuditsAndDescribes") OriginalContextAppliesMixersThenAuditsAndDescribes();
+        else if (name == "SystemContextUsesSelectedEndpointAndRejectsChanges") SystemContextUsesSelectedEndpointAndRejectsChanges();
         else throw std::runtime_error("Unknown case");
         std::cout << "PASS " << name << '\n'; return 0;
     } catch (const std::exception& error) { std::cerr << "FAIL: " << error.what() << '\n'; return 1; }

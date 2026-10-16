@@ -4,6 +4,7 @@
 #include <deque>
 
 namespace jk {
+struct AudioQueueStats { double queued_ms; std::uint64_t dropped_frames; };
 struct CaptureResult { bool started; std::string error; };
 struct PcmBlock { std::vector<float> samples; std::uint32_t channels; std::uint32_t sample_rate; std::uint64_t monotonic_ns; };
 struct AudioSink { virtual ~AudioSink() = default; virtual void OnPcm(const PcmBlock& block) = 0; };
@@ -27,6 +28,7 @@ public:
     void Stop();
     bool Running() const;
     std::string Error() const;
+    AudioQueueStats QueueStats() const;
 private:
     struct Impl;
     std::unique_ptr<Impl> impl_;

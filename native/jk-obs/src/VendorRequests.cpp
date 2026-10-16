@@ -41,13 +41,12 @@ void Arm(obs_data_t* request, obs_data_t* response, void*) {
         // Explicit callers must use the canonical enum strings; never guess a fallback.
         const std::string mode = obs_data_has_user_value(request, "audioMode") ? obs_data_get_string(request, "audioMode") : name.empty() ? "Off" : "Application";
         if (mode != "Off" && mode != "Application" && mode != "SystemOutput") throw std::runtime_error("Unknown audio mode. Use Off, Application or SystemOutput.");
-        if (mode == "SystemOutput") throw std::runtime_error("SystemOutput audio is unavailable: the owned jk_system_audio source is not implemented.");
         if ((mode == "Off") != name.empty()) throw std::runtime_error("Audio mode and selected source do not match.");
         std::optional<AudioRoute> selected;
-        if (mode == "Application") {
-            if (!AudioSourceReady(name.c_str(), generation, owner.pid)) throw std::runtime_error("Selected application audio is unavailable or belongs to room playback.");
+        if (mode != "Off") {
+            if (!AudioSourceReady(name.c_str(), generation, owner.pid)) throw std::runtime_error("Selected audio is unavailable or belongs to room playback.");
             selected = SelectedAudioRoute(name.c_str(), generation, owner.pid);
-            if (!selected || selected->mode != AudioMode::Application) throw std::runtime_error("Selected application audio identity is unavailable.");
+            if (!selected || selected->mode != (mode == "SystemOutput" ? AudioMode::SystemOutput : AudioMode::Application)) throw std::runtime_error("Selected audio mode or identity is unavailable.");
         }
         if (!module_guard.Arm(std::move(binding.binding), selected, generation)) throw std::runtime_error("Capture guard could not be armed.");
         SelectGuardVideo(video_name, generation);

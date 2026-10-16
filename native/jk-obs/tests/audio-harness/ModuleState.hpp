@@ -68,6 +68,7 @@ inline constexpr int OBS_MONITORING_TYPE_NONE = 0, SPEAKERS_STEREO = 2, AUDIO_FO
 #define OBS_DECLARE_MODULE()
 #define MODULE_EXPORT
 namespace jk {
+struct AudioQueueStats { double queued_ms; std::uint64_t dropped_frames; };
 struct CaptureResult { bool started; std::string error; };
 struct PcmBlock { std::vector<float> samples; std::uint32_t channels, sample_rate; std::uint64_t monotonic_ns; };
 struct AudioSink { virtual ~AudioSink() = default; virtual void OnPcm(const PcmBlock&) = 0; };
@@ -78,6 +79,11 @@ public:
     void Stop() { running = false; }
     bool Running() const { return running; }
     std::string Error() const { return ""; }
+    AudioQueueStats QueueStats() const { return {}; }
+};
+class EndpointLoopback : public ProcessLoopback {
+public:
+    CaptureResult Start(const std::wstring&, ProcessBinding&, AudioSink&) { return {true,""}; }
 };
 extern SceneGuard module_guard;
 extern std::atomic<std::uint64_t> last_heartbeat_ns;

@@ -3,6 +3,7 @@
 #include <obs-websocket-api.h>
 #include "SceneGuard.hpp"
 #include "ProcessLoopback.hpp"
+#include "EndpointLoopback.hpp"
 
 namespace jk {
 extern SceneGuard module_guard;
