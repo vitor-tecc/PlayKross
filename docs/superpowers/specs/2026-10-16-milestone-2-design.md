@@ -1,189 +1,128 @@
-# Milestone 2: multiple viewers and working audio
+# Milestone 2: concurrent broadcasting, working audio, and fullscreen viewing
 
 Date: 2026-10-16 (America/Sao_Paulo)
 
-Status: Proposed design for user review. The revised requirements are approved; this design and the subsequent implementation plan are not yet approved. No M2 product code or live-media validation accompanies this document.
+Status: Revised proposed design for user review. The user replaced the earlier viewer-capacity milestone with concurrent broadcasting, removed the room-size cap and eight-viewer testing requirement, and requested fullscreen controls that hide automatically. This document replaces the previous proposal in this file; product implementation has not begun.
 
-Baseline: `1ec3c3d` on `main`, which contains M1 integration PR #3. Continue on a new `codex/` branch in the existing project folder. Use the repository-local contributor identity and the GPT-6.1 Sol agent policy in [AGENTS.md](../../../AGENTS.md).
+Baseline: M1 integration `1ec3c3d`; documentation work continues on `codex/m2-design` in the existing project folder. Use the repository-local contributor identity and the GPT-6.1 Sol agent policy in [AGENTS.md](../../../AGENTS.md).
 
-## 1. Outcome and scope
+## 1. Goal and scope
 
-Friends can hear and watch one Windows broadcaster from one, four, and eight viewers without adding encoder instances for each viewer. A slow or abandoned viewer cannot accumulate unbounded application queues or consume a reader slot indefinitely. Capacity decisions explain when the configured host budget cannot support another viewer.
+The main goal is for multiple people to broadcast in the same room at the same time. Each person publishes one independent stream from their Windows app. Room members can choose which streams to watch, including while broadcasting themselves. Working audio and fullscreen controls that get out of the way are also required.
 
-Working audio is required. Application audio should omit unrelated Discord; explicit entire-screen/system-output audio can include it. Incidental Discord capture is acceptable initially, so strict exclusion does not gate M2. Audio stays opt-in and microphone capture remains absent. These requirements supersede conflicting historical restrictions, as recorded in the [M2 handoff](../../M2-HANDOFF.md).
+Remove the fixed per-room participant and publisher limits. Do not introduce a replacement reader cap or bandwidth-admission policy. The user prefers to address actual capacity problems when they appear in personal use. There is no required one/four/eight-viewer capacity benchmark, large-group test, or external eight-viewer sign-off. This is a scope change, not evidence that any particular room size performs well.
 
-Retain H.264/Opus, one WHIP publication, WHEP readers, NVENC, the explicit capped CPU fallback, repeated H.264 headers, anonymous membership, publication ownership, disconnect grace, and native controller/source lifetime checks. Multiple simultaneous broadcasters per room, previews, alternate quality renditions, grid/focus, and automatic shared-bitrate adaptation remain M3 or later work.
+Keep one shared H.264/Opus encoding pipeline per broadcaster, independent of that stream's viewer count. More broadcasters naturally mean more independent publications; do not create a new encoder per viewer. Retain NVENC, the explicit capped CPU fallback, repeated H.264 headers, scoped grants, stable identity, ownership, publication leases, and source/controller lifetime checks.
 
-Reported upload capacity is an input to configuration, not measured proof. Local browser processes establish local load behavior; external acceptance needs separate internet connections. M1 practical acceptance remains in force and its historical records are not rewritten.
+Carry forward the approved audio requirements: audio is opt-in, application capture should leave unrelated Discord out, explicit system-output capture can include Discord, incidental Discord capture is acceptable initially, and microphone capture is absent. Strict exclusion does not block this milestone.
 
-## 2. Current implementation findings
+Shared low-quality previews, new renditions, an advanced grid/focus interface, automatic bitrate adaptation, proactive bandwidth admission, and scale benchmarking move to future work driven by actual need. Reuse the existing stream cards and responsive room layout.
 
-| Area | Observed baseline | M2 consequence |
+## 2. Current implementation and approach
+
+| Area | Existing behavior | Proposed change |
 | --- | --- | --- |
-| `RoomStore` | Eight participants including the publisher; one publisher per room | Default to nine participants and retain one publisher; count media readers separately |
-| Playback authorization | Sixty-second read grants; valid grants can authorize multiple handshakes | Reserve at WHEP POST and bind each read grant to one media-session attempt |
-| `MediaProxy` / media auth | Scoped authorization, resource ownership, post-handshake revocation recheck; auth callback can report the MediaMTX session ID | Preserve these checks and associate the callback ID with the pending reservation |
-| Resource/session stores | Entries are retained until DELETE/revocation; no periodic live-inventory reconciliation | Add reconciliation and explicit pending/active/closing accounting |
-| Host traffic | Reads private MediaMTX inventory and byte deltas; aggregate NIC totals are not stream attribution | Share bounded inventory sampling; retain per-reader observations and unavailable values |
-| Browser player | Independent peer, muted start, three timed retries and bounded rolling diagnostics | Add admission errors and viewer-specific slow-playback recovery |
-| Audio contracts and engine | `AudioSelection` contains an optional process only; Geometry Dash/fixture policy in managed and native code | Introduce explicit modes and update both sides of the boundary |
-| Native guard | Permits one named, generation-bound `jk_process_audio` route; controller and video loss stop publication | Generalize the approved route to its selected mode without permitting arbitrary inputs |
-| Audio buffering | Application PCM queue drops oldest blocks beyond 200 ms | Reuse this bound and expose queue/drop diagnostics for both audio modes |
-| Acceptance validator | Historical schema requires strict Discord exclusion and unrelated original M1 gates | Add a versioned M2 report; keep interpretation of historical M1 reports unchanged |
+| `RoomStore` | Eight participants and one publisher per room; publications already keyed by stream and owner | Remove per-room count restrictions; preserve one publication per owning session |
+| Browser room | Maps all snapshot streams to independent players; count displays `/ 8` | Keep independent players and remove the displayed maximum |
+| Ownership/revocation | Grants and resources scoped by session and generated path | Verify stopping/leaving one publisher cannot affect another publisher |
+| Windows client | Explains publication conflicts as one-broadcaster-only | Remove that assumption and update native help text |
+| Host diagnostics | Multiplies total reader count by the sum of stream bitrates | Attribute readers to paths before estimating per-stream/room traffic |
+| Fullscreen | Entire stream card, including heading, status, controls and diagnostics | Make bars overlays that hide without changing video geometry |
+| In-app viewer | Same room page; fullscreen events already make its WPF window borderless/maximized | Reuse that integration and verify restoration |
+| Audio | Optional process selection; Geometry Dash/fixture-only managed/native policy | Add explicit modes and update both entry points |
 
-These are source-review findings, not performance results or proof of an audio failure's cause.
+Recommended approach: extend the existing room and media model. It already separates stream paths, player components and ownership; the room-wide one-publisher check is the main functional restriction. A new SFU, per-viewer encoding, or replacement room model would add unnecessary work. Merely increasing numeric limits would retain the constraint the user asked to remove.
 
-## 3. Approaches considered
+## 3. Concurrent room behavior
 
-1. **Recommended: extend the existing native pipeline and MediaMTX fan-out.** Add a host admission service, reconcile actual media sessions, and implement explicit guarded audio modes. This retains the working video path and limits changes to the missing controls.
-2. **Use standard OBS output capture directly.** This saves endpoint-capture code, but still needs native route auditing, readiness diagnostics, fixed-device validation, and controller-lifetime integration. Merely allowing `wasapi_output_capture` through today's policy would leave those checks incomplete. Prefer a small application-owned endpoint source sharing the existing guard and PCM conventions.
-3. **Replace transport or encode separately for constrained viewers.** This introduces a second media architecture or rendition system before the existing path has been measured at eight viewers. Defer it; M2 disconnects or reconnects a struggling reader rather than changing every viewer's quality.
+Remove participant-count checks from Join and Rejoin and the publisher-count check from publication reservation. Remove their configuration/validation fields rather than replacing eight with a larger number. Keep unrelated room-creation limits, credential expiry, request-size validation, rate limiting and existing infrastructure resource safeguards. Those safeguards are not a configurable per-room people quota and must not be described as one. Do not add a new limit on simultaneous streams or WHEP readers.
 
-## 4. Media architecture and limits
+Each session continues to own at most one publication. Repeated/concurrent Start requests by the same session return the same stream identity; different sessions receive different stream IDs and generated paths. Two sessions with the same nickname remain independent. Renaming changes the displayed owner name without replacing players or disrupting playback.
 
-The flow remains: selected video plus explicitly selected audio -> one native H.264/Opus pipeline -> one WHIP publication -> MediaMTX -> up to eight independent WHEP resources. Room APIs and SignalR carry control and status; ASP.NET does not proxy RTP media or retain media-frame queues.
+Publishers A and B can publish concurrently. A viewer can watch A, B, both, or neither through the existing per-card Watch/Stop controls. Watching is explicit; joining the room must not open a decoder for every stream automatically. Each card retains independent sound, fullscreen, reconnect and cleanup state. Do not add shared preview streams or a custom focus-layout system.
 
-Add validated host options under `MediaAdmission` and pass the same limits through development/public startup and packaging documentation:
+Stopping, losing the source, timing out, or leaving as A revokes A's publication and readers of A's path. B's publication, lease and viewers remain active. Leaving as an ordinary viewer closes only that viewer's media resources. Preserve reconnect grace, per-tab tracking, cross-room isolation and authorization. Do not kick all sessions in a room when only one generated path is revoked.
 
-| Setting | Proposed initial value | Meaning |
-| --- | --- | --- |
-| Room participants / publishers | 9 / 1 | One broadcaster plus eight distinct viewer identities |
-| Readers per stream | 8 | Includes pending, active, and closing WHEP reservations |
-| Host egress budget | 200 Mbps | Operator-configured media allowance across all rooms; adjustable for the actual host |
-| Per-reader overhead multiplier | 1.25 | Planning allowance for protocol traffic/retransmission; not a measured guarantee |
-| Audio bitrate allowance | 0.128 Mbps | Reserve even in Off mode, matching the existing Opus pipeline |
-| Pending handshake deadline | 20 seconds | Bounds application reservation/handshake work; uncertain upstream cleanup stays charged |
-| Inventory poll / stale threshold | 2 seconds / 6 seconds | New admissions pause if complete live inventory cannot be trusted |
-| MediaMTX write queue / max readers | 64 / 8 | Finite per-reader queue and independent server-side count limit |
+Update the browser count to show the actual number of people without a denominator. Remove one-publisher and measured-capacity promises from client messages, native help text and current setup/README guidance when implementation lands. No application-managed admission queue or bitrate registration transaction is required.
 
-The 200 Mbps budget is a proposed default suitable for a reported approximately 250 Mbps upload with spare capacity. It does not detect the connection's speed. Document adjustment before external hosting; show configured budget, reserved amount, and observed media traffic separately.
+For diagnostics, count readers by exact generated stream path and calculate each estimate from that stream's latest known applied bitrate and reader count. Sum estimates for a room only when the required observations are available. Missing publisher data stays unavailable. Actual MediaMTX traffic and aggregate NIC counters retain their provenance; do not use a cross-product of all publishers and all readers. Global resource safeguards and inventory sampling limits are not evidence of proven scale.
 
-Reader cost is `ceil((videoKbps + 128) * 1.25)` in integer kbps. At 15 Mbps video, eight readers reserve 151.280 Mbps; at 25 Mbps, they require 251.280 Mbps and do not fit the default. Admission rejects excess demand with an actionable capacity message rather than oversubscribing or lowering every viewer's quality. Include local viewers in reservations conservatively, even when their traffic does not leave the PC. Publisher-to-host upload is a separate path to validate.
+## 4. Fullscreen bars
 
-All rooms share the host budget. The existing maximum of sixteen rooms remains bounded. Every WHEP resource consumes a slot, including additional tabs and a broadcaster watching their own stream. Multi-tab room presence stays supported; it does not grant unlimited playback resources. Eight external viewers means the broadcaster must not also open a ninth self-view resource.
+The requested top/bottom bars are the stream card's heading and playback UI inside the browser or in-app fullscreen viewer. Group the top heading and bottom status/controls/diagnostics into overlays over the video. In fullscreen, video occupies the available area with its existing aspect-ratio behavior. Showing/hiding bars must not resize, crop, remount or reconnect the stream. Outside fullscreen, keep normal visible room controls.
 
-## 5. Admission, publication settings, and cleanup
+On successful fullscreen entry, hide both overlays and the idle cursor immediately. Entry alone must not reveal the bars because the activation button retained pointer focus. Pointer movement inside that fullscreen player reveals both bars and the cursor and starts a two-second idle timer. Further movement restarts the timer. At expiry, hide them again unless the user is interacting with controls. Pointer exit hides them when no control interaction is active.
 
-Introduce one host-owned admission service with a single synchronization boundary for budget and reader counts. It owns publication bitrate revisions and reader reservations; do not scatter independent counters across endpoints. Never await network calls while holding its lock. Define a fixed lock order for grant authorization, admission, and resource registration; admission must not call back into `RoomStore` or acquire the grant-store lock while holding its own lock.
+Keep bars visible while the pointer is over interactive controls, a control is being pressed, or keyboard focus is actively navigating the overlay. Release that hold on pointer/focus exit and resume the idle timer. Moving over the video alone reveals temporarily and does not hold bars open. Prevent click-through to obscured controls when hidden.
 
-### Publication settings
+Keyboard interaction, particularly Tab navigation, reveals controls and provides visible focus; Escape still leaves fullscreen. Touch/pointer-down on the video reveals controls so touch users can exit, mute or resume playback. These are accessibility alternatives to cursor movement. Preserve browser-managed fullscreen exit behavior.
 
-Extend the typed publication-reservation request to include validated broadcast settings and a settings revision. The host needs the requested bitrate ceiling before it grants playback; missing metadata must not be treated as zero. Update the native client, core interface/controller, and protocol fixtures together. An old client without this metadata receives an upgrade-required validation error.
+On exit, cancel idle timers, restore normal cursor/control visibility and retain the same video element, peer connection, sound selection and playback state. Clean up listeners/timers on unmount and when the fullscreen element changes. Only the active fullscreen card responds; other cards keep normal controls.
 
-Before a running stream increases bitrate, atomically reprice its pending, active, and closing readers against the global budget. If the increase does not fit, reject it before stopping the current engine and retain the previous stream/settings. Keep new reservations on the accepted revision. Hold the previous, higher allowance through a bitrate decrease until the replacement publication is confirmed; a failure or uncertain old-session cleanup cannot release the difference prematurely.
+Routine status remains in the bottom overlay. An actionable failure or blocked-playback prompt can reveal controls to make Retry/Play available. In-app fullscreen continues using WebView2's existing event and restores the previous WPF window style/state on exit. Browser-owned temporary notices are outside the application's bar visibility control.
 
-CPU fallback can apply a lower bitrate than requested; retaining the requested ceiling is conservative. An independently reported lower applied rate may improve diagnostics, but cannot silently increase the admitted ceiling. Settings restart preserves stream ownership and identity and obtains a fresh WHIP grant. The implementation plan must specify prepare/confirm/rollback handling so cancellation does not publish at an unreserved rate or strand a settings transaction.
+## 5. Working audio
 
-### Read-session lifecycle
+Represent selection explicitly as `Off`, `Application(process identity)`, or `SystemOutput(render endpoint ID)`. Managed/native entry points reject inconsistent or unknown modes/identities. Selecting a display never silently enables system capture. Do not add microphone selection or capture.
 
-1. `GET .../playback` still issues a scoped short-lived grant; OPTIONS validates it without reserving bandwidth.
-2. At WHEP POST, validate ownership, path, content type, and bounded SDP. Atomically reserve count and budget before forwarding upstream. Recheck the grant when committing the reservation.
-3. Bind the read grant to one pending attempt. The private MediaMTX auth callback may validate that same attempt repeatedly for the same media ID, but cannot bind the grant to a different ID. A grant cannot create simultaneous peers or be reused after completion/expiry; a retry obtains a fresh grant.
-4. Associate the callback's media ID with the reservation before accepting the created resource. Require a valid resource Location and matching nonempty media ID. Commit HTTP resource ownership after the SDP response, retaining the existing post-await revocation check, but keep the reservation pending until private inventory confirms the peer connection is established. Returning HTTP 201 alone must not cancel the pending deadline.
-5. On cancellation, timeout, malformed upstream response, lost response delivery, or revocation, mark closing and revoke further use of the attempt. DELETE/kick the known upstream session using an independent bounded cleanup token. Definitive rejection with no created session can release immediately; uncertain creation stays charged until reconciled.
-6. DELETE, room Leave, session expiry, publisher stop, source/controller loss, host shutdown, and restart all converge on idempotent close/release. A repeated callback or cleanup completion cannot release another reservation or decrement capacity twice.
+### Application mode
 
-Poll the complete private MediaMTX inventory every two seconds using a bounded client and pagination. Share this sample between reconciliation and diagnostics. Match ID, generated path, and read/publish role; never infer ownership from nickname or remote address. Expire abandoned pending attempts, remove confirmed-dead resources, and release closing reservations only after a successful kick/DELETE or confirmed absence from a complete inventory. For an in-flight handshake, settle/cancel upstream work and retain a cleanup tombstone for late callbacks/responses before absence can release the reservation; a premature 404 must not free a slot while its session can still be created. A peer that never connects must not survive its pending deadline merely because it has an HTTP resource.
+Reuse exact PID/creation-time/path binding and process-tree loopback. Broaden the Geometry Dash-only product allowlist to explicitly selected identifiable standalone applications. Keep direct Discord, shared/general browser hosts, the controller/helper and room-viewing processes ineligible initially. Explain unsupported applications without promising child-process isolation; incidental Discord capture remains accepted.
 
-If the admin API is unavailable or inventory is partial/stale, preserve known reservations and pause new WHEP admissions. Existing healthy streams continue. Retry cleanup without an unbounded queue; coalesce by reservation/session ID. On host startup, reconcile/kick leftover sessions on application-generated paths before opening new admission. The existing in-memory room/session credentials are not restored after restart.
+Process exit, PID reuse, unavailable identity or source change cannot attach to a replacement application. Surface the error and use the existing guard stop path. The user can explicitly restart with Audio Off or another source. Never fall back automatically to system output.
 
-Use typed problem responses: `409 reader_capacity` or `409 bandwidth_capacity`, `409 reader_cooldown` with Retry-After, `503 media_inventory_unavailable` with Retry-After, and existing authentication/validation statuses for those failures. The browser displays the actual reason. Capacity rejection ends automatic retries; cooldown waits consume the same bounded recovery budget as other retries. Transient network/inventory failures retain a bounded retry path. Do not expose tokens, upstream URLs, or admin credentials in errors.
+### System output mode
 
-## 6. Bounded queues and slow viewers
+Offer explicit `System output (all sound on selected output)` for monitor sharing. Audio belongs to a Windows render endpoint's mix, not a monitor. Enumerate active render endpoints separately and display friendly names. Resolve a default-output shortcut to a concrete ID at selection/start, retain that ID through capture/settings restarts and require reselection if it disappears. Do not silently follow a changed default device. Switching to window video cannot retain system audio silently.
 
-Keep independent MediaMTX readers. Set `writeQueueSize: 64` and `pathDefaults.maxReaders: 8` in both source configurations and generated profiles, retaining pinned versions and no-recording behavior. Review the pinned reader implementation: its queue contains callbacks for media units, and overflow increments discarded-frame counters. A queue setting is not a millisecond or byte bound and does not prove low end-to-end latency. The proposed size must pass the real-media tests; increasing it to hide a stalled viewer is not an acceptable fix.
+Use an application-owned native WASAPI endpoint-loopback source, `jk_system_audio`, sharing the existing PCM conventions and 200 ms drop-oldest queue. Validate an active render endpoint and reject capture devices. Extend scene policy, route readiness, private IPC, arm/disarm, diagnostics and per-block controller/generation checks together. Permit only the selected route into the existing Opus mix, with monitoring disabled; generic global/input-device sources remain disabled.
 
-Use per-session `outboundFramesDiscarded` deltas from the private API. After a ten-second initial connection warm-up, growth across three consecutive fresh two-second inventory samples closes only that reader and applies a ten-second reconnect cooldown for that owner/path. Counter resets start a new observation window. New viewers must not change shared encoder settings or restart the publisher. If this policy proves too sensitive under legitimate bursts, adjust it from retained measurements and review the change.
+Application/system capture share delivery/lifecycle conventions but retain distinct acquisition identities. Controller/video-source loss stops capture. Endpoint capture cannot depend on an unrelated process being alive. Mode/source changes destroy the old source and require an explicit restart.
 
-On visible, playing browser video after the same warm-up, trigger a viewer-only reconnect when presentation makes no progress for two seconds or rolling average jitter-buffer residence exceeds 250 ms for five seconds. Use deltas of `jitterBufferDelay / jitterBufferEmittedCount`, scoped to the same SSRC/connection; missing or reset fields remain unavailable. Paused/hidden tabs do not trigger the visible-playback heuristic. This metric is receiver buffer residence, not capture-to-display latency.
+### Broadcasting while watching
 
-Close the old peer/resource before opening a fresh one. Retain bounded retry attempts, respect server cooldown, and stop after three unsuccessful automatic recoveries until the user presses Retry. Reset the recovery budget only after thirty seconds of healthy visible playback. An unsupported metric does not establish a passed delay bound; use presentation progress and real timing evidence. A stalled unmanaged receiver remains contained by server queues and the reader cap even if it sends no browser telemetry.
+Application mode supports publishing and watching other room streams without intentionally capturing the room-viewing process. System mode captures all sounds on its chosen output, including Discord and incoming streams routed there. State that limitation in the UI; strict exclusion is not an acceptance gate.
 
-Expose host/broadcaster process private memory and viewer observations during testing. Require bounded reservation/store sizes and no continuing memory/delay growth under the sustained slow-reader workload. Configuring a finite queue alone cannot establish the byte footprint or WebRTC's internal buffering. If real tests reveal continued delay growth or healthy-reader degradation, investigate that layer before accepting M2; do not create a per-viewer encoder as an automatic workaround.
+During system-output publishing, start the in-app viewer muted and prevent enabling its stream sound on the captured endpoint. Explain the option to use application audio or a separate playback output. Keep watching video and concurrent broadcasting available. Independent browsers are outside this local control, so describe that incoming sound played through the captured output will be rebroadcast. Do not claim echo cancellation or headphones remove digital loopback recapture.
 
-## 7. Explicit audio modes
+Initialization failure prevents Start in the selected mode with an actionable error; a legitimately quiet source is not initialization failure. Show selected mode/device, readiness/error, captured/emitted frames, queue drops and active encoder counts. Replace the hard-coded `JK Application Audio` diagnostics lookup with the selected source. Counters/Opus packets help diagnosis but do not establish audibility.
 
-Replace the nullable-process-only selection with a validated mode plus its identity: `Off`, `Application(process identity)`, or `SystemOutput(render endpoint ID)`. Reject missing, contradictory, or unknown fields in both managed and native entry points. Distinguish selected, initialized, capturing, emitted, and viewer-audible observations in status/diagnostics.
+## 6. Implementation boundaries
 
-### Application
-
-Reuse process-loopback capture and exact PID/creation-time/path binding. Replace the Geometry Dash-only product allowlist with explicit selection of an identifiable standalone application. Keep direct Discord, general/shared browser hosts, the controller/helper, and room-viewing processes ineligible initially; report unsupported sources clearly. This preserves the preference for unrelated Discord to stay out without promising perfect child-process exclusion. No application launch, job confinement, or future-child exclusion mechanism is required for M2.
-
-Continue capturing the selected process tree, including children. Process exit, PID reuse, access failure, or a changed selection cannot attach to another application. Surface the error and stop the selected audio/publication through the existing guard path. The user can explicitly restart with Audio Off or select another source. Never fall back from application capture to system output.
-
-### System output
-
-Offer `System output (all sound on selected output)` for monitor sharing. This is a product choice matching the requested whole-screen mode: Windows captures a rendering endpoint's mix, not audio associated with a particular monitor. Application audio remains available independently for monitor or window video.
-
-Enumerate active render endpoints in a separate Windows audio catalog. Display friendly device names. A default-output shortcut resolves to a concrete endpoint ID at selection/start; keep that ID fixed for the capture generation and across settings restarts. Do not follow later default-device changes. Missing/disabled/replaced devices produce an actionable stop and require explicit reselection. A window-video selection cannot retain System output silently.
-
-Implement a small application-owned native WASAPI endpoint-loopback source, `jk_system_audio`, using the selected render endpoint, shared-mode conversion to the established 48 kHz stereo float PCM format, the existing bounded PCM queue, and timestamp/error conventions. Keep process and endpoint acquisition separate while sharing PCM delivery and diagnostics. Verify the device is an active rendering endpoint; reject capture endpoints and generic `default` identifiers in native requests. Keep generic OBS input-device/global audio sources disabled.
-
-Extend native source readiness, scene routing, guard arming, IPC validation, and diagnostics together. The armed selection identifies one route by type, source name, generation, and selected identity. Each PCM delivery checks the live controller binding and selected generation. Only that route can reach the existing Opus mix; monitoring remains disabled, and controller/video-source loss stops capture. Mode/source changes destroy the old source and require an explicit restart. Endpoint capture must not rely on an unrelated application's process lifetime.
-
-System output includes Discord, other programs, and room playback routed to that endpoint. The UI says so before Start and while live. Keep the broadcaster's own in-app stream muted with sound enablement disabled during System output publishing; restore user control when it ends. External browsers are outside that local control, so explain that playing the same room through the captured output will be recaptured. Use another output or mute local playback. Do not claim system audio excludes feedback or add microphone capture/echo cancellation as a substitute.
-
-### Failure and verification
-
-Audio initialization failure prevents Start in the requested mode and gives a specific reason. Silence from a quiet application/device is valid and must not be treated as initialization failure. Captured/emitted counters and received Opus packets support diagnosis but do not prove audibility. Add native source mode, capture readiness/error, PCM queue duration/drops, emitted frames, and active video/audio encoder counts. Existing audio diagnostics must use the selected source rather than the hard-coded `JK Application Audio` name.
-
-## 8. Contracts and responsibility boundaries
-
-| Component | Responsibility/change |
+| Area | Work to include in the later implementation plan |
 | --- | --- |
-| `JKiller.Contracts`, core room/media interfaces | Typed audio modes, publication settings/revision, admission problem types, additive diagnostics |
-| Host admission service | Atomic counts/budget, per-attempt lifecycle, revision transitions, cooldowns; no media buffering |
-| Room/media endpoints and private auth | Membership/scoped authorization, registration and cleanup coordinated with admission |
-| Private MediaMTX inventory client/reconciler | Complete bounded samples, ID/role correlation, orphan cleanup and freshness |
-| Windows audio catalog and WPF model/view | Explicit mode/device selection, eligibility/status, selected-output explanation |
-| `ObsMediaEngine`, native audio sources and guard | Mode-aware setup, exact identity/lifetime, PCM acquisition and emission checks |
-| Browser WHEP/player/diagnostics | Typed capacity handling, one peer per player, bounded recovery, audio/presentation observations |
-| Acceptance tooling | Separate M2 evidence schema/report and fan-out/slow-reader/audio scenarios |
+| Host room store/tests | Remove room participant/publisher quotas; distinct concurrent owners; same-owner idempotency |
+| Media grants/proxy/revocation tests | Cross-stream ownership, stop, expiry and viewer cleanup isolation |
+| Native room client/app | Remove one-publisher messaging; independent publisher/viewer lifetimes |
+| Browser room/player/CSS | Count text, independent player state, fullscreen overlays/timers |
+| Diagnostics | Per-path reader/traffic attribution with truthful unavailable observations |
+| Audio contracts/core/Windows/native | Explicit guarded modes, picker, setup/error handling |
+| Docs/portable distribution | Current multi-publisher behavior, audio limitations, matching components |
 
-Keep changes focused on these paths. Do not remove source/controller identity checks, broaden arbitrary OBS RPC access, modify personal OBS configuration, change deployment topology, or retune video encoding without relevant evidence.
+Keep current bounded media queues and bounded reconnect behavior. Do not implement the previous proposal's reader reservations, configured 200 Mbps budget, reader cooldown/eviction policy, 64-unit queue retuning, or settings-budget revisions. Diagnose actual scaling failures when observed, as requested.
 
-## 9. Validation and acceptance
+## 7. Validation sized for this milestone
 
-Use test-first implementation for state transitions and native routing. `Verify.ps1 -Mode CodeOnly` remains the noninteractive correctness path; it does not install a new native plugin or launch capture/audio fixtures. Rebuild/install matching native components with the owned broadcaster stopped before live validation; package matching managed/native components together.
+Remove the required one/four/eight-viewer matrix, eight external viewers, network-shaped slow-reader campaign and numeric capacity/memory thresholds from M2 acceptance. Historical performance reports stay unchanged. Do not create new required large-group tests or treat missing eight-viewer evidence as a blocker. Automated correctness still matters; working audio/concurrent media need small practical checks.
 
-Automated checks cover concurrent final-slot/final-budget admission; grant reuse and auth callback binding; OPTIONS without reservations; failed/aborted/late handshakes; repeated cleanup; revocation during negotiation; admin timeout/partial inventory; restart/orphan reconciliation; settings increase rejection before engine stop; revision rollback; multi-tab resource accounting; reader cooldowns; and browser cleanup/retry limits. Exercise mode validation, microphone rejection, application PID reuse/exit, endpoint replacement/default switch, stale generation, controller loss, and unauthorized native audio routes. Use deterministic clocks for lifecycle policies.
+Automated coverage should verify:
 
-Version the M2 acceptance report independently of the original M1 validator. Report each required case as passed, failed, or pending with revision, settings, topology, duration, and evidence provenance. Strict Discord exclusion is informational/deferred; intended audio delivery is required. A known failure cannot become pending because another measurement is missing. Keep automated correctness, measured streaming, and manual listening results separate.
+- Join/Rejoin beyond the former eight-person boundary with in-memory sessions, without a new fixed maximum. This is a logic regression check, not an eight-viewer media test.
+- Two distinct sessions reserve/renew separate publications concurrently; repeated same-owner requests remain idempotent. Another publisher is accepted without a two-publisher ceiling.
+- Unauthorized stop/replace, cross-room playback, rename, lease expiry and Leave preserve other publishers and unrelated reader resources.
+- Multiple cards retain independent Watch/Stop/sound/reconnect state; fullscreen does not recreate the video/WHEP session.
+- Fullscreen entry hides immediately; movement reveals; idle hides; movement resets; control interaction, keyboard and touch work; exit/unmount clears timers. Use deterministic timers and separately confirm actual browser fullscreen.
+- Audio mode/identity validation, no microphone, source/controller loss, PID reuse, endpoint loss/default changes and native route/generation checks.
+- Per-stream traffic estimates with different reader counts/bitrates do not overcount; missing data remains unavailable.
 
-Real-media matrix:
+Use `Verify.ps1 -Mode CodeOnly` for noninteractive correctness during implementation. It does not launch capture/audio fixtures or prove real playback. Rebuild/install matching native components with the owned broadcaster stopped before live checks; package matching components together.
 
-| Case | Required evidence |
-| --- | --- |
-| One, four, eight viewers | Same 1080p60/15 Mbps high-motion source; each case runs at least ten steady-state minutes after separately measured startup; actual decode/presentation and audible sound at every viewer |
-| Shared pipeline | Exactly one active video encoder, one active Opus encoder, and one WHIP publication; counts stay constant as viewers join/leave; applied NVENC initialization/activity documented |
-| Slow viewer | One of eight viewers has only its own media path constrained below the stream rate for at least two minutes, then blackholed for at least one minute; healthy viewers stay playing; retain recovery and memory/time-series evidence |
-| Cleanup/churn | Repeated join/stop/tab-close, handshake abort, reconnect, Leave, and source/controller loss; all resources/reservations converge to actual live readers without increasing retained-state/memory growth |
-| Audio modes | Intended app/fixture and system-output sound received in browser and WebView2; Off, sound enablement/mute, stop/restart, process exit, endpoint loss and default-device switch exercised |
-| Discord/feedback characterization | Record actual inclusion/exclusion for each mode using identifiable test sounds; System output includes sounds routed to the selected endpoint; in-app self-playback restriction verified; strict isolation remains deferred |
-| External paths | Separate internet connections among the simultaneous real viewers, including a constrained external reader; record each device/browser/connection and direct/relayed ICE path; local tabs cannot substitute for this evidence |
+The practical check uses two concurrent publications and an actual decoding viewer that can select both. Verify intended video/audio, stop/restart one publication while the other keeps playing, and broadcast while watching another stream. Use two PCs or independently isolated development/portable roots; do not bypass the current single-root owned OBS lock to launch conflicting helpers. Fixtures establish the local protocol/lifecycle path; document remaining human listening or real-application checks honestly.
 
-Reuse the original suitable-path engineering targets for the 1080p60 baseline: average presented FPS at least 57, at least 95% of five-second windows at 55 FPS or above, no steady-state freeze longer than 500 ms, render/encoding skipped ratios each below 1%, measured video-latency p95 at most 500 ms, and measured audiovisual offset within 100 ms at the start and end. Apply the healthy-viewer targets during slow-reader isolation. Use calibrated timing with disclosed uncertainty; RTT and jitter-buffer residence do not establish video latency.
+Exercise Application, System output and Off; browser sound enable/mute; fullscreen hide/reveal/exit in a browser and WebView2; and feedback limitations while broadcasting/viewing. Record tested devices/settings and observed audible interruptions, timing issues or Discord inclusion. No ten-minute benchmark, fixed FPS/latency threshold, eight-viewer attendance or separate-network load test is required to close this revised milestone. An external friend-group trial is useful when available and is not a prerequisite.
 
-Record publisher, host, and receiver load separately. For bounded-memory evidence, record per-process private bytes every second, compare the medians of the first and last steady-state minutes, and require growth no greater than the larger of 64 MiB or 10% per application-owned process over a ten-minute case. Browser process measurements are reported with their ownership/sharing limits. Verify live resources return to baseline within ten seconds after a confirmed media close when the admin API is healthy. These are proposed regression thresholds, not theoretical memory guarantees. Retain failed runs rather than adjusting thresholds after seeing their results.
+Report automated results, observed real-media behavior and pending functional checks separately. Two tested publishers demonstrate concurrency, not unlimited capacity. Missing eight-viewer measurements are outside this milestone; missing working-audio or concurrent-publishing evidence still needs an honest status.
 
-The slow-reader harness must shape/drop the actual selected UDP/TCP media flow for only that viewer; HTTP route delays or browser offline toggles alone do not establish media impairment. Keep local and external results separate. Live device activity and external participation are scheduled explicitly during implementation; no friends are contacted automatically and no private audio recordings are required. Missing equipment or participants leaves the affected acceptance pending and M2 unaccepted.
+## 8. Handoff to planning
 
-## 10. Risks and decisions carried into planning
-
-- The proposed 64-unit queue and slow-reader thresholds require workload validation. A stock MediaMTX counter reports discards, not queue age; do not fabricate unavailable queue measurements.
-- A configured bitrate/budget is an admission estimate. Observe actual egress and report overload or retransmission excess; the service is not a traffic shaper or an upload speed guarantee.
-- Custom endpoint capture adds a small native adapter but retains per-block lifetime checks. Device format conversion, timestamps, and unplug behavior need real audio tests.
-- Broader application capture can remain incompatible with some applications. System output provides an explicit alternative for monitor sharing; neither mode may silently substitute for the other.
-- M1 startup stutter is measured separately. Change it during M2 only if evidence shows a relevant regression or it prevents M2 acceptance.
-- This design is the review artifact. After approval, write the small-step implementation plan with concrete files, failing tests, commands, and review checkpoints before product code begins.
-
-## 11. Technical basis inspected
-
-Source inspection establishes available mechanisms, not successful performance:
-
-- [MediaMTX 1.21.2 configuration](https://github.com/bluenviron/mediamtx/blob/v1.21.2/mediamtx.yml): outgoing queue configuration and path reader limit.
-- [MediaMTX 1.21.2 reader](https://github.com/bluenviron/mediamtx/blob/v1.21.2/internal/stream/reader.go) and [stream](https://github.com/bluenviron/mediamtx/blob/v1.21.2/internal/stream/stream.go): individual bounded reader queues and discard accounting.
-- [MediaMTX 1.21.2 WebRTC session](https://github.com/bluenviron/mediamtx/blob/v1.21.2/internal/servers/webrtc/session.go) and [API schema](https://github.com/bluenviron/mediamtx/blob/v1.21.2/api/openapi.yaml): reader lifecycle, session identity, readiness, bytes and discarded-frame observations.
-- [Microsoft WASAPI loopback recording](https://learn.microsoft.com/en-us/windows/win32/coreaudio/loopback-recording): rendering-endpoint mixed-output capture.
-- [OBS 32.2.2 WASAPI source](https://github.com/obsproject/obs-studio/blob/32.2.2/plugins/win-wasapi/win-wasapi.cpp), also present in the local pinned source tree: endpoint selection and reconnect behavior considered in the alternative analysis.
-- [W3C WebRTC statistics](https://www.w3.org/TR/webrtc-stats/): jitter-buffer residence counters and their interpretation.
+After review of this revised design, write a focused implementation plan for concurrent publications, audio and fullscreen behavior, with concrete files, failing checks and small reviewable steps. No product code or services need to run merely to revise this design. Preserve M1 acceptance/history and investigate startup stutter only if a relevant regression or observed functional problem justifies it.

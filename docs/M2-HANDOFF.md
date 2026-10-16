@@ -2,7 +2,7 @@
 
 M1 has practical acceptance with known limitations as of 2026-10-16. Start with [the current roadmap](ROADMAP.md). This handoff describes the next scope; it is not an approved detailed M2 implementation plan.
 
-The revised requirements below are approved. The [proposed M2 design](superpowers/specs/2026-10-16-milestone-2-design.md) is ready for review; the design and detailed implementation plan still require approval before product code begins.
+The user revised the scope again on 2026-10-16: concurrent broadcasting is now M2's main goal, fixed per-room people limits and eight-viewer testing are removed, and fullscreen bars must hide automatically. The [revised M2 design](superpowers/specs/2026-10-16-milestone-2-design.md) replaces the previous capacity proposal and is ready for review; the detailed implementation plan has not been written.
 
 ## Git baseline and attribution
 
@@ -13,7 +13,11 @@ The revised requirements below are approved. The [proposed M2 design](superpower
 
 ## M2 scope
 
-One broadcaster serving one, four and eight viewers. Design bandwidth admission, bounded queues/delay and slow-viewer isolation. Verify that the broadcaster keeps one shared encoding pipeline rather than encoding separately for each viewer. Multiple simultaneous broadcasters, shared previews and grid/focus are M3 scope.
+The main goal is multiple people broadcasting concurrently in the same room, with independent stream ownership and playback. Remove the fixed per-room participant and publisher limits and the UI's maximum-people display. Each participant can publish one stream and choose which other streams to watch; do not add a replacement fixed reader cap or proactive bandwidth-admission system. Keep one shared encoding pipeline per broadcaster rather than encoding separately for each viewer.
+
+Fullscreen viewing must hide the top and bottom playback bars immediately on entry. Cursor movement reveals them; two seconds of inactivity hides them again. Preserve keyboard/touch control access, playback state, and fullscreen exit in the browser and in-app viewer.
+
+The earlier required one/four/eight-viewer capacity matrix, external eight-viewer attendance, and large-group performance gate are removed. Use a small concurrent-publication functional check. Scaling work is deferred until personal use reveals an actual problem. Shared previews and advanced grid/focus remain future viewing refinements.
 
 Working broadcast audio is also required for M2 acceptance. An experimental selector or silent audio track does not satisfy this requirement. See the revised audio requirements below.
 
@@ -25,14 +29,14 @@ Use Superpowers to review the current implementation, write a focused M2 design 
 - Prefer selected-application audio that leaves unrelated Discord audio out. Prefer capturing Discord only when the user explicitly selects entire-screen/system-output audio. These are preferences, not an initial isolation acceptance gate: incidental Discord capture is acceptable initially and must be described accurately.
 - Permit an explicit entire-screen/system-output audio mode in the M2 design. It captures the selected output's mixed sound, which can include Discord and other applications. Keep audio opt-in and distinguish application audio from system audio in the controls; selecting a display alone must not silently enable system audio.
 - Keep microphone capture out of scope. Account for room-playback feedback when designing system audio; do not claim that mixed output excludes room playback or Discord.
-- Validate actual audible delivery with video at one, four and eight real decoding viewers. Exercise the implemented application/system modes, audio off, start/stop/restart and browser sound enablement; record audiovisual timing, interruptions and any Discord leakage. Automated correctness tests alone do not establish working audio.
+- Validate actual audible delivery with video in a small concurrent-broadcasting check, without requiring eight viewers. Exercise the implemented application/system modes, audio off, start/stop/restart, watching while publishing, and browser sound enablement; record observed timing issues, interruptions and any Discord leakage. Automated correctness tests alone do not establish working audio.
 - These requirements supersede the earlier prohibition on system-output audio and the strict Discord-isolation gate for M2. Preserve historical M1 evidence and report remaining isolation limitations without marking them fixed.
 
 ## Existing implementation
 
 - Windows C#/WPF broadcaster with WebView2 in-app viewing; .NET 10. Native capture/encoding uses an application-owned OBS 32.2.2 helper and C++ extension.
 - Shared H.264/Opus publication over WHIP to self-hosted MediaMTX 1.21.2; browser viewers use WHEP. ASP.NET Core/SignalR handles anonymous rooms and stable identity.
-- Current room cap is eight participants including the broadcaster. Eight viewers require an explicit M2 capacity change and measured validation; they are not already proven by that cap.
+- At the M1 baseline, the room cap is eight participants including the broadcaster, and only one publisher is allowed. Removing these per-room limits and enabling concurrent publishers is M2 work; the scope revision does not itself change current application behavior or prove a maximum supported load.
 - Native hardware encoding currently supports NVIDIA NVENC. Explicit CPU fallback is capped at 720p30/4 Mbps; AMD/Intel hardware encoders are not implemented.
 - Repeated H.264 setup headers are configured before encoder initialization, checked through native readback and logged. Retain this browser compatibility correction.
 - Presence has explicit Leave, disconnect grace, multi-tab tracking and native heartbeats. Preserve ownership, media revocation and publisher lease behavior.
@@ -43,7 +47,7 @@ Use Superpowers to review the current implementation, write a focused M2 design 
 - [Startup stutter #4](https://github.com/vitor-tecc/PlayKross/issues/4): brief stuttering at broadcast startup is accepted for later investigation. Measure startup separately from steady playback before choosing a fix.
 - [External characterization #2](https://github.com/vitor-tecc/PlayKross/issues/2): exact external FPS, loss, stalls, latency and long-run stability remain unmeasured where the reports lack evidence. Missing measurements are not passed; practical M1 acceptance does not validate M2 capacity.
 - [Deferred review/audio backlog #1](https://github.com/vitor-tecc/PlayKross/issues/1): strict audio isolation remains deferred under the revised M2 requirements; it and remaining minor findings are not silently resolved.
-- Compare the same source/settings at one, four and eight real decoding viewers, including separate internet connections and deliberately slow/stalled viewers. Observe capture, encoding, send, decode and presentation separately, along with encoder count, upload, memory and delay.
+- Check two independent publications, selected-stream playback, stop/restart isolation, and broadcasting while watching. More than two publishers must not be blocked by a newly chosen quota. Large-group performance and external load characterization are optional future work and do not gate M2.
 - Correctness tests with simulated media do not prove playback smoothness, active hardware encoding, Discord exclusion or internet performance. Preserve failed runs and measurement uncertainty.
 
 ## Operation and verification

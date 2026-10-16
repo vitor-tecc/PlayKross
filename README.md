@@ -8,6 +8,8 @@ Self-hosted Windows broadcasting with browser viewers. The first implemented mil
 
 Project owner and contributor: [@vitor-tecc](https://github.com/vitor-tecc). See [contributors](CONTRIBUTORS.md) and the [M2 handoff](docs/M2-HANDOFF.md).
 
+**Revised M2 scope:** concurrent broadcasters, removal of fixed per-room participant/publisher limits, working audio, and fullscreen bars that hide until interaction. The earlier eight-viewer capacity testing requirement is removed; scaling work will follow observed problems in personal use. This describes the proposed next milestone; the M1 behavior documented below remains the current implementation. See the [revised design](docs/superpowers/specs/2026-10-16-milestone-2-design.md).
+
 For friends who broadcast, use the [portable ZIP instructions](docs/setup/portable.md). Extract the whole package and open **PlayKross.exe**; .NET is bundled. Browser-only viewers need only the public room invitation. The room host runs separately.
 
 On this already-prepared PC, run PowerShell 7 from the project folder:

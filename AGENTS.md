@@ -9,4 +9,5 @@
 
 ## Development context
 
-- Start M2 work with [the current roadmap](docs/ROADMAP.md) and [the M2 handoff](docs/M2-HANDOFF.md). Their revised M2 audio requirements supersede conflicting historical audio restrictions for new M2 work; historical test results remain evidence only for their recorded revision.
+- Start M2 work with [the current roadmap](docs/ROADMAP.md) and [the M2 handoff](docs/M2-HANDOFF.md). Their revised M2 scope and audio requirements supersede conflicting historical restrictions for new M2 work; historical test results remain evidence only for their recorded revision.
+- M2 prioritizes concurrent broadcasters, working audio, and fullscreen bars that hide automatically. Remove per-room participant/publisher quotas; do not add a replacement viewer cap or bandwidth-admission system. Eight-viewer capacity testing and large-group performance gates are outside M2 scope; address observed scale problems when needed.
