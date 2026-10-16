@@ -14,6 +14,7 @@ public static class DiagnosticsExport
         ["captureApi"] = new(["Windows Graphics Capture", "Windows Graphics Capture / D3D11 texture", "WGC"], StringComparer.Ordinal),
         ["connectionPath"] = new(["unknown", "direct", "relayed"], StringComparer.Ordinal),
         ["hardwareInitialized"] = new(["true", "false"], StringComparer.Ordinal),
+        ["estimateBasis"] = new(["video-payload-only"], StringComparer.Ordinal),
         ["provenance"] = new(["browser-rolling-5s", "native-monotonic-interval", "mediamtx-api-and-all-active-nics"], StringComparer.Ordinal) };
     public static RedactedReport Redact(IEnumerable<DiagnosticsEnvelope> samples) => new(1, samples.Take(4096)
         .Where(s => s.Role is "publisher" or "viewer" or "host")

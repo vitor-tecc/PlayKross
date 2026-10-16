@@ -44,14 +44,13 @@ public static class DiagnosticsEndpoints
         app.MapGet("/api/diagnostics", async (HttpContext context, RoomStore rooms, DiagnosticStore store, IHostTrafficReader traffic) =>
         {
             var room = rooms.Snapshot(SessionAuthenticationHandler.Require(context).SessionId);
-            var host = await traffic.ReadAsync(room, context.RequestAborted);
+            var snapshot = await traffic.ReadAsync(room, context.RequestAborted);
+            var host = snapshot.Aggregate;
             var samples = store.Read(room);
             var hostMetrics = host.Metrics.ToDictionary();
-            var targets = samples.Where(s => s.Role == "publisher").GroupBy(s => s.StreamId).Select(g => g.Last()).ToArray();
-            if (hostMetrics.TryGetValue("activeReaders", out var readers) && readers is not null && targets.Length == room.Streams.Count && targets.All(s => s.Metrics.TryGetValue("appliedMbps", out var b) && b is not null))
-                hostMetrics["estimatedViewerMbps"] = targets.Sum(s => s.Metrics["appliedMbps"]) * readers;
-            // Milestone one has one stream. Multi-stream estimates require readers per path.
-            return Results.Ok(DiagnosticsExport.Redact(samples.Append(host with { Metrics = hostMetrics })));
+            hostMetrics["estimatedViewerMbps"] = HostBandwidthEstimate.EstimateMbps(room, snapshot.ReaderCounts, samples);
+            var metadata = host.Metadata.ToDictionary(); metadata["estimateBasis"] = "video-payload-only";
+            return Results.Ok(DiagnosticsExport.Redact(samples.Append(host with { Metrics = hostMetrics, Metadata = metadata })));
         }).RequireAuthorization();
     }
 }

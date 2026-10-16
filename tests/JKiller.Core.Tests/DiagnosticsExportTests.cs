@@ -6,6 +6,16 @@ namespace JKiller.Core.Tests;
 public sealed class DiagnosticsExportTests
 {
     [Fact]
+    public void VideoPayloadEstimateBasisSurvivesRedactionWithoutAllowingArbitraryStrings()
+    {
+        var host = new DiagnosticsEnvelope(Guid.Empty, "host", new Dictionary<string, double?> { ["estimatedViewerMbps"] = 36 }, new Dictionary<string, string> { ["estimateBasis"] = "video-payload-only", ["sessionToken"] = "session-secret" });
+        var sample = Assert.Single(DiagnosticsExport.Redact([host]).Samples);
+        Assert.Equal("video-payload-only", sample.Metadata["estimateBasis"]);
+        Assert.DoesNotContain("sessionToken", sample.Metadata.Keys);
+        var malicious = host with { Metadata = new Dictionary<string, string> { ["estimateBasis"] = "session-secret" } };
+        Assert.Empty(Assert.Single(DiagnosticsExport.Redact([malicious]).Samples).Metadata);
+    }
+    [Fact]
     public void ExportContainsNoCredentialsOrPrivateImagePaths()
     {
         var report = DiagnosticsExport.Redact([new(Guid.NewGuid(), "viewer", new Dictionary<string, double?> { ["receiveMbps"] = 40, ["C:/Private/game.exe"] = 1 }, new Dictionary<string, string> { ["codec"] = "video/H264", ["sessionToken"] = "session-secret", ["imagePath"] = "C:/Private/game.exe", ["candidateAddress"] = "192.168.1.1", ["encoder"] = "C:/Private/game.exe" })]);
