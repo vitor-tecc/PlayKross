@@ -5,7 +5,7 @@ Updated 2026-10-16. This is the current milestone-status overview. Original spec
 | Milestone | Status | Scope |
 |---|---|---|
 | **1 — Core streaming** | **Accepted with known limitations** | One native Windows broadcaster, browser and in-app viewing, anonymous rooms, capture/settings controls, diagnostics, self-hosted connectivity and a portable broadcaster ZIP |
-| **2 — Multiple viewers** | **Next; detailed plan not written** | One broadcaster with one/four/eight viewers, bandwidth admission, bounded queues/delay and isolation of slow viewers |
+| **2 — Multiple viewers** | **Design proposed for review; detailed plan not written** | One broadcaster with one/four/eight viewers, working audio, bandwidth admission, bounded queues/delay and isolation of slow viewers |
 | **3 — Multiple streams** | Planned | Concurrent broadcasters, previews, subscription selection, grid/focus and simultaneous broadcast/watch load |
 | **4 — Complete experience** | Planned | UI polish, simpler setup/deployment, packaging refinements, recovery and broader compatibility validation |
 
@@ -19,6 +19,8 @@ Experimental application audio remains off by default, initially limited to the 
 
 ## Follow-up for M2 planning
 
+- Review the [proposed M2 design](superpowers/specs/2026-10-16-milestone-2-design.md), then write and review its implementation plan before product code begins.
+- Deliver working audio to browser and in-app viewers. Prefer application audio with Discord included only for explicitly selected entire-screen/system-output audio, but accept incidental Discord capture initially. Strict isolation is deferred; audio remains opt-in and microphone capture stays out of scope. See the [revised M2 audio requirements](M2-HANDOFF.md#revised-m2-audio-requirements-2026-10-16).
 - Track brief startup stutter separately from sustained playback. Establish a baseline before selecting a fix; distinguish capture/encoding startup, viewer decode startup and network recovery.
 - Carry forward external numerical/stability characterization and retained unexpected-stop investigations. Do not interpret functional M1 acceptance as measured capacity or latency evidence.
 - Compare the same source/settings at one, four and eight real decoding viewers, including external and deliberately slow/stalled viewers. Verify encoder count, host upload, memory/delay bounds and healthy-viewer isolation.
