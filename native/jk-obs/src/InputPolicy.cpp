@@ -3,13 +3,19 @@
 #include <cwctype>
 namespace jk {
 bool AllowsCreateInput(std::string_view kind) {
-    // Process audio is explicitly opt-in and experimental: Windows includes future
-    // children. System/device/browser sources remain prohibited.
+    // Only our independently bound process source may be created for audio.
+    // Task 6 adds the owned system source; generic devices and hosts stay denied.
     return kind == "monitor_capture" || kind == "window_capture" || kind == "jk_window_capture" || kind == "jk_bound_capture" || kind == "color_source" || kind == "jk_process_audio";
 }
-bool AllowsExperimentalAudioImage(std::wstring_view image) {
-    std::wstring normalized(image);
-    for (auto& ch : normalized) ch = ch == L'/' ? L'\\' : static_cast<wchar_t>(std::towlower(ch));
-    return normalized.ends_with(L"\\steamapps\\common\\geometry dash\\geometrydash.exe") || normalized.ends_with(L"\\capturefixture.exe");
+bool AllowsApplicationAudioImage(std::wstring_view image) {
+    if (image.empty() || image.find_first_not_of(L" \t\r\n") == std::wstring_view::npos) return false;
+    std::wstring name(image.substr(image.find_last_of(L"/\\") == std::wstring_view::npos ? 0 : image.find_last_of(L"/\\") + 1));
+    for (auto& ch : name) ch = static_cast<wchar_t>(std::towlower(ch));
+    // Keep in parity with managed AudioPolicy.EvaluateApplication. Native binding
+    // and owner-tree validation remain independent requirements after eligibility.
+    return name.find(L"discord") == std::wstring::npos && name.find(L"jkiller") == std::wstring::npos && name.find(L"playkross") == std::wstring::npos &&
+        name != L"obs64.exe" && name != L"chrome.exe" && name != L"msedge.exe" && name != L"msedgewebview2.exe" &&
+        name != L"firefox.exe" && name != L"brave.exe" && name != L"opera.exe" && name != L"chromium.exe" &&
+        name != L"steamwebhelper.exe" && name != L"explorer.exe" && name != L"rundll32.exe" && name != L"dllhost.exe";
 }
 }

@@ -25,6 +25,8 @@ bool AuditScene();
 void StopPublication(GuardStopReason reason = GuardStopReason::None);
 void StopAllAudioSources();
 void DescribeAudioSource(const char* name, obs_data_t* response);
+void DescribeSelectedAudio(obs_data_t* response);
+std::optional<AudioRoute> SelectedAudioRoute(const char* name, std::uint64_t generation, std::uint32_t owner_pid);
 bool AudioSourceReady(const char* name, std::uint64_t generation, std::uint32_t owner_pid);
 void StartLocalControl();
 void StopLocalControl();
