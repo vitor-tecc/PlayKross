@@ -6,6 +6,8 @@ Self-hosted Windows broadcasting with browser viewers. The first implemented mil
 
 **M1 accepted with known limitations (2026-10-16):** core streaming has practical sign-off. Brief startup stutters are deferred; the recorded external benchmark is no longer a prerequisite for M1 closure. Unmeasured external performance and strict audio exclusion are not marked passed. Current room limit remains eight participants including the publisher, with one active broadcaster; eight-viewer capacity and concurrent streams are later milestones. See the [current roadmap and acceptance basis](docs/ROADMAP.md). M2 design/planning can begin; its detailed plan has not been written.
 
+Project owner and contributor: [@vitor-tecc](https://github.com/vitor-tecc). See [contributors](CONTRIBUTORS.md) and the [M2 handoff](docs/M2-HANDOFF.md).
+
 For friends who broadcast, use the [portable ZIP instructions](docs/setup/portable.md). Extract the whole package and open **PlayKross.exe**; .NET is bundled. Browser-only viewers need only the public room invitation. The room host runs separately.
 
 On this already-prepared PC, run PowerShell 7 from the project folder:
