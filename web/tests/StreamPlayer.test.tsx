@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { StreamPlayer } from "../src/room/StreamPlayer";
 import type { PlaybackGrant } from "../src/api/contracts";
@@ -31,4 +31,20 @@ it("FullscreenReturnsToRoomAndRenamePreservesThePlayingStream", async () => {
   expect(screen.getByText("<script>新名字")).toBeDefined(); expect(view.container.querySelector("script")).toBeNull();
   expect(mocks.sessions).toHaveLength(1); expect(mocks.sessions[0]!.close).not.toHaveBeenCalled();
   view.unmount(); expect(video.srcObject).toBeNull(); expect(mocks.sessions[0]!.close).toHaveBeenCalledOnce();
+});
+
+it("StoppingOneCardKeepsTheOtherCardPlayingAcrossRename", async () => {
+  const user = userEvent.setup();
+  const getPlayback = vi.fn(async (streamId: string) => ({ streamId, path: `rooms/room/streams/${streamId}/main`, whepUri: `/media/rooms/room/streams/${streamId}/main/whep`, token: `grant-${streamId}`, expiresAt: "later" }));
+  const cards = (nickname: string) => <><StreamPlayer streamId="a" nickname="Alice" getPlayback={getPlayback} /><StreamPlayer streamId="b" nickname={nickname} getPlayback={getPlayback} /></>;
+  const view = render(cards("Bob"));
+  const panels = view.container.querySelectorAll<HTMLElement>(".stream-card");
+  for (const panel of panels) await user.click(within(panel).getByRole("button", { name: "Watch stream" }));
+  const [aVideo, bVideo] = view.container.querySelectorAll("video");
+  await waitFor(() => { expect(aVideo!.srcObject).toBe(mocks.media); expect(bVideo!.srcObject).toBe(mocks.media); });
+  await user.click(within(panels[0]!).getByRole("button", { name: "Stop watching" }));
+  view.rerender(cards("Renamed Bob"));
+  expect(aVideo!.srcObject).toBeNull(); expect(bVideo!.srcObject).toBe(mocks.media);
+  expect(screen.getByText("Renamed Bob")).toBeDefined();
+  expect(mocks.sessions).toHaveLength(2); expect(mocks.sessions[0]!.close).toHaveBeenCalledOnce(); expect(mocks.sessions[1]!.close).not.toHaveBeenCalled();
 });

@@ -7,6 +7,25 @@ namespace JKiller.Host.Tests;
 public sealed class RoomApiTests
 {
     [Fact]
+    public async Task MultipleOwnersCanReserveWhileRejoiningBeyondTheFormerParticipantLimit()
+    {
+        await using var host = await HostFixture.Start(); var invite = host.Invite;
+        var owners = new List<SessionGrant>();
+        for (var i = 0; i < 12; i++) owners.Add(await host.Join(invite, $"member {i}"));
+        var reservations = new List<PublishReservation>();
+        foreach (var owner in owners.Take(3))
+        {
+            using var response = await host.Client.SendAsync(host.Request(HttpMethod.Post, "/api/streams", owner.SessionToken));
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            reservations.Add((await response.Content.ReadFromJsonAsync<PublishReservation>())!);
+        }
+        using var resumed = await host.Client.SendAsync(host.Request(HttpMethod.Post, "/api/join", owners[0].SessionToken, new { invite, nickname = "returned", desktop = true }));
+        Assert.Equal(HttpStatusCode.OK, resumed.StatusCode);
+        var grant = (await resumed.Content.ReadFromJsonAsync<SessionGrant>())!;
+        Assert.Equal(owners[0].SessionId, grant.SessionId); Assert.Equal(12, grant.Room.Participants.Count);
+        Assert.Equal(3, grant.Room.Streams.Count); Assert.Equal(3, reservations.Select(x => x.Path).Distinct().Count());
+    }
+    [Fact]
     public async Task LeaseRenewalIsOwnerOnlyAndKeepsTheStreamAcrossRestartGrace()
     {
         await using var f = await HostFixture.Start(); var invite = f.Invite;

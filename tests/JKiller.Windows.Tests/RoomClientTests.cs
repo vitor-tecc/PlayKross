@@ -8,13 +8,15 @@ namespace JKiller.Windows.Tests;
 public sealed class RoomClientTests
 {
     [Fact]
-    public async Task SecondPublisherConflictExplainsTheCurrentRoomLimit()
+    public async Task PublishConflictKeepsActionableServerFailureWithoutInventingARoomLimit()
     {
         var handler = new Handler(Grant) { PublishStatus = HttpStatusCode.Conflict };
         using var http = new HttpClient(handler); var client = new RoomHttpClient(http);
         await client.JoinAsync(new("http://localhost:5000"), "invitation", "Player", CancellationToken.None);
-        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => client.ReservePublishAsync(CancellationToken.None));
-        Assert.Contains("one broadcaster", error.Message, StringComparison.OrdinalIgnoreCase);
+        var error = await Assert.ThrowsAsync<HttpRequestException>(() => client.ReservePublishAsync(CancellationToken.None));
+        Assert.Equal(HttpStatusCode.Conflict, error.StatusCode);
+        Assert.Contains("retry", error.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("one broadcaster", error.Message, StringComparison.OrdinalIgnoreCase);
     }
     [Fact]
     public async Task ExpiredInMemorySessionJoinsAnonymouslyAndGetsAFreshIdentity()

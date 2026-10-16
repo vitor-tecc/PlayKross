@@ -29,6 +29,6 @@
     <TextBlock Text="{Binding AppliedText}" TextWrapping="Wrap"/>
     <TextBlock Text="{Binding ObservedText}" TextWrapping="Wrap" Margin="0,8,0,0"/>
     <Button HorizontalAlignment="Left" Content="Export room diagnostics" Click="ExportClick"/>
-    <TextBlock Margin="0,12,0,0" TextWrapping="Wrap" Text="This first milestone supports one broadcaster per room. Multi-stream rooms and higher viewer counts follow measured validation."/>
+    <TextBlock Margin="0,12,0,0" TextWrapping="Wrap" Text="People in the room can broadcast at the same time. Each person can share one stream and choose which streams to watch."/>
   </StackPanel></ScrollViewer>
 </Window>

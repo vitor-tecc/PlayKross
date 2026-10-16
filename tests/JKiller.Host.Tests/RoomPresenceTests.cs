@@ -56,7 +56,7 @@ public sealed class RoomPresenceTests
         Assert.Equal(viewer.SessionId, Assert.Single(rooms.Snapshot(viewer.SessionId).Participants).SessionId);
     }
     [Fact]
-    public async Task ParticipantWhoNeverOpenedASubscriptionReleasesItsSlotAfterGrace()
+    public async Task ParticipantWhoNeverOpenedASubscriptionLosesMembershipAfterGrace()
     {
         await using var f = await HostFixture.Start(); var invite = f.Invite;
         var departed = await f.Join(invite);
@@ -80,17 +80,17 @@ public sealed class RoomPresenceTests
     }
 
     [Fact]
-    public async Task ExplicitLeaveImmediatelyReleasesSlotAndMediaPermissions()
+    public async Task ExplicitLeaveImmediatelyRemovesMembershipAndMediaPermissions()
     {
         await using var f = await HostFixture.Start(); var invite = f.Invite; var owner = await f.Join(invite);
         var viewer = await f.Join(invite);
-        for (var i = 2; i < 8; i++) await f.Join(invite);
+        for (var i = 2; i < 12; i++) await f.Join(invite);
         var rooms = f.App.Services.GetRequiredService<RoomStore>();
         var stream = rooms.ReservePublish(owner.SessionId); var read = rooms.GetPlayback(viewer.SessionId, stream.StreamId);
         using var left = await f.Client.SendAsync(f.Request(HttpMethod.Post, "/api/me/leave", owner.SessionToken));
         Assert.Equal(HttpStatusCode.OK, left.StatusCode);
         var replacement = await f.Join(invite);
-        Assert.Equal(8, replacement.Room.Participants.Count); Assert.Empty(replacement.Room.Streams);
+        Assert.Equal(12, replacement.Room.Participants.Count); Assert.Empty(replacement.Room.Streams);
         var grants = f.App.Services.GetRequiredService<MediaGrantStore>();
         Assert.False(grants.Authorize(stream.Token, stream.Path, "publish", f.Clock.Now));
         Assert.False(grants.Authorize(read.Token, stream.Path, "read", f.Clock.Now));
