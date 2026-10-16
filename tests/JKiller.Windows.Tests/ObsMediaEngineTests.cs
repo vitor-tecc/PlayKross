@@ -19,11 +19,12 @@ public sealed class ObsMediaEngineTests
         Assert.False(rpc.Publishing);
     }
     [Fact]
-    public async Task DirectEngineAudioRequestCannotBypassSupportedApplicationPolicy()
+    public async Task DirectEngineAudioRequestCannotBypassExcludedApplicationPolicy()
     {
         var helper = new FakeHelper(); var rpc = new FakeRpc();
         await using var engine = new ObsMediaEngine(helper, (_, _) => Task.FromResult<IObsRpcClient>(rpc));
-        await Assert.ThrowsAsync<InvalidOperationException>(() => engine.PrepareAsync(Request with { Audio = new(Request.Video.Process) }, CancellationToken.None));
+        var discord = Request.Video.Process! with { ExecutablePath = @"C:\Apps\Discord.exe" };
+        await Assert.ThrowsAsync<InvalidOperationException>(() => engine.PrepareAsync(Request with { Audio = new(discord) }, CancellationToken.None));
         Assert.Equal(0, helper.Starts);
     }
     [Fact]
