@@ -67,6 +67,11 @@ static void SameNameReplacementDiagnosticsUnavailable() {
     Require(!response.bools["audioRunning"], "Replacement must not supply selected audio running status");
     Require(response.ints["capturedAudioFrames"] == 0 && response.ints["emittedAudioFrames"] == 0, "Replacement counters must not be reported for the selected identity");
     Require(!response.strings["audioError"].empty() && response.strings["audioError"] != "replacement-only diagnostic", "Missing selected context must report unavailable");
+    auto owner = jk::ProcessBinding::Open(f.probe.token, f.probe);
+    const auto replacement = jk::SelectedAudioRoute("Application audio", 1, 0);
+    Require(jk::module_guard.Arm(std::move(owner.binding), replacement, 1), "Replacement can be explicitly selected later");
+    jk::DescribeAudioSource(f.original, &response);
+    Require(!response.bools["audioRunning"] && response.ints["capturedAudioFrames"] == 0, "An earlier diagnostic snapshot must not pick up the newly selected tuple");
 }
 static void OriginalContextAppliesMixersThenAuditsAndDescribes() {
     Fixture f;
@@ -75,6 +80,15 @@ static void OriginalContextAppliesMixersThenAuditsAndDescribes() {
     obs_data_t response; jk::DescribeSelectedAudio(&response);
     Require(response.bools["audioRunning"] && response.ints["capturedAudioFrames"] == 800 && response.ints["emittedAudioFrames"] == 400,
         "Original selected context supplies its running status and counters");
+    Require(response.doubles["audioQueueMs"] == 12.5 && response.ints["droppedAudioFrames"] == 96, "Selected context must supply its queue snapshot");
+    f.context.startup_error = "WASAPI initialization failed";
+    Require(jk::AudioSourceError("Application audio", 1) == f.context.startup_error, "Private preparation error must explain native initialization failure");
+    Require(jk::AudioSourceError("Application audio", 2) != f.context.startup_error, "Preparation error must not reflect another generation");
+    obs_data_t invalid; invalid.ints["selection_generation"] = 0;
+    obs_source_t invalid_source{"Invalid system audio", "jk_system_audio"};
+    auto* invalid_context = static_cast<jk::AudioSource*>(jk::CreateForMode(&invalid, &invalid_source, jk::AudioMode::SystemOutput));
+    Require(invalid_context->startup_error.find("generation") != std::string::npos, "Owned audio settings require a positive generation");
+    jk::Destroy(invalid_context);
 }
 static void SystemContextUsesSelectedEndpointAndRejectsChanges() {
     for (const std::string change : {"endpoint", "mode", "generation"}) {

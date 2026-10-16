@@ -11,6 +11,7 @@ struct obs_data_t {
     std::map<std::string, std::string> strings;
     std::map<std::string, long long> ints;
     std::map<std::string, bool> bools;
+    std::map<std::string, double> doubles;
 };
 struct obs_source_t {
     std::string name, type = "jk_process_audio";
@@ -35,6 +36,7 @@ inline std::vector<obs_source_t*> harness_sources;
 inline void obs_data_set_string(obs_data_t* d, const char* k, const char* v) { d->strings[k] = v; }
 inline void obs_data_set_int(obs_data_t* d, const char* k, long long v) { d->ints[k] = v; }
 inline void obs_data_set_bool(obs_data_t* d, const char* k, bool v) { d->bools[k] = v; }
+inline void obs_data_set_double(obs_data_t* d, const char* k, double v) { d->doubles[k] = v; }
 inline const char* obs_data_get_string(obs_data_t* d, const char* k) { return d->strings[k].c_str(); }
 inline long long obs_data_get_int(obs_data_t* d, const char* k) { return d->ints[k]; }
 inline bool obs_data_get_bool(obs_data_t* d, const char* k) { return d->bools[k]; }
@@ -79,7 +81,7 @@ public:
     void Stop() { running = false; }
     bool Running() const { return running; }
     std::string Error() const { return ""; }
-    AudioQueueStats QueueStats() const { return {}; }
+    AudioQueueStats QueueStats() const { return {12.5, 96}; }
 };
 class EndpointLoopback : public ProcessLoopback {
 public:
@@ -102,7 +104,7 @@ bool SourceAllowed(obs_source_t*, std::uint64_t);
 bool AuditScene();
 void StopPublication(GuardStopReason reason = GuardStopReason::None);
 void StopAllAudioSources();
-void DescribeAudioSource(const char*, obs_data_t*);
+void DescribeAudioSource(const AudioRoute&, obs_data_t*);
 void DescribeSelectedAudio(obs_data_t*);
 std::optional<AudioRoute> SelectedAudioRoute(const char*, std::uint64_t, std::uint32_t);
 bool AudioSourceReady(const char*, std::uint64_t, std::uint32_t);

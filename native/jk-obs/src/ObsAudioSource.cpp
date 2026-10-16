@@ -86,6 +86,7 @@ const char* Name(void*) { return "PlayKross application audio (application and c
 void* CreateForMode(obs_data_t* settings, obs_source_t* source, AudioMode mode) {
     auto context = std::make_unique<AudioSource>(source, static_cast<std::uint64_t>(obs_data_get_int(settings, "selection_generation")), mode);
     try {
+        if (obs_data_get_int(settings, "selection_generation") <= 0) throw std::runtime_error("Audio selection generation must be positive.");
         const std::string requested_mode = obs_data_get_string(settings, "audio_mode");
         if (!requested_mode.empty() && requested_mode != (mode == AudioMode::SystemOutput ? "SystemOutput" : "Application")) throw std::runtime_error("Audio mode cannot differ from the owned source type.");
         if (mode == AudioMode::SystemOutput) {
@@ -166,19 +167,23 @@ void StopAllAudioSources() {
         obs_source_release(source);
     }
 }
-void DescribeAudioSource(const char* name, obs_data_t* response) {
+void DescribeAudioSource(const AudioRoute& selected, obs_data_t* response) {
     std::optional<AudioRoute> route;
     bool running = false;
     long long captured = 0, emitted = 0;
+    AudioQueueStats queue{};
     std::string error;
     {
         std::lock_guard lock(sources_mutex);
-        for (const auto& [source, context] : sources) if (std::string(obs_source_get_name(source)) == name) {
+        for (const auto& [source, context] : sources) if (selected.source_name == obs_source_get_name(source)) {
+            if (selected.type_id != obs_source_get_unversioned_id(source) || selected.mode != context->mode ||
+                selected.generation != context->generation || selected.identity_key != context->identity_key) continue;
             route = AudioRoute{obs_source_get_unversioned_id(source), obs_source_get_name(source), context->generation,
                 obs_source_get_monitoring_type(source) != OBS_MONITORING_TYPE_NONE, context->mode, context->identity_key};
             running = context->Running();
             captured = static_cast<long long>(context->captured_frames.load());
             emitted = static_cast<long long>(context->emitted_frames.load());
+            queue = context->QueueStats();
             error = context->startup_error.empty() ? context->Error() : context->startup_error;
             break;
         }
@@ -190,6 +195,10 @@ void DescribeAudioSource(const char* name, obs_data_t* response) {
     obs_data_set_int(response, "capturedAudioFrames", matches ? captured : 0);
     obs_data_set_int(response, "emittedAudioFrames", matches ? emitted : 0);
     obs_data_set_string(response, "audioError", matches ? error.c_str() : "Selected audio source is not available.");
+    if (matches) {
+        obs_data_set_double(response, "audioQueueMs", queue.queued_ms);
+        obs_data_set_int(response, "droppedAudioFrames", static_cast<long long>(queue.dropped_frames));
+    }
 }
 std::optional<AudioRoute> SelectedAudioRoute(const char* name, std::uint64_t generation, std::uint32_t owner_pid) {
     if (!name || !*name) return std::nullopt;
@@ -215,15 +224,26 @@ bool AudioSourceReady(const char* name, std::uint64_t generation, std::uint32_t 
     if (!name || !*name) return true; // Explicit video-only mode.
     return SelectedAudioRoute(name, generation, owner_pid).has_value();
 }
+std::string AudioSourceError(const char* name, std::uint64_t generation) {
+    // Preparation uses the private controller channel before the guard is armed.
+    std::lock_guard lock(sources_mutex);
+    for (const auto& [source, context] : sources) if (context->generation == generation && std::string(obs_source_get_name(source)) == name) {
+        const auto error = context->startup_error.empty() ? context->Error() : context->startup_error;
+        return error.empty() ? "Selected audio capture is not running or its process identity is unavailable." : error;
+    }
+    return "Selected audio source is unavailable for this generation.";
+}
 void DescribeSelectedAudio(obs_data_t* response) {
     const auto selected = module_guard.SelectedAudio();
     obs_data_set_string(response, "audioMode", !selected ? "Off" : selected->mode == AudioMode::Application ? "Application" : "SystemOutput");
+    obs_data_set_string(response, "audioModeName", !selected ? "off" : selected->mode == AudioMode::Application ? "application" : "system-output");
     obs_data_set_string(response, "audioSource", selected ? selected->source_name.c_str() : "");
     obs_data_set_string(response, "audioIdentity", selected ? selected->identity_key.c_str() : "");
     obs_data_set_bool(response, "audioRunning", false);
     obs_data_set_int(response, "capturedAudioFrames", 0);
     obs_data_set_int(response, "emittedAudioFrames", 0);
     obs_data_set_string(response, "audioError", "");
-    if (selected) DescribeAudioSource(selected->source_name.c_str(), response);
+    if (!selected) { obs_data_set_double(response, "audioQueueMs", 0); obs_data_set_int(response, "droppedAudioFrames", 0); }
+    if (selected) DescribeAudioSource(*selected, response);
 }
 }

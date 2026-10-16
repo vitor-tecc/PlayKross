@@ -26,11 +26,14 @@ internal static class Program
         var identity = ProcessIdentityReader.Read(fixture.Id) ?? throw new Exception("Fixture disappeared.");
         if (!string.Equals(Path.GetFullPath(identity.ExecutablePath), Path.GetFullPath(Path.Combine(root, ".artifacts/native/Debug/CaptureFixture.exe")), StringComparison.OrdinalIgnoreCase)) throw new Exception("Only the synthetic fixture may be used in this probe.");
         using var http = new HttpClient(new HttpClientHandler { UseCookies = false, AllowAutoRedirect = false }); var room = new RoomHttpClient(http);
-        await using var model = new BroadcasterModel(fallback => new ObsMediaEngine(new OwnedObsProcess(root), fallback), room, new WindowsSourceCatalog());
+        await using var model = new BroadcasterModel(fallback => new ObsMediaEngine(new OwnedObsProcess(root), fallback), room, new WindowsSourceCatalog(), audioCatalog: new WindowsAudioCatalog());
         var link = Environment.GetEnvironmentVariable("JKILLER_PROBE_JOIN_LINK")!; model.RoomLink = link; model.Nickname = "Embedded viewer probe";
-        await model.JoinAsync(token); model.Video = model.Sources.Single(s => s.Kind == SourceKind.Window && s.NativeHandle == unchecked((ulong)(long)fixture.MainWindowHandle));
+        await model.JoinAsync(token);
         var captureMode = Environment.GetEnvironmentVariable("JKILLER_PROBE_CAPTURE_MODE") ?? "application";
-        model.Audio = ProbeCaptureMode.SelectAudio(captureMode, model.Video);
+        model.Video = captureMode == "system-output"
+            ? model.Sources.Single(s => s.Kind == SourceKind.Monitor && s.Id == (Environment.GetEnvironmentVariable("JKILLER_PROBE_MONITOR_ID") ?? throw new Exception("System-output probe requires an explicit monitor ID.")))
+            : model.Sources.Single(s => s.Kind == SourceKind.Window && s.NativeHandle == unchecked((ulong)(long)fixture.MainWindowHandle));
+        model.Audio = ProbeCaptureMode.SelectAudio(captureMode, model.Video, Environment.GetEnvironmentVariable("JKILLER_PROBE_RENDER_ENDPOINT_ID"));
         await model.StartAsync(token);
         using var viewer = new RoomWebView(root, room); var window = new Window { Content = viewer, Width = 1080, Height = 850, Title = "JKiller synthetic WebView validation" }; window.Show();
         try

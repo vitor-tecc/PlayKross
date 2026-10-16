@@ -11,8 +11,6 @@ public enum AudioMode { Off, Application, SystemOutput }
 public sealed record AudioSelection(AudioMode Mode, ProcessIdentity? Application = null, string? RenderEndpointId = null)
 {
     public static AudioSelection Off { get; } = new(AudioMode.Off);
-    // Temporary compatibility while the engine, UI and probes migrate to explicit modes.
-    public AudioSelection(ProcessIdentity? application) : this(application is null ? AudioMode.Off : AudioMode.Application, application) { }
 }
 public sealed record AudioOutputDescriptor(string Id, string DisplayName, bool IsDefault);
 public sealed record BroadcastRequest(SourceDescriptor Video, AudioSelection Audio, BroadcastSettings Settings);

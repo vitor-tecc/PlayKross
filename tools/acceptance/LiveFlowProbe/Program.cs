@@ -11,7 +11,7 @@ using var http = new HttpClient(new HttpClientHandler { AllowAutoRedirect = fals
 IObsRpcClient? control = null;
 OwnedEngineHandle? ownedHandle = null;
 var forceCpuFallback = Environment.GetEnvironmentVariable("JKILLER_PROBE_CPU_FALLBACK") == "1";
-await using var model = new BroadcasterModel(fallback => new ObsMediaEngine(new OwnedObsProcess(Environment.CurrentDirectory), async (handle, token) => { ownedHandle = handle; control = await ObsRpcClient.ConnectAsync(handle.PipeName, handle.Identity, token); return forceCpuFallback ? new CpuFallbackProbeRpc(control) : control; }, fallback), new RoomHttpClient(http), new WindowsSourceCatalog());
+await using var model = new BroadcasterModel(fallback => new ObsMediaEngine(new OwnedObsProcess(Environment.CurrentDirectory), async (handle, token) => { ownedHandle = handle; control = await ObsRpcClient.ConnectAsync(handle.PipeName, handle.Identity, token); return forceCpuFallback ? new CpuFallbackProbeRpc(control) : control; }, fallback), new RoomHttpClient(http), new WindowsSourceCatalog(), audioCatalog: new WindowsAudioCatalog());
 model.AllowCpuFallback = forceCpuFallback;
 model.RoomLink = Environment.GetEnvironmentVariable("JKILLER_PROBE_JOIN_LINK") ?? throw new Exception("Invitation missing.");
 model.Nickname = "Native flow check";
@@ -21,9 +21,11 @@ var identity = ProcessIdentityReader.Read(pid) ?? throw new Exception("Original 
 var image = Path.GetFileName(identity.ExecutablePath);
 if (image is not ("GeometryDash.exe" or "CaptureFixture.exe")) throw new Exception("This acceptance probe only accepts Geometry Dash or the synthetic fixture.");
 using var target = Process.GetProcessById(pid); target.Refresh();
-model.Video = model.Sources.Single(value => value.Kind == JKiller.Contracts.SourceKind.Window && value.NativeHandle == unchecked((ulong)(long)target.MainWindowHandle));
 var captureMode = Environment.GetEnvironmentVariable("JKILLER_PROBE_CAPTURE_MODE") ?? "application";
-model.Audio = ProbeCaptureMode.SelectAudio(captureMode, model.Video);
+model.Video = captureMode == "system-output"
+    ? model.Sources.Single(value => value.Kind == JKiller.Contracts.SourceKind.Monitor && value.Id == (Environment.GetEnvironmentVariable("JKILLER_PROBE_MONITOR_ID") ?? throw new Exception("System-output probe requires an explicit monitor ID.")))
+    : model.Sources.Single(value => value.Kind == JKiller.Contracts.SourceKind.Window && value.NativeHandle == unchecked((ulong)(long)target.MainWindowHandle));
+model.Audio = ProbeCaptureMode.SelectAudio(captureMode, model.Video, Environment.GetEnvironmentVariable("JKILLER_PROBE_RENDER_ENDPOINT_ID"));
 Console.WriteLine("Probe capture mode: " + captureMode + "; audio/synchronization acceptance is pending in video-only mode.");
 var sustainedSeconds = int.TryParse(Environment.GetEnvironmentVariable("JKILLER_SUSTAINED_SECONDS"), out var measuredDuration) ? Math.Clamp(measuredDuration, 10, 1800) : 0;
 using var deadline = new CancellationTokenSource(sustainedSeconds > 0 ? TimeSpan.FromSeconds(sustainedSeconds + 90) : TimeSpan.FromMinutes(3));

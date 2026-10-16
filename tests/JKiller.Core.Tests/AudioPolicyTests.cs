@@ -112,12 +112,12 @@ public sealed class AudioPolicyTests
         Assert.False(AudioPolicy.EvaluateSelection(new(AudioMode.Application, Original), SourceKind.Window, Original.Pid).Allowed);
 
     [Fact]
-    public void OffAndCompatibilityConstructorDoNotImplicitlySelectSystemAudio()
+    public void ExplicitModesDoNotImplicitlySelectSystemAudio()
     {
         Assert.True(AudioPolicy.EvaluateSelection(AudioSelection.Off, SourceKind.Monitor).Allowed);
-        Assert.Equal(AudioMode.Off, new AudioSelection((ProcessIdentity?)null).Mode);
-        Assert.Equal(AudioMode.Application, new AudioSelection(Original).Mode);
-        Assert.Null(new AudioSelection(Original).RenderEndpointId);
+        Assert.Equal(AudioMode.Off, AudioSelection.Off.Mode);
+        Assert.Equal(AudioMode.Application, new AudioSelection(AudioMode.Application, Original).Mode);
+        Assert.Null(new AudioSelection(AudioMode.Application, Original).RenderEndpointId);
     }
     [Fact]
     public void ClosedOrReusedProcessIsNotSameSelection()

@@ -7,6 +7,64 @@ namespace JKiller.Windows.Tests;
 
 public sealed class ObsMediaEngineTests
 {
+    [Fact]
+    public async Task OffCreatesNoAudioSource()
+    {
+        var rpc = new FakeRpc();
+        await using var engine = new ObsMediaEngine(new FakeHelper(), (_, _) => Task.FromResult<IObsRpcClient>(rpc));
+        await engine.PrepareAsync(Request, CancellationToken.None);
+        Assert.Null(rpc.AudioKind);
+        Assert.Equal("Off", rpc.Arm.GetProperty("audioMode").GetString());
+        Assert.Equal("", rpc.Arm.GetProperty("audioSource").GetString());
+    }
+    [Fact]
+    public async Task SystemOutputSendsConcreteEndpointAndMode()
+    {
+        var rpc = new FakeRpc();
+        await using var engine = new ObsMediaEngine(new FakeHelper(), (_, _) => Task.FromResult<IObsRpcClient>(rpc));
+        await engine.PrepareAsync(Request with { Video = new("display", SourceKind.Monitor, 8, null, "Display"), Audio = new(AudioMode.SystemOutput, RenderEndpointId: "render:選択") }, CancellationToken.None);
+        Assert.Equal("jk_system_audio", rpc.AudioKind);
+        Assert.Equal("render:選択", rpc.AudioSettings.GetProperty("endpoint_id").GetString());
+        Assert.Equal("SystemOutput", rpc.AudioSettings.GetProperty("audio_mode").GetString());
+        Assert.True(rpc.AudioSettings.GetProperty("selection_generation").GetInt64() > 0);
+        Assert.Equal("SystemOutput", rpc.Arm.GetProperty("audioMode").GetString());
+        Assert.Equal("endpoint:render:選択", rpc.Arm.GetProperty("audioIdentity").GetString());
+        Assert.False(rpc.AudioSettings.TryGetProperty("pid", out _));
+    }
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task MissingCapabilityOrCaptureReadinessFailsStart(bool capabilityMissing)
+    {
+        var rpc = new FakeRpc { MissingAudioCapability = capabilityMissing, AudioReady = false };
+        var helper = new FakeHelper();
+        await using var engine = new ObsMediaEngine(helper, (_, _) => Task.FromResult<IObsRpcClient>(rpc));
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => engine.PrepareAsync(Request with { Audio = new(AudioMode.Application, Request.Video.Process) }, CancellationToken.None));
+        Assert.Contains("audio", error.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(0, rpc.Starts); Assert.Equal(1, helper.Stops);
+    }
+    [Fact]
+    public async Task QuietInitializedSourceCanStart()
+    {
+        var rpc = new FakeRpc();
+        await using var engine = new ObsMediaEngine(new FakeHelper(), (_, _) => Task.FromResult<IObsRpcClient>(rpc));
+        await engine.PrepareAsync(Request with { Audio = new(AudioMode.Application, Request.Video.Process) }, CancellationToken.None);
+        await engine.StartAsync(new("http://localhost:5000/whip"), "credential", CancellationToken.None);
+        Assert.True(rpc.Publishing);
+    }
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task StopOrCancellationCleansPreparedAudio(bool cancel)
+    {
+        var rpc = new FakeRpc { CancelOnArm = cancel }; var helper = new FakeHelper();
+        await using var engine = new ObsMediaEngine(helper, (_, _) => Task.FromResult<IObsRpcClient>(rpc));
+        using var cancellation = new CancellationTokenSource(); rpc.Cancellation = cancellation;
+        var prepare = engine.PrepareAsync(Request with { Audio = new(AudioMode.Application, Request.Video.Process) }, cancellation.Token);
+        if (cancel) await Assert.ThrowsAnyAsync<OperationCanceledException>(() => prepare);
+        else { await prepare; await engine.StopAsync(CancellationToken.None); }
+        Assert.Equal(1, helper.Stops); Assert.False(rpc.Publishing); Assert.True(rpc.Disarmed);
+    }
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -24,20 +82,31 @@ public sealed class ObsMediaEngineTests
         var helper = new FakeHelper(); var rpc = new FakeRpc();
         await using var engine = new ObsMediaEngine(helper, (_, _) => Task.FromResult<IObsRpcClient>(rpc));
         var discord = Request.Video.Process! with { ExecutablePath = @"C:\Apps\Discord.exe" };
-        await Assert.ThrowsAsync<InvalidOperationException>(() => engine.PrepareAsync(Request with { Audio = new(discord) }, CancellationToken.None));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => engine.PrepareAsync(Request with { Audio = new(AudioMode.Application, discord) }, CancellationToken.None));
         Assert.Equal(0, helper.Starts);
     }
     [Fact]
-    public async Task ExperimentalAudioUsesExactSelectedProcessWithoutSystemLoopback()
+    public async Task ApplicationSendsExactIdentity()
     {
         var rpc = new FakeRpc();
         await using var engine = new ObsMediaEngine(new FakeHelper(), (_, _) => Task.FromResult<IObsRpcClient>(rpc));
         var process = new ProcessIdentity(222, 333, @"C:\Steam\steamapps\common\Geometry Dash\GeometryDash.exe");
-        await engine.PrepareAsync(Request with { Audio = new(process) }, CancellationToken.None);
+        await engine.PrepareAsync(Request with { Audio = new(AudioMode.Application, process) }, CancellationToken.None);
         Assert.Equal("jk_process_audio", rpc.AudioKind);
         Assert.Equal(222, rpc.AudioSettings.GetProperty("pid").GetInt32());
         Assert.Equal("333", rpc.AudioSettings.GetProperty("creation_filetime").GetString());
         Assert.Equal(process.ExecutablePath, rpc.AudioSettings.GetProperty("image_path").GetString());
+        Assert.Equal("Application", rpc.Arm.GetProperty("audioMode").GetString());
+        Assert.Equal($"process:{process.Pid}:{process.CreationFileTime}:{process.ExecutablePath}", rpc.Arm.GetProperty("audioIdentity").GetString());
+    }
+    [Fact]
+    public async Task NativeReadinessLossAfterArmFailsEvenWhenArmWasAccepted()
+    {
+        var rpc = new FakeRpc { LoseAudioAfterArm = true };
+        await using var engine = new ObsMediaEngine(new FakeHelper(), (_, _) => Task.FromResult<IObsRpcClient>(rpc));
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => engine.PrepareAsync(Request with { Audio = new(AudioMode.Application, Request.Video.Process) }, CancellationToken.None));
+        Assert.Contains("Audio device initialization failed.", error.Message);
+        Assert.True(rpc.Disarmed); Assert.Equal(0, rpc.Starts);
     }
     [Fact]
     public async Task AudioBytesAloneDoNotReportVideoBroadcastReady()
@@ -86,7 +155,7 @@ public sealed class ObsMediaEngineTests
         rpc.UnarmedReason = reason;
         Assert.Equal(expected, (await fault.Task.WaitAsync(TimeSpan.FromSeconds(2))).Message);
     }
-    private static BroadcastRequest Request => new(new("window", SourceKind.Window, 42, new(222, 333, @"C:\Game.exe"), "Game"), new(null), new(1920, 1080, 60, 15));
+    private static BroadcastRequest Request => new(new("window", SourceKind.Window, 42, new(222, 333, @"C:\Game.exe"), "Game"), AudioSelection.Off, new(1920, 1080, 60, 15));
     [Fact]
     public async Task InvalidSettingsRejectedBeforeHelperLaunch()
     {
@@ -172,6 +241,10 @@ public sealed class ObsMediaEngineTests
         public bool FailNvenc, WrongReadback, DelayStart, Publishing, HandshakeFailed;
         public bool VideoReady = true;
         public bool RepeatHeaders = true;
+        public bool MissingAudioCapability, CancelOnArm, Disarmed, LoseAudioAfterArm;
+        public bool AudioReady = true;
+        public CancellationTokenSource? Cancellation;
+        public JsonElement Arm;
         public string? UnarmedReason;
         public TaskCompletionSource PipelinePolled = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public int Starts;
@@ -188,7 +261,7 @@ public sealed class ObsMediaEngineTests
         {
             if (requestType == "SetVideoSettings") videoOutput = data.Clone();
             if (requestType == "CreateInput" && data.GetProperty("inputName").GetString() == "JK Video") { VideoSettings = data.GetProperty("inputSettings").Clone(); VideoKind = data.GetProperty("inputKind").GetString(); }
-            if (requestType == "CreateInput" && data.GetProperty("inputName").GetString() == "JK Application Audio") { AudioSettings = data.GetProperty("inputSettings").Clone(); AudioKind = data.GetProperty("inputKind").GetString(); }
+            if (requestType == "CreateInput" && data.GetProperty("inputName").GetString() != "JK Video") { AudioSettings = data.GetProperty("inputSettings").Clone(); AudioKind = data.GetProperty("inputKind").GetString(); }
             if (requestType == "GetSceneItemList") return JsonSerializer.SerializeToElement(new { sceneItems = new[] { new { sourceName = "JK Video", sceneItemId = 1 } } });
             if (requestType == "SetSceneItemTransform") Transform = data.GetProperty("sceneItemTransform").Clone();
             if (requestType == "GetVideoSettings") return JsonSerializer.SerializeToElement(new { outputWidth = WrongReadback ? 1280 : videoOutput.GetProperty("outputWidth").GetInt32(), outputHeight = videoOutput.GetProperty("outputHeight").GetInt32(), fpsNumerator = videoOutput.GetProperty("fpsNumerator").GetInt32(), fpsDenominator = 1 });
@@ -196,15 +269,17 @@ public sealed class ObsMediaEngineTests
             var vendor = data.GetProperty("requestType").GetString();
             var args = data.GetProperty("requestData");
             object response = new { success = true, armed = true, videoReady = true };
+            if (vendor == "Arm") { Arm = args.Clone(); response = new { armed = AudioReady, error = "Selected audio failed initialization." }; if (LoseAudioAfterArm) AudioReady = false; if (CancelOnArm) Cancellation!.Cancel(); }
+            if (vendor == "GetSafetyStatus") response = new { videoReady = true, audioRunning = AudioReady, capturedAudioFrames = 0, emittedAudioFrames = 0, audioError = AudioReady ? "" : "Audio device initialization failed." };
             if (vendor == "Heartbeat" && UnarmedReason is not null) response = new { armed = false, stopReason = UnarmedReason };
-            if (vendor == "GetCapabilities") response = new { encoders = new[] { new { id = "obs_nvenc_h264_tex" }, new { id = "obs_x264" }, new { id = "ffmpeg_opus" } }, sources = new[] { new { id = "jk_bound_capture" }, new { id = "jk_process_audio" } }, services = new[] { new { id = "whip_custom" } } };
+            if (vendor == "GetCapabilities") response = new { encoders = new[] { new { id = "obs_nvenc_h264_tex" }, new { id = "obs_x264" }, new { id = "ffmpeg_opus" } }, sources = (MissingAudioCapability ? new[] { "jk_bound_capture" } : new[] { "jk_bound_capture", "jk_process_audio", "jk_system_audio" }).Select(id => new { id }), services = new[] { new { id = "whip_custom" } } };
             if (vendor == "PreparePipeline")
             {
                 var encoder = args.GetProperty("encoder").GetString()!; PreparedEncoders.Add(encoder);
                 response = new { success = !(FailNvenc && encoder.Contains("nvenc")), encoder, codec = "h264", hardwareInitialized = encoder.Contains("nvenc"), bitrateKbps = args.GetProperty("bitrateKbps").GetInt32(), bFrames = 0, lookahead = false, repeatHeaders = RepeatHeaders };
             }
             if (vendor == "StartPipeline") { Starts++; StartEntered.TrySetResult(); if (DelayStart) await CompleteStart.Task; Publishing = true; }
-            if (vendor is "StopPipeline" or "Disarm") Publishing = false;
+            if (vendor is "StopPipeline" or "Disarm") { Publishing = false; Disarmed = true; }
             if (vendor == "GetPipelineState") { PipelinePolled.TrySetResult(); response = new { outputActive = Publishing && !HandshakeFailed, sentMediaBytes = Publishing && !HandshakeFailed ? 100 : 0, sentFrames = Publishing && VideoReady ? 1 : 0, outputError = HandshakeFailed ? "Handshake refused." : "" }; }
             return JsonSerializer.SerializeToElement(new { responseData = response });
         }

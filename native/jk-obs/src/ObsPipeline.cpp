@@ -50,6 +50,9 @@ void Capabilities(obs_data_t*, obs_data_t* response, void*) {
 void Describe(obs_data_t* response) {
     obs_data_set_bool(response, "success", initialized);
     obs_data_set_bool(response, "outputActive", output && obs_output_active(output));
+    // These are only this broadcaster's owned shared pipeline encoders.
+    obs_data_set_int(response, "activeVideoEncoders", video && obs_encoder_active(video) ? 1 : 0);
+    obs_data_set_int(response, "activeAudioEncoders", audio && obs_encoder_active(audio) ? 1 : 0);
     if (!video) return;
     const char* id = obs_encoder_get_id(video);
     obs_data_set_string(response, "encoder", id); obs_data_set_string(response, "codec", obs_encoder_get_codec(video));
@@ -124,7 +127,7 @@ void Stop(obs_data_t*, obs_data_t* response, void*) { StopPipeline(); obs_data_s
 void State(obs_data_t*, obs_data_t* response, void*) { DescribePipeline(response); }
 void Diagnostics(obs_data_t*, obs_data_t* response, void*) {
     std::lock_guard lock(pipeline_mutex); Describe(response); DescribeVideo(response);
-    DescribeAudioSource("JK Application Audio", response);
+    DescribeSelectedAudio(response);
     obs_data_set_bool(response, "traceEnabled", DiagnosticsEnabled());
     obs_data_set_int(response, "monotonicNs", static_cast<long long>(os_gettime_ns()));
     obs_data_set_double(response, "nativeRenderAverageMs", static_cast<double>(obs_get_average_frame_time_ns()) / 1'000'000.0);

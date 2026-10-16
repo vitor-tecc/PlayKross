@@ -18,7 +18,7 @@ IObsRpcClient? control = null; OwnedEngineHandle? handle = null;
 await using var model = new BroadcasterModel(fallback => new ObsMediaEngine(new OwnedObsProcess(root), async (owned, token) => { handle = owned; return control = await ObsRpcClient.ConnectAsync(owned.PipeName, owned.Identity, token); }, fallback), new RoomHttpClient(http), new WindowsSourceCatalog());
 model.RoomLink = Environment.GetEnvironmentVariable("JKILLER_PROBE_JOIN_LINK") ?? throw new Exception("Invitation required."); model.Nickname = "Diagnostic calibration";
 await model.JoinAsync(CancellationToken.None);
-model.Video = model.Sources.Single(value => value.NativeHandle == unchecked((ulong)(long)fixture.MainWindowHandle) && value.Kind == SourceKind.Window); model.Audio = model.Video;
+model.Video = model.Sources.Single(value => value.NativeHandle == unchecked((ulong)(long)fixture.MainWindowHandle) && value.Kind == SourceKind.Window); model.SelectApplicationAudio(model.Video);
 model.Settings = StreamSettings.DefaultFor(1080, 60);
 using var deadline = new CancellationTokenSource(TimeSpan.FromMinutes(2));
 await model.StartAsync(deadline.Token);
