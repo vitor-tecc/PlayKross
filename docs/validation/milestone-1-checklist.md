@@ -1,6 +1,8 @@
 # Milestone one acceptance gate
 
-Do not advance viewer capacity or multi-publisher work until the required checks pass. Each result must carry `passed`, `failed`, `pending`, or `inconclusive`, workload, duration, topology, versions, measurement method, uncertainty, and evidence files. Automated correctness, protocol smoke tests, and actual performance are separate records.
+**2026-10-16 acceptance amendment:** M1 is accepted with known limitations following practical sign-off. Brief startup stutter is deferred. The recorded ten-minute external benchmark is deferred as an M1 closure prerequisite, while its measurements and the targets below remain useful for later characterization. M2 planning may proceed; eight-viewer capacity, strict audio exclusion and unmeasured timing remain unvalidated. See the [current roadmap](../ROADMAP.md). This checklist preserves the original benchmark contract and historical scope changes; it must not be read as a list of newly passed checks.
+
+For future capacity and multi-publisher acceptance, each result must carry `passed`, `failed`, `pending`, or `inconclusive`, workload, duration, topology, versions, measurement method, uncertainty, and evidence files. Automated correctness, protocol smoke tests, product acceptance and actual performance are separate records. M1 practical acceptance does not satisfy M2/M3 measurement gates.
 
 2026-10-14 update: the user authorized live tests after the earlier CodeOnly pass. Fresh video-only local and600-second measurements passed; mobile-data Safari/Firefox/friend playback was reported working through the optional CGNAT profile. External numeric duration/path/loss/FPS evidence remains pending. Unconfined app audio stays disabled; its enforced boundary is an implementation prerequisite that silence cannot pass. See [ordered remaining work](milestone-1-next-steps.md).
 

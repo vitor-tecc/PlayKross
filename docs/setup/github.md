@@ -2,7 +2,7 @@
 
 Repository: [vitor-tecc/PlayKross](https://github.com/vitor-tecc/PlayKross).
 
-The project keeps its current `feat/milestone-1` implementation branch. The milestone is a development prototype with unresolved review findings and manual acceptance gates; pushing it does not declare it ready for release. Keep changes in reviewable commits and use pull requests to merge into `main` after the relevant checks and acceptance criteria are satisfied.
+The project keeps its current `feat/milestone-1` implementation branch. M1 has practical acceptance with known limitations as of 2026-10-16; see the [current roadmap](../ROADMAP.md). Startup stutter and unmeasured external benchmarks are deferred, not marked passed. This does not automatically merge the branch or certify a general production release. Keep changes in reviewable commits and use pull requests to merge into `main` after the relevant checks and integration decision.
 
 The Correctness workflow runs Windows .NET tests and WPF compilation, native policy/process tests without OBS integration, and Linux browser unit tests/build. It uses read-only repository permissions and immutable action commits, following the official [checkout](https://github.com/actions/checkout), [setup-dotnet](https://github.com/actions/setup-dotnet) and [setup-node](https://github.com/actions/setup-node) documentation. Dependabot proposes weekly library/action updates; pinned OBS/MediaMTX/Caddy downloads still require deliberate compatibility and real-media testing.
 

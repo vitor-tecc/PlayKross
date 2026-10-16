@@ -1,4 +1,6 @@
-# Milestone one remaining work
+# Milestone one follow-up work
+
+**Current status, 2026-10-16: M1 accepted with known limitations.** Brief startup stutter and full external numerical/stability characterization are deferred follow-up, not M1 blockers. M2 design/planning can begin; its detailed plan is still required before implementation. See the [current roadmap](../ROADMAP.md). Earlier acceptance-gate and disabled-audio wording below records previous decisions and is superseded where it conflicts with the practical acceptance and approved experimental audio mode. Missing measurements are not passed.
 
 Status on 2026-10-14: after initially deferring audio, the user explicitly approved restoring **experimental application-and-child-process audio**, accepting the future-child exclusion limitation and deferring live tests. Audio stays off by default and supports Steam Geometry Dash only (plus the development fixture). Direct Discord/browser selection remains blocked; this does not satisfy the original strict exclusion requirement. M1 remains pending full external numerical/video-stability evidence; capacity and multiple broadcasters remain gated. The previous deferral and safe-boundary discussion below are historical; experimental restoration is not an enforced-boundary fix.
 

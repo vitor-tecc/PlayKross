@@ -1,6 +1,8 @@
 # Milestone one review status
 
-Read-only independent review of `d6fc6f4..516593b` completed before the PlayKross branding/GitHub/size task. No tests or benchmarks were run by the reviewer. **Not ready for release or milestone acceptance.** The 2026-10-14 author fix pass reproduced findings and verified corrections with non-interactive tests. No new live-streaming acceptance is claimed.
+**Current disposition, 2026-10-16: M1 accepted for its current functional scope with known limitations.** Practical sign-off defers brief startup stutter and the recorded external benchmark as closure blockers. The review history below remains intact; missing performance/audio evidence and deferred findings are not reclassified as passed. Experimental audio has separately been accepted with its child-process limitation, and positive profile checks now exist in both managed and native paths. See the [current roadmap](../ROADMAP.md) and later scoped correction records. This acceptance permits M2 planning; it does not merge the branch or certify a general production release.
+
+Historical read-only independent review of `d6fc6f4..516593b` completed before the PlayKross branding/GitHub/size task. No tests or benchmarks were run by the reviewer. That revision was not ready for release or milestone acceptance. The 2026-10-14 author fix pass reproduced findings and verified corrections with non-interactive tests. Those results do not establish new numerical streaming-performance acceptance.
 
 | ID | Severity | Finding | Status |
 |---|---|---|---|

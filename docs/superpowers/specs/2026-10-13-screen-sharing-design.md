@@ -4,6 +4,8 @@ Date: 2026-10-13 (America/Sao_Paulo)
 
 Status: Approved by the user on 2026-10-13, with microphone capture removed at their request. Implementation planning may proceed; the resulting plan still requires review before execution.
 
+Current acceptance amendment, 2026-10-16: **M1 accepted with known limitations** following practical sign-off. Brief startup stutter and the recorded ten-minute external benchmark are deferred as M1 closure blockers. Missing measurements are not passed. The later approved experimental app-and-child-process audio mode remains in place; strict audio exclusion is not claimed. M2 design/planning may begin, with a detailed plan still required before implementation. The [current roadmap](../../ROADMAP.md) supersedes earlier conflicting advancement/disabled-audio statements while preserving the original requirements and evidence below.
+
 2026-10-14 amendment: the user explicitly deferred audio (“you can skip that audio part for now to be honest”). Current M1 is video-only. Preserve the audio requirements below for a later approved implementation; do not capture system, Discord, incoming-stream or microphone audio. Audio/synchronization acceptance is deferred, not passed. Current video/external-performance and lifetime-safety gates remain required.
 
 ## 1. Intended outcome
