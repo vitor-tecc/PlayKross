@@ -26,6 +26,8 @@ try {
             if ($LASTEXITCODE -ne 0) { throw 'Headless viewer notice geometry failed.' }
             & (Join-Path $root '.tools/dotnet/dotnet.exe') (Join-Path $root 'tools/acceptance/WebViewProbe/bin/Debug/net10.0-windows10.0.26100.0/WebViewProbe.dll') --check-native-fullscreen-state
             if ($LASTEXITCODE -ne 0) { throw 'Pure native fullscreen state restoration failed.' }
+            & (Join-Path $root '.tools/dotnet/dotnet.exe') (Join-Path $root 'tools/acceptance/WebViewProbe/bin/Debug/net10.0-windows10.0.26100.0/WebViewProbe.dll') --check-audio-output-picker
+            if ($LASTEXITCODE -ne 0) { throw 'Headless endpoint picker identity synchronization failed.' }
             & (Join-Path $root 'tests/setup/CleanupChecks.ps1')
             & (Join-Path $root 'tests/setup/MediaInterfaceChecks.ps1')
             & (Join-Path $root 'tests/setup/HolePunchingChecks.ps1')

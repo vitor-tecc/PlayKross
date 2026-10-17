@@ -24,17 +24,24 @@ export function useFullscreenChrome(fullscreen: boolean, attentionRequired: bool
     if (timer.current !== null) clearTimeout(timer.current);
     timer.current = null;
   }, []);
-  const reveal = useCallback(() => {
-    if (!active.current) return;
+  const reconcileFocus = useCallback(() => {
     // Removing a focused conditional control need not dispatch blur.
     if (focusedControl.current && (!focusedControl.current.isConnected || focusedControl.current !== document.activeElement)) {
       focusedControl.current = null; keyboardFocus.current = false;
     }
+  }, []);
+  const leaveSurface = useCallback(() => {
+    hover.current = false; clearIdle(); reconcileFocus();
+    if (active.current && !pressed.current && !keyboardFocus.current && !attention.current) setVisible(false);
+  }, [clearIdle, reconcileFocus]);
+  const reveal = useCallback(() => {
+    if (!active.current) return;
+    reconcileFocus();
     clearIdle(); setVisible(true);
     if (!attention.current && !hover.current && !pressed.current && !keyboardFocus.current) {
       timer.current = setTimeout(() => { timer.current = null; setVisible(false); }, FULLSCREEN_IDLE_MS);
     }
-  }, [clearIdle]);
+  }, [clearIdle, reconcileFocus]);
 
   useLayoutEffect(() => {
     clearIdle();
@@ -69,6 +76,7 @@ export function useFullscreenChrome(fullscreen: boolean, attentionRequired: bool
     visible: !fullscreen || visible,
     surfaceProps: {
       onPointerMove: reveal,
+      onPointerLeave: leaveSurface,
       onPointerDownCapture: () => { keyboard.current = false; keyboardFocus.current = false; reveal(); },
       onTouchStart: reveal,
     },

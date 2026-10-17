@@ -16,7 +16,7 @@ public partial class MainWindow : Window
     private string root = "";
     private Window? viewingWindow;
     private CancellationTokenSource? command;
-    private bool closing, closed;
+    private bool closing, closed, synchronizingAudio;
     public MainWindow()
     {
         InitializeComponent();
@@ -32,9 +32,14 @@ public partial class MainWindow : Window
             if (args.PropertyName == nameof(model.CaptureLive)) SetControls();
             if (args.PropertyName == nameof(model.Audio))
             {
-                AudioModePicker.SelectedIndex = (int)model.Audio.Mode;
-                AudioSource.IsEnabled = model.Audio.Mode == AudioMode.Application;
-                AudioOutput.IsEnabled = model.Audio.Mode == AudioMode.SystemOutput;
+                synchronizingAudio = true;
+                try
+                {
+                    AudioModePicker.SelectedIndex = (int)model.Audio.Mode;
+                    AudioSource.IsEnabled = model.Audio.Mode == AudioMode.Application;
+                    AudioOutput.IsEnabled = model.Audio.Mode == AudioMode.SystemOutput;
+                }
+                finally { synchronizingAudio = false; }
             }
         });
     }
@@ -87,7 +92,7 @@ public partial class MainWindow : Window
     private void BitrateChanged(object sender, RoutedPropertyChangedEventArgs<double> args) { if (BitrateLabel is not null) BitrateLabel.Text = $"{args.NewValue:0.0} Mbps requested (megabits per second)"; }
     private void AudioModeChanged(object sender, SelectionChangedEventArgs args)
     {
-        if (model is null || AudioSource is null || AudioOutput is null) return;
+        if (synchronizingAudio || model is null || AudioSource is null || AudioOutput is null) return;
         var mode = (AudioMode)AudioModePicker.SelectedIndex;
         AudioSource.IsEnabled = mode == AudioMode.Application; AudioOutput.IsEnabled = mode == AudioMode.SystemOutput;
         model.Audio = mode switch
@@ -100,10 +105,6 @@ public partial class MainWindow : Window
     private void AudioChanged(object sender, SelectionChangedEventArgs args)
     {
         if (model is not null && AudioModePicker.SelectedIndex == (int)AudioMode.Application && AudioSource.SelectedItem is SourceDescriptor source) model.SelectApplicationAudio(source);
-    }
-    private void AudioOutputChanged(object sender, SelectionChangedEventArgs args)
-    {
-        if (model is not null && AudioModePicker.SelectedIndex == (int)AudioMode.SystemOutput && AudioOutput.SelectedItem is AudioOutputDescriptor output) model.SelectSystemAudio(output);
     }
     private void CopyClick(object sender, RoutedEventArgs args) { if (model!.RoomLink.Length > 0) Clipboard.SetText(model.RoomLink); }
     private void ViewClick(object sender, RoutedEventArgs args)

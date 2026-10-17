@@ -17,6 +17,11 @@ internal static class Program
 {
     [STAThread] private static int Main(string[] args)
     {
+        if (args.SequenceEqual(new[] { "--check-audio-output-picker" }))
+        {
+            try { CheckAudioOutputPicker(); return 0; }
+            catch (Exception error) { Console.Error.WriteLine(error); return 1; }
+        }
         if (args.SequenceEqual(new[] { "--check-native-fullscreen-state" }))
         {
             var state = new ViewerFullscreenState();
@@ -39,6 +44,57 @@ internal static class Program
         var app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown }; int result = 1;
         app.Startup += async (_, _) => { try { await Run(); result = 0; } catch (Exception error) { Console.Error.WriteLine(error); } finally { app.Shutdown(); } };
         app.Run(); return result;
+    }
+    private static void CheckAudioOutputPicker()
+    {
+        var outputs = new PickerAudioCatalog();
+        var model = new BroadcasterModel(_ => throw new Exception("Capture must not start."), null!, new PickerSourceCatalog(), audioCatalog: outputs);
+        model.Video = new("monitor", SourceKind.Monitor, 1, null, "Display");
+        model.RefreshAsync(CancellationToken.None).GetAwaiter().GetResult();
+        model.Audio = new(AudioMode.SystemOutput);
+        var picker = new JKiller.App.Controls.AudioOutputPicker { DataContext = model };
+        void DrainBindings() => picker.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.ContextIdle);
+        DrainBindings();
+        if (picker.SelectedItem is not null || model.Audio.RenderEndpointId is not null) throw new Exception("Picker silently selected a default output.");
+        picker.SelectedItem = model.AudioOutputs.Single(output => output.Id == "render:selected");
+        if (model.Audio.RenderEndpointId != "render:selected") throw new Exception("Explicit picker selection did not update the model.");
+        outputs.Outputs = [new("render:other", "Other default", true)];
+        model.RefreshAsync(CancellationToken.None).GetAwaiter().GetResult();
+        DrainBindings();
+        if (picker.SelectedItem is not null || model.Audio.RenderEndpointId != "render:selected" || model.AudioEligibility.Allowed)
+            throw new Exception("Missing output was substituted or its retained identity cleared.");
+        outputs.Outputs = [new("render:other", "Other default", true), new("render:selected", "Returned output", false)];
+        model.RefreshAsync(CancellationToken.None).GetAwaiter().GetResult();
+        DrainBindings();
+        if ((picker.SelectedItem as AudioOutputDescriptor)?.Id != "render:selected" || model.Audio.RenderEndpointId != "render:selected" || !model.AudioEligibility.Allowed)
+            throw new Exception("Returning endpoint is eligible but the production picker did not visibly restore render:selected.");
+        var selectionControls = new StackPanel { IsEnabled = false };
+        selectionControls.Children.Add(picker);
+        model.SelectSystemAudio(model.AudioOutputs[0]);
+        DrainBindings();
+        if ((picker.SelectedItem as AudioOutputDescriptor)?.Id != "render:other") throw new Exception("Audio change did not synchronize visible endpoint identity.");
+        if (picker.IsEnabled) throw new Exception("Selection synchronization re-enabled disabled capture controls.");
+        model.Audio = AudioSelection.Off;
+        DrainBindings();
+        if (picker.SelectedItem is not null || model.Audio != AudioSelection.Off) throw new Exception("Synchronizing Off selected an output or changed audio mode.");
+        picker.DataContext = null;
+        model.SelectSystemAudio(model.AudioOutputs[1]);
+        DrainBindings();
+        if (picker.SelectedItem is not null || picker.Items.Count != 0) throw new Exception("Detached picker retained model subscription/items.");
+        picker.DataContext = model;
+        DrainBindings();
+        if ((picker.SelectedItem as AudioOutputDescriptor)?.Id != "render:selected") throw new Exception("Attached picker did not display the retained model identity.");
+        Console.WriteLine("PASS: production endpoint picker restores visible endpoint ID after disappearance/return, retains missing identity, never substitutes default, handles explicit selection/model changes and detaches; no Window, WebView or devices initialized.");
+    }
+    private sealed class PickerSourceCatalog : IWindowsSourceCatalog
+    {
+        public Task<IReadOnlyList<SourceDescriptor>> ListSourcesAsync(CancellationToken token) => Task.FromResult<IReadOnlyList<SourceDescriptor>>([]);
+    }
+    private sealed class PickerAudioCatalog : IWindowsAudioCatalog
+    {
+        public IReadOnlyList<AudioOutputDescriptor> Outputs = [new("render:selected", "Selected output", false), new("render:other", "Other default", true)];
+        public Task<IReadOnlyList<AudioOutputDescriptor>> ListOutputsAsync(CancellationToken token) => Task.FromResult(Outputs);
+        public Task<AudioOutputDescriptor?> ResolveDefaultAsync(CancellationToken token) => throw new Exception("Picker must not resolve a default device.");
     }
     private static void CheckPlaybackNoticeLayout()
     {

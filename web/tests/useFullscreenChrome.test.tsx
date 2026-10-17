@@ -37,6 +37,50 @@ it("MovementRevealsAndRestartsIdle", () => {
   advance(1999); visible(); advance(1); hidden();
 });
 
+it("LeavingVideoImmediatelyHidesAndClearsIdle", () => {
+  render(<Harness fullscreen />);
+  const surface = screen.getByTestId("surface");
+  fireEvent.pointerMove(surface); advance(500); visible();
+  fireEvent.pointerLeave(surface); hidden(); expect(vi.getTimerCount()).toBe(0);
+});
+
+it("LeavingHoveredControlClearsHoverAndHidesUntilNewActivity", () => {
+  render(<Harness fullscreen />);
+  const surface = screen.getByTestId("surface");
+  const first = screen.getByRole("button", { name: "First" });
+  fireEvent.pointerOver(first); advance(4000); visible();
+  fireEvent.pointerOut(first, { relatedTarget: document.body }); hidden();
+  expect(vi.getTimerCount()).toBe(0);
+  fireEvent.pointerMove(surface); visible(); advance(2000); hidden();
+  // Surface exit must also discard a stale overlay hover when no overlay-out was delivered.
+  fireEvent.pointerOver(first); visible();
+  fireEvent.pointerLeave(surface); hidden(); expect(vi.getTimerCount()).toBe(0);
+  fireEvent.pointerMove(surface); visible(); advance(2000); hidden();
+});
+
+it("SurfaceExitPreservesPressedControlHoldButReleasesStaleHover", () => {
+  render(<Harness fullscreen />);
+  const first = screen.getByRole("button", { name: "First" });
+  fireEvent.pointerOver(first); fireEvent.pointerDown(first);
+  fireEvent.pointerOut(first, { relatedTarget: document.body });
+  advance(4000); visible(); expect(vi.getTimerCount()).toBe(0);
+  fireEvent.pointerUp(document); advance(1999); visible(); advance(1); hidden();
+});
+
+it("SurfaceExitPreservesKeyboardFocusAndAttentionHolds", () => {
+  const view = render(<Harness fullscreen />);
+  const surface = screen.getByTestId("surface");
+  fireEvent.keyDown(document, { key: "Tab" });
+  act(() => screen.getByRole("button", { name: "First" }).focus());
+  fireEvent.pointerLeave(surface); advance(4000); visible(); expect(vi.getTimerCount()).toBe(0);
+  act(() => screen.getByRole("button", { name: "Outside overlay" }).focus());
+  advance(2000); hidden();
+  view.rerender(<Harness fullscreen attention />);
+  fireEvent.pointerMove(surface); fireEvent.pointerLeave(surface);
+  advance(4000); visible(); expect(vi.getTimerCount()).toBe(0);
+  view.rerender(<Harness fullscreen />); advance(2000); hidden();
+});
+
 it("InteractiveHoverAndKeyboardFocusHoldOpen", () => {
   render(<Harness fullscreen />);
   const first = screen.getByRole("button", { name: "First" });
