@@ -5,7 +5,7 @@ Updated 2026-10-16. This is the current milestone-status overview. The latest us
 | Milestone | Status | Scope |
 |---|---|---|
 | **1 — Core streaming** | **Accepted with known limitations** | One native Windows broadcaster, browser and in-app viewing, anonymous rooms, capture/settings controls, diagnostics, self-hosted connectivity and a portable broadcaster ZIP |
-| **2 — Concurrent broadcasting** | **Implementation in progress; subagent-driven execution approved** | Multiple simultaneous broadcasters, no fixed per-room participant/publisher cap, working audio, independent stream watching, and fullscreen bars that hide automatically |
+| **2 — Concurrent broadcasting** | **Candidate implemented; functional acceptance pending** | Multiple simultaneous broadcasters, no fixed per-room participant/publisher cap, explicit application/system audio, independent stream watching, and fullscreen bars that hide automatically; see [current results](validation/milestone-2-results.md) |
 | **3 — Viewing refinements** | Planned as needed | Shared previews, richer subscription/layout and grid/focus controls; capacity/performance work driven by observed use |
 | **4 — Complete experience** | Planned | UI polish, simpler setup/deployment, packaging refinements, recovery and broader compatibility validation |
 

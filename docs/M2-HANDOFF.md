@@ -1,6 +1,6 @@
 # Milestone 2 handoff
 
-M1 has practical acceptance with known limitations as of 2026-10-16. Start with [the current roadmap](ROADMAP.md). This handoff describes the next scope; it is not an approved detailed M2 implementation plan.
+M1 has practical acceptance with known limitations as of 2026-10-16. Start with [the current roadmap](ROADMAP.md). The approved M2 plan has been implemented through its candidate validation tooling; acceptance remains pending in [M2 results](validation/milestone-2-results.md). Use the [functional checklist](validation/milestone-2-checklist.md) for this revision; M1 measurements remain historical.
 
 The user revised the scope again on 2026-10-16: concurrent broadcasting is now M2's main goal, fixed per-room people limits and eight-viewer testing are removed, and fullscreen bars must hide automatically. The user approved the [revised M2 design](superpowers/specs/2026-10-16-milestone-2-design.md) and [implementation plan](superpowers/plans/2026-10-16-milestone-2.md), selecting subagent-driven execution. Implementation is in progress; task review and functional verification remain required.
 

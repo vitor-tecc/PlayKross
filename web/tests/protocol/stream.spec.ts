@@ -1,6 +1,7 @@
 import { test, expect } from "@playwright/test";
 import { writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import { checkFullscreen } from "./fullscreen";
 test("real native H264 and process-only Opus reach one Edge viewer", async ({ page, browser }, info) => {
   const link = new URL(process.env.JKILLER_PROBE_JOIN_LINK ?? "");
   const invite = decodeURIComponent(link.hash.slice("#invite=".length));
@@ -33,9 +34,7 @@ test("real native H264 and process-only Opus reach one Edge viewer", async ({ pa
   expect(metrics.audioPackets).toBeGreaterThan(0); expect(metrics.audioEnergy).toBeGreaterThan(0);
   await info.attach("protocol-evidence", { body: JSON.stringify({ browser: browser.version(), ...metrics }, null, 2), contentType: "application/json" });
   console.log(JSON.stringify({ browser: browser.version(), ...metrics }));
-  await page.getByRole("button", { name: "Fullscreen", exact: true }).click();
-  await video.hover();
-  await page.getByRole("button", { name: "Return to room" }).click();
+  await checkFullscreen(page, page.locator(".stream-card"));
   await expect.poll(() => video.evaluate(element => (element as HTMLVideoElement).videoWidth)).toBe(1280);
   await writeFile(resolve("../.artifacts/protocol/revoke-publication"), "revoke");
   await expect(video).toHaveCount(0, { timeout: 10000 });

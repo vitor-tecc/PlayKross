@@ -17,6 +17,19 @@ internal static class Program
 {
     [STAThread] private static int Main(string[] args)
     {
+        if (args.SequenceEqual(new[] { "--check-native-fullscreen-state" }))
+        {
+            var state = new ViewerFullscreenState();
+            var normal = new ViewerWindowMode(WindowState.Normal, WindowStyle.ToolWindow, ResizeMode.CanResizeWithGrip);
+            var entered = state.Update(true, normal);
+            if (entered != new ViewerWindowMode(WindowState.Maximized, WindowStyle.None, normal.Resize)) throw new Exception("Fullscreen mode incorrect.");
+            if (state.Update(true, entered) != entered || state.Update(false, entered) != normal || state.Update(false, normal) != normal) throw new Exception("Repeated fullscreen notifications lost original native window mode.");
+            var maximized = new ViewerWindowMode(WindowState.Maximized, WindowStyle.SingleBorderWindow, ResizeMode.NoResize);
+            var again = state.Update(true, maximized);
+            if (state.Update(false, again) != maximized) throw new Exception("Second fullscreen cycle lost previous native window state/style/resize.");
+            Console.WriteLine("PASS: actual native fullscreen state preserves original state/style/resize across enter/exit, repeated notifications and a second cycle; no Window created.");
+            return 0;
+        }
         // Pure WPF measure/arrange: no Window, WebView/Core initialization, capture or device access.
         if (args.SequenceEqual(new[] { "--check-playback-notice-layout" }))
         {
@@ -52,11 +65,14 @@ internal static class Program
     }
     private static async Task Run()
     {
-        var root = Environment.CurrentDirectory; using var deadline = new CancellationTokenSource(TimeSpan.FromMinutes(2));
+        var developerRoot = Environment.CurrentDirectory;
+        var root = Environment.GetEnvironmentVariable("JKILLER_PROBE_ROOT") ?? developerRoot;
+        if (!Path.IsPathFullyQualified(root)) throw new Exception("Probe root must be absolute.");
+        using var deadline = new CancellationTokenSource(TimeSpan.FromMinutes(2));
         var token = deadline.Token;
         using var fixture = Process.GetProcessById(int.Parse(Environment.GetEnvironmentVariable("JKILLER_FIXTURE_PID")!)); fixture.Refresh();
         var identity = ProcessIdentityReader.Read(fixture.Id) ?? throw new Exception("Fixture disappeared.");
-        if (!string.Equals(Path.GetFullPath(identity.ExecutablePath), Path.GetFullPath(Path.Combine(root, ".artifacts/native/Debug/CaptureFixture.exe")), StringComparison.OrdinalIgnoreCase)) throw new Exception("Only the synthetic fixture may be used in this probe.");
+        if (!string.Equals(Path.GetFullPath(identity.ExecutablePath), Path.GetFullPath(Path.Combine(developerRoot, ".artifacts/native/Debug/CaptureFixture.exe")), StringComparison.OrdinalIgnoreCase)) throw new Exception("Only the synthetic fixture may be used in this probe.");
         using var http = new HttpClient(new HttpClientHandler { UseCookies = false, AllowAutoRedirect = false }); var room = new RoomHttpClient(http);
         var playbackAudioGate = new PlaybackAudioGate();
         await using var model = new BroadcasterModel(fallback => new ObsMediaEngine(new OwnedObsProcess(root), fallback, playbackAudioGate), room, new WindowsSourceCatalog(), audioCatalog: new WindowsAudioCatalog());
@@ -68,11 +84,12 @@ internal static class Program
             : model.Sources.Single(s => s.Kind == SourceKind.Window && s.NativeHandle == unchecked((ulong)(long)fixture.MainWindowHandle));
         model.Audio = ProbeCaptureMode.SelectAudio(captureMode, model.Video, Environment.GetEnvironmentVariable("JKILLER_PROBE_RENDER_ENDPOINT_ID"));
         await model.StartAsync(token);
-        using var viewer = new RoomWebView(root, room, playbackAudioGate); var window = new Window { Content = viewer, Width = 1080, Height = 850, Title = "JKiller synthetic WebView validation" }; window.Show();
+        using var viewer = new RoomWebView(root, room, playbackAudioGate); var window = RoomViewerWindow.Create(viewer); window.Width = 1080; window.Height = 850; window.Title = "JKiller synthetic WebView validation"; window.Show();
         try
         {
             await viewer.OpenRoomAsync(new Uri(link), token);
             if (viewer.Core.IsMuted != playbackAudioGate.IsBlocked) throw new Exception("Late-opened viewer did not inherit native playback mute.");
+            if (captureMode == "system-output" && (!viewer.Core.IsMuted || !playbackAudioGate.IsBlocked)) throw new Exception("System output viewing lacks native feedback protection.");
             await Wait(async () => await viewer.Core.ExecuteScriptAsync("[...document.querySelectorAll('button')].some(b=>b.textContent==='Watch stream')") == "true", token);
             await viewer.Core.ExecuteScriptAsync("[...document.querySelectorAll('button')].find(b=>b.textContent==='Watch stream').click()");
             await Wait(async () => await viewer.Core.ExecuteScriptAsync("document.querySelector('video')?.videoHeight===1080 && document.querySelector('video').getVideoPlaybackQuality().totalVideoFrames>120") == "true", token);
@@ -81,8 +98,15 @@ internal static class Program
             // Change the nickname through the native control path while the embedded peer stays active.
             model.Nickname = "Renamed embedded probe"; await model.RenameAsync(token);
             await Wait(async () => await viewer.Core.ExecuteScriptAsync("document.body.textContent.includes('Renamed embedded probe')") == "true", token);
+            await viewer.Core.ExecuteScriptAsync("window.jkFullscreenVideo=document.querySelector('video');window.jkFullscreenMedia=window.jkFullscreenVideo.srcObject;");
+            var priorState = window.WindowState; var priorStyle = window.WindowStyle; var priorResize = window.ResizeMode;
             await Click(viewer, "Fullscreen"); await Wait(() => Task.FromResult(viewer.IsFullscreen), token);
+            await Wait(async () => await viewer.Core.ExecuteScriptAsync("document.fullscreenElement?.classList.contains('fullscreen-chrome-hidden')") == "true", token);
+            if (window.WindowStyle != WindowStyle.None || window.WindowState != WindowState.Maximized) throw new Exception("Native fullscreen geometry was not applied.");
+            await viewer.Core.ExecuteScriptAsync("document.fullscreenElement.dispatchEvent(new PointerEvent('pointermove',{bubbles:true}));");
             await Click(viewer, "Return to room"); await Wait(() => Task.FromResult(!viewer.IsFullscreen), token);
+            if (window.WindowState != priorState || window.WindowStyle != priorStyle || window.ResizeMode != priorResize) throw new Exception("Native window state/style/resize was not restored.");
+            if (await viewer.Core.ExecuteScriptAsync("document.querySelector('video')===window.jkFullscreenVideo && window.jkFullscreenVideo.srcObject===window.jkFullscreenMedia") != "true") throw new Exception("Fullscreen recreated native viewer media.");
             await Wait(async () => int.Parse(await viewer.Core.ExecuteScriptAsync("document.querySelector('video').getVideoPlaybackQuality().totalVideoFrames")) > before + 60, token);
             await viewer.Core.ExecuteScriptAsync("fetch('/api/me').then(r=>r.json()).then(s=>window.jkProbeSession=s.sessionId)");
             await Wait(async () => await viewer.Core.ExecuteScriptAsync($"window.jkProbeSession==='{sessionId}'") == "true", token);

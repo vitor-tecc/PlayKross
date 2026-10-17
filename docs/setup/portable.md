@@ -7,9 +7,9 @@
 3. Cole o convite HTTPS da sala, escolha seu nome e entre. Para transmitir, selecione a janela ou tela e inicie a transmissao.
 4. Quem so quiser assistir abre o convite no navegador; nao precisa deste aplicativo.
 
-Use Windows 11 x64 e mantenha a pasta inteira junta. O padrao usa NVIDIA NVENC H.264 com driver compativel. Em outro hardware, escolha explicitamente a alternativa por CPU; ela limita a saida a 720p30. Esta versao permite um transmissor ativo por sala.
+Use Windows 11 x64 e mantenha a pasta inteira junta. O padrao usa NVIDIA NVENC H.264 com driver compativel. Em outro hardware, escolha explicitamente a alternativa por CPU; ela limita a saida a 720p30. O candidato M2 permite transmissores simultaneos, com uma publicacao por sessao. Nao ha capacidade maxima comprovada; a aceitacao funcional continua pendente.
 
-O audio experimental comeca desligado e, nesta versao, so e oferecido para **Geometry Dash da Steam**. Quando habilitado explicitamente, captura o aplicativo selecionado e seus processos filhos, sem microfone. Outros aplicativos permitem apenas video; Discord e navegadores nao podem ser escolhidos diretamente como fonte de audio. A exclusao de futuros processos filhos nao e garantida; nao habilite audio quando precisar dessa garantia.
+O audio comeca **Off**. **Application** captura o processo selecionado e seus filhos. **System output** exige video de monitor e um dispositivo de saida escolhido explicitamente; inclui a reproducao desse dispositivo, inclusive Discord. O som da sala dentro do aplicativo fica mudo durante essa captura para evitar recaptura. Navegadores externos ainda podem ser capturados: use outra saida ou Application. Escolher uma tela nao habilita audio automaticamente. Nao ha microfone nem troca automatica de modo/dispositivo quando a fonte desaparece. A exclusao rigorosa de outros sons nao e garantida.
 
 O convite precisa apontar para um servidor acessivel pela internet. Um endereco `localhost` enviado a um amigo nao aponta para seu computador. Este ZIP e o aplicativo de transmissao/visualizacao; o responsavel pela sala continua executando o servidor separadamente.
 
@@ -21,7 +21,7 @@ Depois de usar o aplicativo, sua pasta pode conter estado local, perfis, caches 
 
 Extract the entire ZIP into a writable folder, open that folder, and double-click **PlayKross.exe**. Paste the room's public HTTPS invitation, choose your name, and join. Select a video source before starting a broadcast. Windows 11 x64 is required; .NET is bundled. SDKs, Node.js, Visual Studio and PowerShell 7 are unnecessary for recipients. Browser-only viewers just open the invitation.
 
-The default encoder needs compatible NVIDIA NVENC support. CPU fallback is an explicit choice capped at 720p30. Experimental application audio is off by default and offered only for **Steam Geometry Dash** in this release; opting in captures that application and its children, without microphone input. Other applications are video-only. Direct Discord/browser audio sources are blocked, but exclusion of future child processes is not guaranteed. Milestone 1 supports one active broadcaster per room. The host must run separately; this ZIP does not start an internet server. WebView2 Evergreen and the Visual C++ x64 runtime may need installation using the Microsoft links above. Share the original ZIP, because a used folder can contain private state.
+The default encoder needs compatible NVIDIA NVENC support. CPU fallback is an explicit choice capped at 720p30. Audio starts Off. Application captures the explicitly selected process and children. System output requires monitor video plus a concrete render endpoint and includes its mixed playback, including Discord. In-app room playback is muted during system sharing; external browser playback may still be recaptured. No microphone or automatic route fallback is provided. M2 supports concurrent publications with one publication per session and no fixed room participant/publisher quotas; no maximum capacity is proven. Functional acceptance remains pending in the repository's M2 results. Fullscreen hides bars/cursor immediately, movement reveals them, and two seconds of inactivity hides them again; keyboard/touch access remains available. The host runs separately; this ZIP does not start an internet server. WebView2 Evergreen and Visual C++ x64 runtime may need installation using the links above. Share the original ZIP, because a used folder can contain private state.
 
 ## Build this ZIP from the repository
 
@@ -30,14 +30,14 @@ These steps are for the maintainer, using the existing Windows development setup
 First prepare the pinned OBS archive, .NET SDK and native instrumentation using the repository setup/build instructions. The instrumented capture DLL must be `.artifacts/instrumented-obs/Release/libobs-winrt.dll`, accompanied by `provenance.json` matching the current capture patch, source archive and binary. Then run from the repository root in PowerShell 7.4+:
 
 ```powershell
-./scripts/Package-Portable.ps1 -Version milestone-1
+./scripts/Package-Portable.ps1 -Version milestone-2-candidate-UNIQUE
 ```
 
 The command builds the owned plugin in Release without installing it into the active development OBS runtime, publishes a self-contained `win-x64` WPF app named `PlayKross.exe`, stages a clean runtime, and creates these files in `.artifacts/releases`:
 
-- `PlayKross-win-x64-milestone-1.zip`
-- `PlayKross-win-x64-milestone-1.sha256`
-- `PlayKross-win-x64-milestone-1.manifest.json`, containing the archive size/hash and every included file's relative path, size and SHA-256.
+- `PlayKross-win-x64-milestone-2-candidate-UNIQUE.zip`
+- `PlayKross-win-x64-milestone-2-candidate-UNIQUE.sha256`
+- `PlayKross-win-x64-milestone-2-candidate-UNIQUE.manifest.json`, containing the archive size/hash and every included file's relative path, size and SHA-256.
 
 Use a new `-Version` for another package; existing releases are never overwritten. `-SkipNativeBuild` reuses `.artifacts/native/Release/jk-obs.dll` only when you have already built the current sources. `-KeepStaging` keeps successful staging for inspection. Failed builds retain logs and staging and do not produce a verified release ZIP. Packaging may restore missing .NET runtime packs through the configured NuGet source.
 

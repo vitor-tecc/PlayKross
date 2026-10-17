@@ -115,9 +115,7 @@ public partial class MainWindow : Window
     {
         var parsed = new Uri(model!.RoomLink); viewingWindow?.Close();
         var viewer = new Viewing.RoomWebView(root, roomClient!, playbackAudioGate);
-        var window = new Window { Title = "PlayKross • Room viewer", Width = 1000, Height = 740, Content = viewer, Owner = this }; viewingWindow = window;
-        var previousState = WindowState.Normal; var previousStyle = WindowStyle.SingleBorderWindow;
-        viewer.FullscreenChanged += (_, _) => { if (viewer.IsFullscreen) { previousState = window.WindowState; previousStyle = window.WindowStyle; window.WindowStyle = WindowStyle.None; window.WindowState = WindowState.Maximized; } else { window.WindowStyle = previousStyle; window.WindowState = previousState; } };
+        var window = Viewing.RoomViewerWindow.Create(viewer); window.Owner = this; viewingWindow = window;
         window.Closed += (_, _) => { viewer.Dispose(); if (viewingWindow == window) viewingWindow = null; };
         window.Show();
         try { await viewer.OpenRoomAsync(parsed, token); } catch { window.Close(); throw; }

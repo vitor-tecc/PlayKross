@@ -118,7 +118,7 @@ try {
         $sourceRoot = Join-Path $root ('native/' + $component)
         foreach ($file in Get-ChildItem -LiteralPath $sourceRoot -Recurse -File -Force) {
             $relative = [IO.Path]::GetRelativePath($sourceRoot, $file.FullName).Replace('\','/')
-            if ($relative -match '^(?:(?:src|include|tests)/[^/]+\.(?:cpp|hpp|h)|CMakeLists\.txt|LICENSE|README\.md|NOTICE\.md)$') {
+            if (Test-PortableNativeSourcePath $relative) {
                 Copy-PayloadFile $file.FullName ('Source/native/' + $component + '/' + $relative)
             }
         }
