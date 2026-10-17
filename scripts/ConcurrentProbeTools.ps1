@@ -11,10 +11,39 @@ function Get-ConcurrentRuntimePaths([string]$Root) {
     }
     @($paths | Sort-Object -Unique)
 }
+function Assert-ConcurrentMutableState([string]$Root) {
+    foreach($relative in @('.runtime/obs/config','.runtime/webview','.runtime/concurrent-probe.lock','.runtime/obs/jkiller-owner.lock')) {
+        $path=Join-Path $Root $relative
+        Assert-PortableDirectory $path $Root
+        try{$entry=Get-Item -LiteralPath $path -Force -ErrorAction Stop}catch [Management.Automation.ItemNotFoundException]{
+            # Some providers omit dangling links. Check the entry's native
+            # attributes before treating an absent target as an absent entry.
+            try{
+                if([IO.File]::GetAttributes($path) -band [IO.FileAttributes]::ReparsePoint){throw "Portable mutable state contains a reparse point: $path"}
+                throw "Cannot inspect portable mutable state: $path"
+            }catch [IO.FileNotFoundException],[IO.DirectoryNotFoundException]{continue}
+        }
+        if($entry.Attributes -band [IO.FileAttributes]::ReparsePoint){throw "Portable mutable state contains a reparse point: $path"}
+        $isLock=$relative.EndsWith('.lock',[StringComparison]::Ordinal)
+        if($isLock -and $entry.PSIsContainer){throw "Portable lock entry must be a regular file: $path"}
+        if(-not $isLock -and -not $entry.PSIsContainer){throw "Portable mutable profile must be a directory: $path"}
+        $pending=[Collections.Generic.Stack[string]]::new()
+        if($entry.PSIsContainer){$pending.Push($entry.FullName)}
+        while($pending.Count){
+            # Inspect each immediate entry before descending: never enumerate
+            # a junction/symlink target, including links nested in a profile.
+            foreach($child in Get-ChildItem -LiteralPath $pending.Pop() -Force -ErrorAction Stop){
+                if($child.Attributes -band [IO.FileAttributes]::ReparsePoint){throw "Portable mutable state contains a reparse point: $($child.FullName)"}
+                if($child.PSIsContainer){$pending.Push($child.FullName)}
+            }
+        }
+    }
+}
 function Assert-ConcurrentRoots([string]$A,[string]$B) {
     foreach($path in @($A,$B)){if(-not [IO.Path]::IsPathFullyQualified($path)){throw 'Instance roots must be absolute.'}; Assert-PortableDirectory $path ([IO.Path]::GetPathRoot($path)); if(-not (Test-Path -LiteralPath $path -PathType Container)){throw 'Prepared portable root missing.'}}
     $left=[IO.Path]::GetFullPath($A).TrimEnd('\','/'); $right=[IO.Path]::GetFullPath($B).TrimEnd('\','/')
     if($left -eq $right -or $left.StartsWith($right+'\',[StringComparison]::OrdinalIgnoreCase) -or $right.StartsWith($left+'\',[StringComparison]::OrdinalIgnoreCase)){throw 'Instance roots must be distinct and non-nested.'}
+    foreach($instance in @($left,$right)){Assert-ConcurrentMutableState $instance}
     $leftPaths=@(Get-ConcurrentRuntimePaths $left); $rightPaths=@(Get-ConcurrentRuntimePaths $right)
     if(@(Compare-Object $leftPaths $rightPaths).Count){throw 'Portable runtime inventories differ.'}
     foreach($name in $leftPaths){foreach($path in @($left,$right)){Assert-PortableFile (Join-Path $path $name) $path}; if((Get-FileHash -LiteralPath (Join-Path $left $name)).Hash -ne (Get-FileHash -LiteralPath (Join-Path $right $name)).Hash){throw "Portable components differ: $name"}}
