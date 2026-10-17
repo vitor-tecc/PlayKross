@@ -6,8 +6,6 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Security.AccessControl;
 using System.Security.Principal;
-using System.Security.Cryptography;
-using System.Text;
 using System.Text.Json;
 namespace JKiller.App.Viewing;
 public sealed class RoomWebView : Grid, IDisposable
@@ -21,7 +19,7 @@ public sealed class RoomWebView : Grid, IDisposable
     private string? playbackScriptId;
     private readonly Grid browserArea = new();
     private readonly TextBlock playbackNoticeText = new() { TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center };
-    private readonly Border playbackNotice = new() { Padding = new Thickness(12), Background = System.Windows.Media.Brushes.White, VerticalAlignment = VerticalAlignment.Top, Visibility = Visibility.Collapsed };
+    private readonly Border playbackNotice = new() { Padding = new Thickness(12), Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0x0E, 0x18, 0x2A)), VerticalAlignment = VerticalAlignment.Top, Visibility = Visibility.Collapsed };
     public RoomWebView(string root, RoomHttpClient room, PlaybackAudioGate playbackAudioGate)
     {
         this.root = root; this.room = room; playbackGate = playbackAudioGate;
@@ -33,7 +31,7 @@ public sealed class RoomWebView : Grid, IDisposable
         var noticeContents = new DockPanel { LastChildFill = true };
         var reload = new Button { Content = "Reload viewer", Margin = new Thickness(12, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
         DockPanel.SetDock(reload, Dock.Right); noticeContents.Children.Add(reload); noticeContents.Children.Add(playbackNoticeText);
-        playbackNoticeText.Foreground = System.Windows.Media.Brushes.Black;
+        playbackNoticeText.Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0x82, 0xA7, 0xBA));
         playbackNotice.Child = noticeContents;
         reload.Click += (_, _) =>
         {
@@ -68,15 +66,22 @@ public sealed class RoomWebView : Grid, IDisposable
         {
             if (string.IsNullOrEmpty(CoreWebView2Environment.GetAvailableBrowserVersionString())) throw new InvalidOperationException("Install Microsoft's Evergreen WebView2 Runtime to use the in-app viewer. Browser viewing remains available.");
             browser?.Dispose(); browserArea.Children.Clear(); playbackNotice.Visibility = Visibility.Collapsed; playbackScriptId = null; currentRoom = roomUri; policy = new(parsed.Origin);
-            var profile = Path.Combine(root, ".runtime/webview", Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(parsed.Origin.AbsoluteUri))));
-            var info = Directory.CreateDirectory(profile); var acl = new DirectorySecurity(); acl.SetAccessRuleProtection(true, false);
-            var user = WindowsIdentity.GetCurrent().User ?? throw new InvalidOperationException("Windows identity unavailable.");
-            foreach (var sid in new[] { user, new SecurityIdentifier(WellKnownSidType.LocalSystemSid, null) }) acl.AddAccessRule(new(sid, FileSystemRights.FullControl, InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit, PropagationFlags.None, AccessControlType.Allow));
-            info.SetAccessControl(acl);
+            var profile = WebViewProfilePath.ForRoom(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), root, parsed.Origin);
             var created = new WebView2(); browser = created; browserArea.Children.Add(created);
-            var environment = await CoreWebView2Environment.CreateAsync(null, profile);
-            token.ThrowIfCancellationRequested(); if (disposed) { created.Dispose(); return; }
-            await created.EnsureCoreWebView2Async(environment);
+            try
+            {
+                var info = Directory.CreateDirectory(profile); var acl = new DirectorySecurity(); acl.SetAccessRuleProtection(true, false);
+                var user = WindowsIdentity.GetCurrent().User ?? throw new InvalidOperationException("Windows identity unavailable.");
+                foreach (var sid in new[] { user, new SecurityIdentifier(WellKnownSidType.LocalSystemSid, null) }) acl.AddAccessRule(new(sid, FileSystemRights.FullControl, InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit, PropagationFlags.None, AccessControlType.Allow));
+                info.SetAccessControl(acl);
+                var environment = await CoreWebView2Environment.CreateAsync(null, profile);
+                token.ThrowIfCancellationRequested(); if (disposed) { created.Dispose(); return; }
+                await created.EnsureCoreWebView2Async(environment);
+            }
+            catch (Exception error) when (error is not OperationCanceledException)
+            {
+                throw new InvalidOperationException($"The in-app viewer could not open its browser data folder: {profile}. Check that your Windows account can write there and that Microsoft's Evergreen WebView2 Runtime is installed, then reopen the viewer. Browser viewing remains available.", error);
+            }
             token.ThrowIfCancellationRequested(); if (disposed) { created.Dispose(); return; }
             var core = created.CoreWebView2; core.Settings.AreHostObjectsAllowed = false; core.Settings.IsWebMessageEnabled = false;
             playbackBlocked = playbackGate.IsBlocked;

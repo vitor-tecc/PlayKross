@@ -74,6 +74,18 @@ it("RemovingOneBroadcastAndRenamingTheOtherClosesOnlyTheRemovedPeer", async () =
   fireEvent.click(within(cards[1]!).getByRole("button", { name: "Watch stream" }));
   await waitFor(() => expect(peers.map(peer => peer.connectionState)).toEqual(["connected", "connected"]));
   const bVideo = cards[1]!.querySelector("video")!; const bMedia = bVideo.srcObject;
+  fireEvent.change(within(cards[1]!).getByRole("slider", { name: "Bob's volume" }), { target: { value: "35" } });
+  fireEvent.click(within(cards[1]!).getByRole("button", { name: "Focus stream" }));
+  expect(cards[1]!.getAttribute("data-focused")).toBe("true");
+  expect(screen.getByRole("button", { name: "Grid view" })).toBeDefined();
+  fireEvent.click(within(cards[0]!).getByRole("button", { name: "Focus stream" }));
+  expect(cards[0]!.getAttribute("data-focused")).toBe("true");
+  expect(cards[1]!.getAttribute("data-focused")).toBe("false");
+  expect(bVideo.volume).toBe(.35);
+  expect(view.container.querySelector('[data-stream-id="b-stream"] video')).toBe(bVideo);
+  expect(bVideo.srcObject).toBe(bMedia);
+  fireEvent.click(screen.getByRole("button", { name: "Grid view" }));
+  expect(view.container.querySelectorAll('[data-focused="true"]')).toHaveLength(0);
   fireEvent.click(within(cards[1]!).getByRole("button", { name: "Enable sound" }));
   expect(bVideo.muted).toBe(false);
   act(() => { window.playkrossPlaybackAudioBlocked = true; window.dispatchEvent(new CustomEvent("playkross-playback-audio-blocked", { detail: true })); });
@@ -90,4 +102,21 @@ it("RemovingOneBroadcastAndRenamingTheOtherClosesOnlyTheRemovedPeer", async () =
   expect(peers).toHaveLength(2); expect(peers[1]!.connectionState).toBe("connected");
   expect(bVideo.srcObject).toBe(bMedia); expect(bMedia).not.toBeNull();
   expect(view.container.querySelectorAll(".stream-card")).toHaveLength(1);
+});
+
+it("RemovingTheFocusedStreamRestoresGridView", async () => {
+  const room: RoomSnapshot = { roomId: "room", revision: 1, participants: [], streams: [
+    { streamId: "a", ownerSessionId: "alice", nickname: "Alice", status: "reserved" },
+    { streamId: "b", ownerSessionId: "bob", nickname: "Bob", status: "reserved" },
+  ] };
+  api.me.mockResolvedValue({ sessionId: "me", expiresAt: "later", room });
+  const view = render(<RoomPage />);
+  await screen.findByText("Alice");
+  const cards = view.container.querySelectorAll<HTMLElement>(".stream-card");
+  fireEvent.click(within(cards[0]!).getByRole("button", { name: "Focus stream" }));
+  const changed = api.watchRoom.mock.calls[0]![0];
+  act(() => changed({ ...room, revision: 2, streams: [room.streams[1]!] }));
+  expect(screen.queryByRole("button", { name: "Grid view" })).toBeNull();
+  expect(cards[1]!.isConnected).toBe(true);
+  expect(cards[1]!.getAttribute("data-focused")).toBe("false");
 });
