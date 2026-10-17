@@ -11,13 +11,44 @@ using System.IO;
 using System.Net.Http;
 using JKiller.Acceptance.Probes;
 using JKiller.Windows.Viewing;
+using System.Windows.Controls;
+using Microsoft.Web.WebView2.Wpf;
 internal static class Program
 {
-    [STAThread] private static int Main()
+    [STAThread] private static int Main(string[] args)
     {
+        // Pure WPF measure/arrange: no Window, WebView/Core initialization, capture or device access.
+        if (args.SequenceEqual(new[] { "--check-playback-notice-layout" }))
+        {
+            try { CheckPlaybackNoticeLayout(); return 0; }
+            catch (Exception error) { Console.Error.WriteLine(error); return 1; }
+        }
         var app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown }; int result = 1;
         app.Startup += async (_, _) => { try { await Run(); result = 0; } catch (Exception error) { Console.Error.WriteLine(error); } finally { app.Shutdown(); } };
         app.Run(); return result;
+    }
+    private static void CheckPlaybackNoticeLayout()
+    {
+        using var http = new HttpClient(); var playbackGate = new PlaybackAudioGate();
+        using var viewer = new RoomWebView(Environment.CurrentDirectory, new RoomHttpClient(http), playbackGate);
+        var area = viewer.Children.OfType<Grid>().SingleOrDefault() ?? throw new Exception("Viewer browser area is not available without initializing WebView.");
+        var notice = viewer.Children.OfType<Border>().Single();
+        var reload = ((DockPanel)notice.Child).Children.OfType<Button>().Single();
+        var explanation = ((DockPanel)notice.Child).Children.OfType<TextBlock>().Single();
+        explanation.Text = "Room sound is muted during system audio sharing. Reload the viewer to refresh sound controls, or stop system audio sharing to restore sound.";
+        var surface = new Border(); area.Children.Add(surface);
+        void Layout() { viewer.Measure(new Size(900, 600)); viewer.Arrange(new Rect(0, 0, 900, 600)); viewer.UpdateLayout(); }
+        Layout();
+        if (Math.Abs(area.ActualHeight - 600) > 0.5 || notice.ActualHeight > 0.5) throw new Exception("Collapsed notice consumes normal viewer/fullscreen space.");
+        notice.Visibility = Visibility.Visible; Layout();
+        var noticeTop = notice.TranslatePoint(new Point(), viewer).Y;
+        var browserTop = area.TranslatePoint(new Point(), viewer).Y;
+        if (notice.ActualHeight <= 0 || explanation.ActualHeight <= 0 || reload.ActualHeight <= 0 || !reload.IsEnabled || area.ActualHeight <= 0 || noticeTop + notice.ActualHeight > browserTop + 0.5)
+            throw new Exception("Failure guidance/reload overlaps the browser airspace or leaves no usable browser surface.");
+        if (!ReferenceEquals(surface, area.Children.OfType<Border>().Single())) throw new Exception("Showing guidance replaced the viewer surface.");
+        notice.Visibility = Visibility.Collapsed; Layout();
+        if (Math.Abs(area.ActualHeight - 600) > 0.5) throw new Exception("Dismissing the notice did not restore normal viewer/fullscreen space.");
+        Console.WriteLine("PASS: headless real viewer layout gives failure guidance/reload separate space, preserves surface identity, and restores full browser space when collapsed; no Window or WebView initialized.");
     }
     private static async Task Run()
     {
@@ -57,11 +88,12 @@ internal static class Program
             await Wait(async () => await viewer.Core.ExecuteScriptAsync($"window.jkProbeSession==='{sessionId}'") == "true", token);
             if (room.Session.SessionId.ToString() != sessionId || !model.CaptureLive) throw new Exception("Viewing disturbed publication ownership.");
             if (viewer.Core.Settings.AreHostObjectsAllowed || viewer.Core.Settings.IsWebMessageEnabled) throw new Exception("Native bridge is exposed.");
+            await CheckScriptFailureNotice(viewer, playbackAudioGate, token);
             var source = viewer.Core.Source; viewer.Core.Navigate("https://untrusted.invalid/"); await Task.Delay(300, token);
             if (new Uri(viewer.Core.Source).Host != new Uri(source).Host) throw new Exception("Untrusted navigation was permitted.");
             try { await viewer.Core.CallDevToolsProtocolMethodAsync("Page.crash", "{}").WaitAsync(TimeSpan.FromSeconds(5)); }
             catch (Exception e) when (e is System.Runtime.InteropServices.COMException or TimeoutException) { }
-            await Wait(() => Task.FromResult(viewer.Children.OfType<System.Windows.Controls.StackPanel>().Any()), token);
+            await Wait(() => Task.FromResult(viewer.Children.OfType<Grid>().Single().Children.OfType<StackPanel>().Any()), token);
             if (!model.CaptureLive) throw new Exception("Viewer failure stopped the native publication.");
             await viewer.OpenRoomAsync(new Uri(link), token);
             await Wait(async () => await viewer.Core.ExecuteScriptAsync("[...document.querySelectorAll('button')].some(b=>b.textContent==='Watch stream')") == "true", token);
@@ -71,6 +103,34 @@ internal static class Program
             Console.WriteLine("Runtime: " + viewer.Core.Environment.BrowserVersionString + "; captureMode=" + captureMode + "; no screen/audio recording saved. Video-only does not validate audio exclusion or A/V sync.");
         }
         finally { window.Close(); await model.StopAsync(CancellationToken.None); }
+    }
+    private static async Task CheckScriptFailureNotice(RoomWebView viewer, PlaybackAudioGate playbackGate, CancellationToken token)
+    {
+        var core = viewer.Core;
+        var browser = viewer.Children.OfType<Grid>().Single().Children.OfType<WebView2>().Single();
+        await core.ExecuteScriptAsync("window.jkProbeVideo=document.querySelector('video');window.jkProbeMedia=window.jkProbeVideo.srcObject;Object.defineProperty(window,'playkrossPlaybackAudioBlocked',{value:'forced-script-update-failure',configurable:false});");
+        await using (var lease = await playbackGate.AcquireAsync(token))
+        {
+            viewer.UpdateLayout();
+            var notice = viewer.Children.OfType<Border>().Single();
+            var reload = ((DockPanel)notice.Child).Children.OfType<Button>().Single();
+            var noticeTop = notice.TranslatePoint(new Point(), viewer).Y;
+            var browserTop = browser.TranslatePoint(new Point(), viewer).Y;
+            if (!notice.IsVisible || notice.ActualHeight <= 0 || !reload.IsVisible || !reload.IsEnabled || !browser.IsVisible || browser.ActualHeight <= 0 || noticeTop + notice.ActualHeight > browserTop + 0.5)
+                throw new Exception("Forced script failure did not expose usable native guidance outside the still-visible WebView airspace.");
+            if (!ReferenceEquals(core, viewer.Core) || !core.IsMuted || await core.ExecuteScriptAsync("document.querySelector('video')===window.jkProbeVideo && window.jkProbeVideo.srcObject===window.jkProbeMedia") != "true")
+                throw new Exception("Showing script-failure guidance replaced browser/media or lost native mute.");
+            // Exercise the native action, not a page command bridge. Explicit reload may
+            // restart page playback but must retain this WebView/Core and native mute.
+            reload.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            await Wait(() => Task.FromResult(notice.Visibility == Visibility.Collapsed), token);
+            if (!ReferenceEquals(core, viewer.Core) || !core.IsMuted) throw new Exception("Reload action replaced WebView or lost mute protection.");
+            await Wait(async () => await core.ExecuteScriptAsync("window.playkrossPlaybackAudioBlocked===true && [...document.querySelectorAll('button')].some(b=>b.textContent==='Watch stream')") == "true", token);
+            await core.ExecuteScriptAsync("[...document.querySelectorAll('button')].find(b=>b.textContent==='Watch stream').click()");
+            await Wait(async () => await core.ExecuteScriptAsync("document.querySelector('video')?.getVideoPlaybackQuality().totalVideoFrames>60") == "true", token);
+        }
+        if (core.IsMuted != playbackGate.IsBlocked) throw new Exception("Forced-failure probe released another publisher's mute state.");
+        Console.WriteLine("PASS: forced script-update failure exposes nonoverlapping native guidance/reload, retains browser/video/media until explicit reload, and keeps native mute protected.");
     }
     private static async Task Wait(Func<Task<bool>> condition, CancellationToken token)
     {

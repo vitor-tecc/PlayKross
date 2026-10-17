@@ -19,10 +19,33 @@ public sealed class RoomWebView : Grid, IDisposable
     private bool playbackBlocked;
     private readonly SemaphoreSlim playbackScriptGate = new(1);
     private string? playbackScriptId;
-    private readonly TextBlock playbackNotice = new() { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(12), Background = System.Windows.Media.Brushes.White, Foreground = System.Windows.Media.Brushes.Black, VerticalAlignment = VerticalAlignment.Top, Visibility = Visibility.Collapsed };
+    private readonly Grid browserArea = new();
+    private readonly TextBlock playbackNoticeText = new() { TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center };
+    private readonly Border playbackNotice = new() { Padding = new Thickness(12), Background = System.Windows.Media.Brushes.White, VerticalAlignment = VerticalAlignment.Top, Visibility = Visibility.Collapsed };
     public RoomWebView(string root, RoomHttpClient room, PlaybackAudioGate playbackAudioGate)
     {
         this.root = root; this.room = room; playbackGate = playbackAudioGate;
+        // WebView2 owns HWND airspace. Native guidance needs its own nonoverlapping
+        // Auto row; collapsing it leaves the browser's normal/fullscreen area intact.
+        RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+        Grid.SetRow(playbackNotice, 0); Grid.SetRow(browserArea, 1);
+        var noticeContents = new DockPanel { LastChildFill = true };
+        var reload = new Button { Content = "Reload viewer", Margin = new Thickness(12, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
+        DockPanel.SetDock(reload, Dock.Right); noticeContents.Children.Add(reload); noticeContents.Children.Add(playbackNoticeText);
+        playbackNoticeText.Foreground = System.Windows.Media.Brushes.Black;
+        playbackNotice.Child = noticeContents;
+        reload.Click += (_, _) =>
+        {
+            try
+            {
+                if (disposed || browser?.CoreWebView2 is not { } core) return;
+                // Reload the page in the existing browser; preserve the native safety boundary.
+                core.IsMuted = playbackBlocked; core.Reload();
+            }
+            catch (Exception) { ShowPlaybackNotice(); }
+        };
+        Children.Add(browserArea); Children.Add(playbackNotice);
         playbackBlocked = playbackGate.IsBlocked;
         playbackRegistration = playbackGate.Register(SetPlaybackAudioBlockedAsync);
     }
@@ -44,13 +67,13 @@ public sealed class RoomWebView : Grid, IDisposable
         try
         {
             if (string.IsNullOrEmpty(CoreWebView2Environment.GetAvailableBrowserVersionString())) throw new InvalidOperationException("Install Microsoft's Evergreen WebView2 Runtime to use the in-app viewer. Browser viewing remains available.");
-            browser?.Dispose(); Children.Clear(); playbackScriptId = null; currentRoom = roomUri; policy = new(parsed.Origin);
+            browser?.Dispose(); browserArea.Children.Clear(); playbackNotice.Visibility = Visibility.Collapsed; playbackScriptId = null; currentRoom = roomUri; policy = new(parsed.Origin);
             var profile = Path.Combine(root, ".runtime/webview", Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(parsed.Origin.AbsoluteUri))));
             var info = Directory.CreateDirectory(profile); var acl = new DirectorySecurity(); acl.SetAccessRuleProtection(true, false);
             var user = WindowsIdentity.GetCurrent().User ?? throw new InvalidOperationException("Windows identity unavailable.");
             foreach (var sid in new[] { user, new SecurityIdentifier(WellKnownSidType.LocalSystemSid, null) }) acl.AddAccessRule(new(sid, FileSystemRights.FullControl, InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit, PropagationFlags.None, AccessControlType.Allow));
             info.SetAccessControl(acl);
-            var created = new WebView2(); browser = created; Children.Add(created); Children.Add(playbackNotice); Panel.SetZIndex(playbackNotice, 1);
+            var created = new WebView2(); browser = created; browserArea.Children.Add(created);
             var environment = await CoreWebView2Environment.CreateAsync(null, profile);
             token.ThrowIfCancellationRequested(); if (disposed) { created.Dispose(); return; }
             await created.EnsureCoreWebView2Async(environment);
@@ -122,7 +145,7 @@ public sealed class RoomWebView : Grid, IDisposable
     private void ShowPlaybackNotice()
     {
         if (disposed) return;
-        playbackNotice.Text = playbackBlocked
+        playbackNoticeText.Text = playbackBlocked
             ? "Room sound is muted during system audio sharing. Reload the viewer to refresh sound controls, or stop system audio sharing to restore sound."
             : "Viewer sound controls could not be refreshed. Reload the viewer to restore your sound choice.";
         playbackNotice.Visibility = Visibility.Visible;
@@ -133,7 +156,7 @@ public sealed class RoomWebView : Grid, IDisposable
         var panel = new StackPanel { Margin = new Thickness(24) }; panel.Children.Add(new TextBlock { Text = message + " Broadcasting controls remain separate.", TextWrapping = TextWrapping.Wrap });
         var retry = new Button { Content = "Reload viewer", Margin = new Thickness(0, 12, 0, 0) };
         retry.Click += async (_, _) => { try { if (currentRoom is not null) await OpenRoomAsync(currentRoom, CancellationToken.None); } catch (Exception error) { MessageBox.Show(error.Message, "PlayKross viewer"); } };
-        panel.Children.Add(retry); Children.Clear(); Children.Add(panel);
+        panel.Children.Add(retry); playbackNotice.Visibility = Visibility.Collapsed; browserArea.Children.Clear(); browserArea.Children.Add(panel);
     }
     public void Dispose() { disposed = true; playbackRegistration.Dispose(); browser?.Dispose(); browser = null; Children.Clear(); }
 }
