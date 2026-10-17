@@ -25,7 +25,8 @@ var captureMode = Environment.GetEnvironmentVariable("JKILLER_PROBE_CAPTURE_MODE
 if (captureMode is not ("application" or "video-only" or "system-output")) throw new ArgumentException("Unknown capture mode.");
 if (captureMode == "system-output" && (videoSource == "fixture-window" || string.IsNullOrWhiteSpace(endpoint) || string.Equals(endpoint.Trim(), "default", StringComparison.OrdinalIgnoreCase))) throw new ArgumentException("System output requires explicit monitor video and render endpoint.");
 if (captureMode != "system-output" && (videoSource != "fixture-window" || endpoint.Length != 0)) throw new ArgumentException("Monitor/endpoint options require system-output mode.");
-if (checkOptions) { Console.WriteLine("PASS: explicit probe options validated without launching media."); return; }
+var applicationAudioRequested = captureMode == "application";
+if (checkOptions) { Console.WriteLine("PASS: explicit probe options validated without launching media."); Console.WriteLine(JsonSerializer.Serialize(new { captureMode, applicationAudioRequested })); return; }
 Directory.CreateDirectory(directory);
 using var http = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false, UseCookies = false });
 IObsRpcClient? control = null;
@@ -136,7 +137,7 @@ async Task Ready(int height)
     var native = nativeResponse.GetProperty("responseData");
     var videoOutput = await control.RequestAsync("GetVideoSettings", JsonSerializer.SerializeToElement(new { }), deadline.Token);
     if (forceCpuFallback && (native.GetProperty("encoder").GetString() != "obs_x264" || native.GetProperty("hardwareInitialized").GetBoolean() || native.GetProperty("encodedHeight").GetInt32() > 720 || videoOutput.GetProperty("fpsNumerator").GetInt32() > 30 || native.GetProperty("bitrateKbps").GetInt32() > 4000)) throw new Exception("Actual software fallback exceeds its applied limits.");
-    await File.WriteAllTextAsync(Path.Combine(directory, "ready.json"), JsonSerializer.Serialize(new { requestedHeight = height, height = native.GetProperty("encodedHeight").GetInt32(), model.CaptureLive, source = image, captureMode, applicationAudioRequested = model.Audio is not null, cpuFallbackInjected = forceCpuFallback, helperPid = ownedHandle!.Identity.Pid, helperCreation = ownedHandle.Identity.CreationFileTime.ToString() }), deadline.Token);
+    await File.WriteAllTextAsync(Path.Combine(directory, "ready.json"), JsonSerializer.Serialize(new { requestedHeight = height, height = native.GetProperty("encodedHeight").GetInt32(), model.CaptureLive, source = image, captureMode, applicationAudioRequested, audioMode = model.Audio.Mode.ToString(), cpuFallbackInjected = forceCpuFallback, helperPid = ownedHandle!.Identity.Pid, helperCreation = ownedHandle.Identity.CreationFileTime.ToString() }), deadline.Token);
 }
 async Task WaitFor(string name)
 {

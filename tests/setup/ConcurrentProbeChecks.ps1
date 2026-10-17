@@ -11,6 +11,9 @@ try {
         foreach($name in Get-ConcurrentComponentPaths) { $path=Join-Path $instance $name; New-Item -ItemType Directory (Split-Path $path) -Force | Out-Null; Set-Content -LiteralPath $path -Value $name }
     }
     Assert-ConcurrentRoots $a $b
+    foreach($instance in @($a,$b)){Set-Content -LiteralPath (Join-Path $instance '.runtime/obs/bin/64bit/additional.dll') -Value $instance}
+    Reject { Assert-ConcurrentRoots $a $b }
+    foreach($instance in @($a,$b)){Set-Content -LiteralPath (Join-Path $instance '.runtime/obs/bin/64bit/additional.dll') -Value same}
     Reject { Assert-ConcurrentRoots 'relative' $b }; Reject { Assert-ConcurrentRoots $a $a }; Reject { Assert-ConcurrentRoots $a (Join-Path $a 'nested') }
     Set-Content -LiteralPath (Join-Path $b 'PlayKross.dll') -Value mismatch
     Reject { Assert-ConcurrentRoots $a $b }
@@ -20,11 +23,19 @@ try {
     Reject { Resolve-ConcurrentMode -SystemEndpointId ' ' -MonitorSourceId monitor }
     if((Resolve-ConcurrentMode) -ne 'application' -or (Resolve-ConcurrentMode -VideoOnly) -ne 'video-only' -or (Resolve-ConcurrentMode -SystemEndpointId endpoint -MonitorSourceId monitor) -ne 'system-output'){throw 'Wrong explicit capture mode.'}
     $old=$env:JKILLER_CONCURRENT_CHECK; $env:JKILLER_CONCURRENT_CHECK='prior'
-    try { Reject { Invoke-ConcurrentEnvironment @{JKILLER_CONCURRENT_CHECK='temporary'} { if($env:JKILLER_CONCURRENT_CHECK -ne 'temporary'){throw 'Not applied'}; throw 'synthetic failure' } }; if($env:JKILLER_CONCURRENT_CHECK -ne 'prior'){throw 'Environment leaked.'} } finally { $env:JKILLER_CONCURRENT_CHECK=$old }
+    $script:observedScoped=$false
+    try { Reject { Invoke-ConcurrentEnvironment @{JKILLER_CONCURRENT_CHECK='temporary'} { $script:observedScoped=$env:JKILLER_CONCURRENT_CHECK -eq 'temporary'; throw 'synthetic failure' } }; if(-not $script:observedScoped -or $env:JKILLER_CONCURRENT_CHECK -ne 'prior'){throw 'Environment not applied/restored.'} } finally { $env:JKILLER_CONCURRENT_CHECK=$old }
     $script:stopped=@(); $process=[pscustomobject]@{Id=7;Creation='100';Path='owned.exe'}
     Stop-ConcurrentOwnedProcess @{Id=7;Creation='100';Path='owned.exe'} -Find {param($id) $process} -Stop {param($p) $script:stopped += $p.Id}
     Reject { Stop-ConcurrentOwnedProcess @{Id=7;Creation='99';Path='owned.exe'} -Find {param($id) $process} -Stop {throw 'Must not stop reused PID'} }
     if($script:stopped.Count -ne 1){throw 'Cleanup did not target only owned process.'}
+    $owner=@{Id=7;Creation='100';Path='owned.exe'}
+    $surface=@{Id=7;Creation='100';Path='owned.exe';WindowPid=7;Visible=$true;Topmost=$true;Borderless=$true;Bounds=@(0,0,1440,2560)}
+    Assert-ConcurrentMonitorSurface $owner $surface @(0,0,1440,2560)
+    foreach($key in @('Id','Creation','Path','WindowPid','Visible','Topmost','Borderless','Bounds')){
+        $bad=$surface.Clone();$bad[$key]=switch($key){Id {8};Creation {'99'};Path {'foreign.exe'};WindowPid {8};Bounds {@(1,0,1440,2560)};default {$false}}
+        Reject {Assert-ConcurrentMonitorSurface $owner $bad @(0,0,1440,2560)}
+    }
     foreach($path in @('tests/audio-harness/ModuleState.hpp','tests/audio-harness/obs-frontend-api.h','tests/audio-harness/util/platform.h')) {if(-not (Test-PortableNativeSourcePath $path)){throw "Required corresponding source omitted: $path"}}
     foreach($path in @('tests/audio-harness/private.json','tests/audio-harness/logs/private.hpp','tests/../private.hpp')) {if(Test-PortableNativeSourcePath $path){throw 'Native source allowlist too broad.'}}
     $verify=Get-Content (Join-Path $PSScriptRoot '../../scripts/Verify.ps1') -Raw

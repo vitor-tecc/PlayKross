@@ -16,6 +16,8 @@ Prepare a fresh matching ZIP and extract it twice into distinct writable roots. 
 
 The default is Application audio from the owned synthetic fixture. Never infer monitor/endpoint IDs, silently change capture mode or bypass an ownership lock. The runner builds probes and starts local services/fixtures; it is excluded from CodeOnly. It uses the existing Edge Playwright protocol configuration with screenshots, traces and video recording disabled. Numeric transport evidence is saved under `.artifacts/concurrent/<unique-run>`; invitation credentials are not report content.
 
+For System output, the runner verifies the requested endpoint is still the concrete default used by the owned WAVE_MAPPER tone fixture, covers only the explicitly selected monitor with a PID/creation/path-verified owned borderless topmost fixture, and validates physical bounds/style/visibility before capture. It aborts if coverage cannot be established. It changes no display/device settings. The external protocol browser gets explicit `--mute-audio` to prevent mixed-output feedback; UI sound choices and received Opus counters therefore do not prove audible output. The native viewer must separately demonstrate its actual mute lease. `-Headed` selects a bounded visible diagnostic attempt with the same protocol configuration; it does not change expectations. Current automated Escape has a media-free repro boundary recorded in results; keep manual Escape pending and preserve strict failed runs.
+
 | Functional check | Evidence required |
 |---|---|
 | Two concurrent publishers | Distinct selected cards/stream IDs, decoded frames and Opus packets for each |

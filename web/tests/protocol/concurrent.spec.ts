@@ -46,8 +46,9 @@ test("TwoPublishersRemainIndependent", async ({ page, browser }, info) => {
   await expect.poll(async()=> (await counters(b)).audio).toBeGreaterThan(before.audio);
   await b.getByRole("button",{name:"Mute",exact:true}).click();await expect(b.locator("video")).toHaveJSProperty("muted",true);
   await b.getByRole("button",{name:"Enable sound",exact:true}).click();await expect(b.locator("video")).toHaveJSProperty("muted",false);
+  const evidence={browser:browser.version(),topology:"same-PC loopback; two portable helpers",captureMode:process.env.JKILLER_PROBE_CAPTURE_MODE,physicalBrowserAudio:process.env.JKILLER_PROBE_CAPTURE_MODE==="system-output"?"disabled: explicit --mute-audio":"not evaluated for audibility",streamIds:[aId,bId],a:await counters(a),b:await counters(b),humanListening:"pending",syntheticToneDetection:"pending",maximumCapacity:"unproven"};
+  await writeFile(join(directory,"browser-transport-before-fullscreen.json"),JSON.stringify({...evidence,scope:"Transport/isolation/sound-toggle checks reached; fullscreen and whole-test outcome are separate"},null,2));
   await checkFullscreen(page,b);
-  const evidence={browser:browser.version(),topology:"same-PC loopback; two portable helpers",captureMode:process.env.JKILLER_PROBE_CAPTURE_MODE,streamIds:[aId,bId],a:await counters(a),b:await counters(b),humanListening:"pending",syntheticToneDetection:"pending",maximumCapacity:"unproven"};
   await info.attach("concurrent-transport-evidence",{body:JSON.stringify(evidence,null,2),contentType:"application/json"});
   await writeFile(join(directory,"browser-evidence.json"),JSON.stringify(evidence,null,2));
 });
