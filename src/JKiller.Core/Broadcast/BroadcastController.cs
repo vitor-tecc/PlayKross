@@ -90,7 +90,9 @@ public sealed class BroadcastController : IAsyncDisposable
         await engine.StartAsync(endpoint, grant.Token, token); Check(version, token);
         request = next; SetState(BroadcastState.Broadcasting);
     }
-    public async Task ChangeSettingsAsync(BroadcastSettings settings, CancellationToken token)
+    public Task ChangeSourcesAsync(BroadcastRequest next, CancellationToken token) => RestartAsync(next.Settings, next, token);
+    public Task ChangeSettingsAsync(BroadcastSettings settings, CancellationToken token) => RestartAsync(settings, null, token);
+    private async Task RestartAsync(BroadcastSettings settings, BroadcastRequest? next, CancellationToken token)
     {
         var snapshot = Snapshot();
         var validation = StreamSettings.Validate(settings);
@@ -103,7 +105,7 @@ public sealed class BroadcastController : IAsyncDisposable
             if (State != BroadcastState.Broadcasting || request is null) throw new InvalidOperationException("Start a broadcast before changing its settings.");
             SetState(BroadcastState.Reconfiguring);
             await engine.StopAsync(linked.Token); Check(snapshot.Version, linked.Token);
-            await PublishAsync(request with { Settings = settings }, snapshot.Version, linked.Token);
+            await PublishAsync(next ?? request with { Settings = settings }, snapshot.Version, linked.Token);
         }
         catch (Exception error) { LastError ??= error; await CleanupAsync(); throw; }
         finally { gate.Release(); }

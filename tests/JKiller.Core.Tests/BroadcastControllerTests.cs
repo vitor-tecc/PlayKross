@@ -51,6 +51,21 @@ public sealed class BroadcastControllerTests
         Assert.Equal(720, controller.Applied!.Settings.Height);
     }
     [Fact]
+    public async Task SourceRestartKeepsPublicationAndStopsOldMediaBeforePreparingNewSources()
+    {
+        var media = new FakeMedia(); var room = new FakeRoom(); await using var controller = Controller(media, room);
+        await controller.StartAsync(Request, CancellationToken.None);
+        var original = controller.StreamId;
+        var next = new BroadcastRequest(new("display", SourceKind.Monitor, 7, null, "Display"), new(AudioMode.SystemOutput, RenderEndpointId: "speakers"), new(1280, 720, 30, 6));
+        await controller.ChangeSourcesAsync(next, CancellationToken.None);
+        Assert.Equal(next, media.PreparedRequest);
+        Assert.Equal(original, controller.StreamId);
+        Assert.Equal(1, media.MaximumLive);
+        Assert.False(media.PreparedWhileLive);
+        Assert.Empty(room.Stopped);
+        Assert.Equal(BroadcastState.Broadcasting, controller.State);
+    }
+    [Fact]
     public async Task SourceLossMutesAndStops()
     {
         var media = new FakeMedia(); var room = new FakeRoom(); await using var controller = Controller(media, room);
@@ -84,13 +99,17 @@ public sealed class BroadcastControllerTests
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => start);
         Assert.Equal(0, media.Starts); Assert.Contains(room.Id, room.Stopped);
     }
-    [Fact]
-    public async Task DisconnectWhileRestartingInvalidatesOlderGeneration()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task DisconnectWhileRestartingInvalidatesOlderGeneration(bool changeSources)
     {
         var media = new FakeMedia(); var room = new FakeRoom(); await using var controller = Controller(media, room);
         await controller.StartAsync(Request, CancellationToken.None);
         media.HoldPrepare = true;
-        var change = controller.ChangeSettingsAsync(new(1280, 720, 30, 6), CancellationToken.None);
+        var change = changeSources
+            ? controller.ChangeSourcesAsync(Request with { Video = new("new-display", SourceKind.Monitor, 7, null, "Display") }, CancellationToken.None)
+            : controller.ChangeSettingsAsync(new(1280, 720, 30, 6), CancellationToken.None);
         await media.Entered.Task.WaitAsync(TimeSpan.FromSeconds(2)); media.FailSource(); media.Release.TrySetResult();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => change);
         await WaitUntil(() => media.Live == 0 && controller.State == BroadcastState.Faulted);
@@ -137,7 +156,8 @@ public sealed class BroadcastControllerTests
         public event EventHandler<Exception>? SafetyFault;
         public int Starts, Live, MaximumLive; public string? LastToken; public bool HoldPrepare; public Action? OnPrepare;
         public TaskCompletionSource Entered = new(TaskCreationOptions.RunContinuationsAsynchronously), Release = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        public async Task<AppliedMediaSettings> PrepareAsync(BroadcastRequest request, CancellationToken token) { OnPrepare?.Invoke(); if (HoldPrepare) { Entered.TrySetResult(); await Release.Task; } return new(request.Settings, "obs_nvenc_h264_tex", "h264", true); }
+        public BroadcastRequest? PreparedRequest; public bool PreparedWhileLive;
+        public async Task<AppliedMediaSettings> PrepareAsync(BroadcastRequest request, CancellationToken token) { PreparedRequest = request; PreparedWhileLive |= Live != 0; OnPrepare?.Invoke(); if (HoldPrepare) { Entered.TrySetResult(); await Release.Task; } return new(request.Settings, "obs_nvenc_h264_tex", "h264", true); }
         public Task StartAsync(Uri uri, string token, CancellationToken cancellation) { Starts++; Live++; MaximumLive = Math.Max(MaximumLive, Live); LastToken = token; return Task.CompletedTask; }
         public Task StopAsync(CancellationToken token) { Live = 0; return Task.CompletedTask; }
         public void FailSource() => SafetyFault?.Invoke(this, new InvalidOperationException("Original source lost."));

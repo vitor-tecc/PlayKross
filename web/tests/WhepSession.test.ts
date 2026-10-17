@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { WhepSession, type WhepDependencies } from "../src/media/WhepSession";
+import { WhepSession, type WhepDependencies, type WhepDiagnostic } from "../src/media/WhepSession";
 import type { PlaybackGrant } from "../src/api/contracts";
 
 const grant: PlaybackGrant = { streamId: "id", path: "rooms/11111111111111111111111111111111/streams/22222222222222222222222222222222/main", whepUri: "/media/rooms/11111111111111111111111111111111/streams/22222222222222222222222222222222/main/whep", token: "media-credential", expiresAt: "2026-10-13T13:00:00Z" };
@@ -28,9 +28,38 @@ function setup(response?: (request: RequestInfo | URL, init?: RequestInit) => Pr
   const peer = new FakePeer(); const stream = new FakeStream();
   const request = vi.fn(response ?? (async (_url, init) => init?.method === "POST" ? new Response("v=0\r\n", { status: 201, headers: { Location: "/media-resources/12345678-1234-1234-1234-123456789abc", "Content-Type": "application/sdp" } }) : new Response(null, { status: 204 })));
   const deps: WhepDependencies = { origin: "https://room.test", createPeer: () => peer as unknown as RTCPeerConnection, createStream: () => stream as unknown as MediaStream, fetch: request as typeof fetch, supportsCodecs: () => true, timeoutMs: 100 };
-  return { peer, stream, request, session: new WhepSession(deps) };
+  const diagnostics: WhepDiagnostic[] = [];
+  return { peer, stream, request, diagnostics, session: new WhepSession(deps, undefined, sample => diagnostics.push(sample)) };
 }
 describe("WHEP ownership", () => {
+  it("SeparatesMissingMediaFromExpiredPermissionWithoutLeakingSignalingSecrets", async () => {
+    const context = setup(async (_url, init) => init?.method === "POST"
+      ? new Response('{"error":"no stream is available on path secret-path"}', { status: 404 })
+      : new Response(null, { status: 204 }));
+    context.peer.localDescription.sdp += "a=candidate:1 1 UDP 1234 192.0.2.1 12345 typ host\r\na=candidate:2 1 UDP 1234 203.0.113.1 23456 typ srflx raddr 192.0.2.1 rport 12345\r\n";
+    await expect(context.session.start(grant, new AbortController().signal)).rejects.toThrow(/404.*publisher|publisher.*404/i);
+    expect(context.diagnostics).toHaveLength(1);
+    expect(context.diagnostics[0]).toMatchObject({ outcome: "failed", stage: "post", failure: "stream-unavailable", optionsStatus: 204, postStatus: 404, candidates: { host: 1, srflx: 1, prflx: 0, relay: 0 } });
+    const exported = JSON.stringify(context.diagnostics);
+    for (const secret of [grant.token, grant.path, "192.0.2.1", "203.0.113.1", "secret-path"]) expect(exported).not.toContain(secret);
+    expect(context.peer.close).toHaveBeenCalledOnce();
+  });
+  it("ReportsPermissionFailureBeforeCreatingAPeer", async () => {
+    const context = setup(async () => new Response(null, { status: 403 }));
+    await expect(context.session.start(grant, new AbortController().signal)).rejects.toThrow(/403/);
+    expect(context.diagnostics[0]).toMatchObject({ outcome: "failed", stage: "options", failure: "permission", optionsStatus: 403, postStatus: null, candidates: { host: 0, srflx: 0, prflx: 0, relay: 0 } });
+    expect(context.peer.createOffer).not.toHaveBeenCalled();
+  });
+  it("KeepsGatheringTimeoutDistinctFromHttpAndRecordsSuccessfulConnection", async () => {
+    const stalled = setup(); stalled.peer.iceGatheringState = "gathering";
+    await expect(stalled.session.start(grant, new AbortController().signal)).rejects.toThrow(/gathering timed out/);
+    expect(stalled.diagnostics[0]).toMatchObject({ stage: "gathering", failure: "candidate-timeout", gatheringState: "gathering", postStatus: null });
+    const connected = setup();
+    await connected.session.start(grant, new AbortController().signal);
+    expect(connected.diagnostics[0]).toMatchObject({ stage: "connected", outcome: "connected", failure: null, optionsStatus: 204, postStatus: 201, connectionState: "connected" });
+    expect(connected.diagnostics[0]!.elapsedMs).toBeGreaterThanOrEqual(0);
+    await connected.session.close();
+  });
   it("UsesGatheredCandidatesWhenAnUnreachableInterfaceNeverCompletes", async () => {
     const context = setup(); context.peer.iceGatheringState = "gathering";
     context.peer.localDescription.sdp = "v=0\r\na=candidate:1 1 UDP 1234 192.0.2.1 12345 typ host\r\na=candidate:2 1 UDP 1234 203.0.113.1 23456 typ srflx raddr 192.0.2.1 rport 12345\r\n";

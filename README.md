@@ -21,6 +21,8 @@ On this already-prepared PC, run PowerShell 7 from the project folder:
 
 Paste the printed `http://localhost:5000/#invite=...` link into the native app, choose a nickname, Join, select video and Start. Application audio captures the selected process and its children. System output requires a selected monitor and concrete render device, captures mixed device playback including Discord, and mutes in-app room playback to prevent recapture. External browsers can still be captured; use a separate output or application audio. Display selection never enables audio automatically. The room page opens in a browser or with **Watch in app**. Localhost links work only on this PC.
 
+Video/audio selections can be staged while live and applied with **Apply sources and settings (restart)**. Viewer controls and independent volume are overlaid on each stream; click a stream to focus it, or return to the grid. The in-app browser stores its profile under Windows LocalAppData to support deeply nested portable extraction folders. See the [iteration report](docs/validation/2026-10-17-m2-iteration.md) for playback diagnostics, current verification limits and OBS/quality architecture answers.
+
 In a browser, **Join room**, then click **Watch stream**; use **Enable sound** separately. For Firefox on this PC, start the server with `./scripts/Start-Local.ps1 -MediaInterface Ethernet` instead of default startup. This explicitly uses the Ethernet address for encrypted UDP media while the website/admin stay on localhost. Default loopback-only media was observed to fail in Firefox here, while Edge worked. See [Firefox local viewing](docs/setup/windows.md#firefox-on-the-host-pc) for scope and adapter selection.
 
 ```powershell
