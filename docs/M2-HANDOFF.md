@@ -2,7 +2,7 @@
 
 M1 has practical acceptance with known limitations as of 2026-10-16. Start with [the current roadmap](ROADMAP.md). The approved M2 plan has been implemented through its candidate validation tooling; acceptance remains pending in [M2 results](validation/milestone-2-results.md). Use the [functional checklist](validation/milestone-2-checklist.md) for this revision; M1 measurements remain historical.
 
-The user revised the scope again on 2026-10-16: concurrent broadcasting is now M2's main goal, fixed per-room people limits and eight-viewer testing are removed, and fullscreen bars must hide automatically. The user approved the [revised M2 design](superpowers/specs/2026-10-16-milestone-2-design.md) and [implementation plan](superpowers/plans/2026-10-16-milestone-2.md), selecting subagent-driven execution. Implementation is in progress; task review and functional verification remain required.
+The user revised the scope again on 2026-10-16: concurrent broadcasting is now M2's main goal, fixed per-room people limits and eight-viewer testing are removed, and fullscreen bars must hide automatically. The user approved the [revised M2 design](superpowers/specs/2026-10-16-milestone-2-design.md) and [implementation plan](superpowers/plans/2026-10-16-milestone-2.md), selecting subagent-driven execution. All nine implementation tasks and independent code reviews are complete. Continue the pending functional checks in the results/checklist; do not repeat implementation or treat code review as audible acceptance.
 
 ## Git baseline and attribution
 
@@ -21,7 +21,7 @@ The earlier required one/four/eight-viewer capacity matrix, external eight-viewe
 
 Working broadcast audio is also required for M2 acceptance. An experimental selector or silent audio track does not satisfy this requirement. See the revised audio requirements below.
 
-Continue the approved small-step implementation plan using Superpowers subagent-driven development, test-first changes, review and verification. Do not restart design, plan approval or M1 work without a relevant requirement change, regression or unresolved question.
+The approved small-step implementation plan was completed using Superpowers subagent-driven development, test-first changes, review and verification. Continue from the recorded functional evidence and pending checks. Do not restart design, plan approval or M1 work without a relevant requirement change, regression or unresolved question.
 
 ## Revised M2 audio requirements (2026-10-16)
 

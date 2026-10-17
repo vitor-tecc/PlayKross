@@ -19,14 +19,14 @@ Experimental application audio remains off by default, initially limited to the 
 
 ## Follow-up for M2 planning
 
-- The [revised M2 design](superpowers/specs/2026-10-16-milestone-2-design.md) and [implementation plan](superpowers/plans/2026-10-16-milestone-2.md) are approved for subagent-driven execution. Task reviews and functional verification determine completion.
+- The [revised M2 design](superpowers/specs/2026-10-16-milestone-2-design.md) and [implementation plan](superpowers/plans/2026-10-16-milestone-2.md) are approved for subagent-driven execution. Implementation and code reviews are complete; the recorded functional checks still determine milestone acceptance.
 - Make concurrent broadcasting the main goal. Remove fixed room participant/publisher quotas and the UI's `/ 8` count; keep ownership, leases, and each stream's playback independent.
 - Deliver working audio to browser and in-app viewers. Prefer application audio with Discord included only for explicitly selected entire-screen/system-output audio, but accept incidental Discord capture initially. Strict isolation is deferred; audio remains opt-in and microphone capture stays out of scope. See the [revised M2 audio requirements](M2-HANDOFF.md#revised-m2-audio-requirements-2026-10-16).
 - Track brief startup stutter separately from sustained playback. Establish a baseline before selecting a fix; distinguish capture/encoding startup, viewer decode startup and network recovery.
 - Carry forward external numerical/stability characterization and retained unexpected-stop investigations. Do not interpret functional M1 acceptance as measured capacity or latency evidence.
 - On entering a stream's fullscreen view, hide the top and bottom bars immediately; reveal on cursor movement and hide again after two seconds of inactivity, with keyboard/touch access preserved.
 - Remove the one/four/eight-viewer capacity campaign and large-group external acceptance gate. Use a small two-publication functional check; investigate scaling when real use exposes a problem. Do not introduce the earlier proposed reader cap or bandwidth-admission system.
-- Continue the approved implementation task-by-task; do not restart planning. The milestone remains in progress until its required functional checks are satisfied.
+- Continue the pending checks from the functional checklist/results; do not repeat completed implementation or restart planning. The milestone remains in progress until its required functional checks are satisfied.
 
 ## Technical records
 
