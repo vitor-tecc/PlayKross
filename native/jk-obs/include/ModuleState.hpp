@@ -3,6 +3,7 @@
 #include <obs-websocket-api.h>
 #include "SceneGuard.hpp"
 #include "ProcessLoopback.hpp"
+#include "EndpointLoopback.hpp"
 
 namespace jk {
 extern SceneGuard module_guard;
@@ -24,8 +25,11 @@ bool SourceAllowed(obs_source_t* source, std::uint64_t generation);
 bool AuditScene();
 void StopPublication(GuardStopReason reason = GuardStopReason::None);
 void StopAllAudioSources();
-void DescribeAudioSource(const char* name, obs_data_t* response);
+void DescribeAudioSource(const AudioRoute& selected, obs_data_t* response);
+void DescribeSelectedAudio(obs_data_t* response);
+std::optional<AudioRoute> SelectedAudioRoute(const char* name, std::uint64_t generation, std::uint32_t owner_pid);
 bool AudioSourceReady(const char* name, std::uint64_t generation, std::uint32_t owner_pid);
+std::string AudioSourceError(const char* name, std::uint64_t generation);
 void StartLocalControl();
 void StopLocalControl();
 std::optional<ProcessToken> ControllerIdentity();

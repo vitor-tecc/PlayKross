@@ -4,7 +4,7 @@
 #include <windows.h>
 
 OBS_DECLARE_MODULE()
-MODULE_EXPORT const char* obs_module_description(void) { return "JKiller process-only audio and publication guard"; }
+MODULE_EXPORT const char* obs_module_description(void) { return "PlayKross selected audio and publication guard"; }
 
 namespace jk {
 SceneGuard module_guard;
@@ -13,10 +13,8 @@ namespace {
 std::atomic_bool stopping{false};
 std::atomic<std::uint64_t> controller_exit_ns{0};
 bool Allowed(obs_source_t* source) {
-    obs_data_t* settings = obs_source_get_settings(source);
-    const auto generation = static_cast<std::uint64_t>(obs_data_get_int(settings, "selection_generation"));
-    obs_data_release(settings);
-    return SourceAllowed(source, generation);
+    const auto selected = module_guard.SelectedAudio();
+    return selected && SourceAllowed(source, selected->generation);
 }
 void Mixers(void*, calldata_t* data) {
     auto* source = static_cast<obs_source_t*>(calldata_ptr(data, "source"));
@@ -36,10 +34,8 @@ bool Audit(void* result, obs_source_t* source) {
     if (!(obs_source_get_output_flags(source) & OBS_SOURCE_AUDIO)) return true;
     const bool allowed = Allowed(source);
     if (allowed) {
-        obs_data_t* settings = obs_source_get_settings(source);
-        const auto generation = static_cast<std::uint64_t>(obs_data_get_int(settings, "selection_generation"));
-        obs_data_release(settings);
-        if (!AudioSourceReady(obs_source_get_name(source), generation, 0)) *static_cast<bool*>(result) = false;
+        const auto selected = module_guard.SelectedAudio();
+        if (!selected || !AudioSourceReady(obs_source_get_name(source), selected->generation, 0)) *static_cast<bool*>(result) = false;
     }
     const auto expected = allowed ? 1u : 0u;
     if (obs_source_get_audio_mixers(source) != expected) { *static_cast<bool*>(result) = false; obs_source_set_audio_mixers(source, expected); }
@@ -75,11 +71,19 @@ void FrontendEvent(obs_frontend_event event, void*) {
         obs_queue_task(OBS_TASK_UI, [](void*) { StartLocalControl(); }, nullptr, false);
 }
 }
-bool SourceAllowed(obs_source_t* source, std::uint64_t generation) {
-    if (!source) return false;
-    return module_guard.Allows({obs_source_get_unversioned_id(source), obs_source_get_name(source), generation, obs_source_get_monitoring_type(source) != OBS_MONITORING_TYPE_NONE});
+bool AuditScene() {
+    // A missing/stopped selected source is unsafe even after its mixer was muted,
+    // or after OBS removed it entirely (and enumeration cannot visit it).
+    const auto selected = module_guard.SelectedAudio();
+    bool safe = true;
+    if (selected) {
+        safe = AudioSourceReady(selected->source_name.c_str(), selected->generation, 0);
+        const auto ready = safe ? SelectedAudioRoute(selected->source_name.c_str(), selected->generation, 0) : std::nullopt;
+        safe = ready && module_guard.Allows(*ready);
+    }
+    obs_enum_sources(Audit, &safe);
+    return safe;
 }
-bool AuditScene() { bool safe = true; obs_enum_sources(Audit, &safe); return safe; }
 void StopPublication(GuardStopReason reason) {
     const auto previous = module_guard.StopReason();
     module_guard.Disarm(reason);
@@ -94,7 +98,7 @@ bool obs_module_load(void) {
     jk::RegisterVideoSource();
     signal_handler_connect(obs_get_signal_handler(), "source_create", jk::HookSource, nullptr);
     obs_add_tick_callback(jk::Tick, nullptr);
-    blog(LOG_INFO, "[JKiller] process-only audio source and synchronous route guard loaded");
+    blog(LOG_INFO, "[JKiller] selected audio source and synchronous route guard loaded");
     return true;
 }
 void obs_module_post_load(void) { jk::RegisterVendorRequests(); obs_frontend_add_event_callback(jk::FrontendEvent, nullptr); }

@@ -46,7 +46,7 @@ try
         try
         {
             var requested = new BroadcastSettings(1280, 720, 30, 6);
-            Console.WriteLine("Actual native applied settings: " + await engine.PrepareAsync(new(video, new(identity), requested), CancellationToken.None));
+            Console.WriteLine("Actual native applied settings: " + await engine.PrepareAsync(new(video, new(AudioMode.Application, identity), requested), CancellationToken.None));
             await engine.StartAsync(new Uri(http.BaseAddress!, reservation.WhipUri), reservation.Token, CancellationToken.None);
             var directory = Path.Combine(Environment.CurrentDirectory, ".artifacts/protocol"); Directory.CreateDirectory(directory);
             await File.WriteAllTextAsync(Path.Combine(directory, "publisher-ready.local.json"), JsonSerializer.Serialize(new { streamId = reservation.StreamId }));
@@ -86,7 +86,7 @@ try
             await using var engine = new ObsMediaEngine(helper);
             var lost = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             engine.SafetyFault += (_, _) => lost.TrySetResult();
-            var appliedCapture = await engine.PrepareAsync(new BroadcastRequest(new("fixture", SourceKind.Window, window, identity, "Synthetic fixture"), new(null), new(1280, 720, 30, 6)), CancellationToken.None);
+            var appliedCapture = await engine.PrepareAsync(new BroadcastRequest(new("fixture", SourceKind.Window, window, identity, "Synthetic fixture"), AudioSelection.Off, new(1280, 720, 30, 6)), CancellationToken.None);
             Console.WriteLine("PASS: actual WGC source prepared: " + appliedCapture);
             Native.SetWindowText(fixture.MainWindowHandle, "Renamed synthetic fixture");
             await Task.Delay(1000);

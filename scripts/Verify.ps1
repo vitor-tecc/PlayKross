@@ -14,6 +14,20 @@ try {
             if ($Mode -eq 'CodeOnly') { & (Join-Path $PSScriptRoot 'Build-Native.ps1') -Plugin -Test -NonInteractive -NoInstall }
             else { & (Join-Path $PSScriptRoot 'Build-Native.ps1') -Plugin -Test }
             & (Join-Path $root 'tests/setup/SetupChecks.ps1')
+            & (Join-Path $root 'tests/setup/ConcurrentProbeChecks.ps1')
+            & (Join-Path $root 'tests/setup/PortablePackageChecks.ps1')
+            foreach ($project in @('LiveFlowProbe','WebViewProbe')) {
+                & (Join-Path $root '.tools/dotnet/dotnet.exe') build (Join-Path $root ('tools/acceptance/' + $project)) --nologo
+                if ($LASTEXITCODE -ne 0) { throw "$project build failed." }
+            }
+            & (Join-Path $root '.tools/dotnet/dotnet.exe') (Join-Path $root 'tools/acceptance/LiveFlowProbe/bin/Debug/net10.0-windows10.0.26100.0/LiveFlowProbe.dll') --check-options --root $root --artifact-dir (Join-Path $root '.artifacts/options-check') --video-source fixture-window
+            if ($LASTEXITCODE -ne 0) { throw 'Pure live-probe option validation failed.' }
+            & (Join-Path $root '.tools/dotnet/dotnet.exe') (Join-Path $root 'tools/acceptance/WebViewProbe/bin/Debug/net10.0-windows10.0.26100.0/WebViewProbe.dll') --check-playback-notice-layout
+            if ($LASTEXITCODE -ne 0) { throw 'Headless viewer notice geometry failed.' }
+            & (Join-Path $root '.tools/dotnet/dotnet.exe') (Join-Path $root 'tools/acceptance/WebViewProbe/bin/Debug/net10.0-windows10.0.26100.0/WebViewProbe.dll') --check-native-fullscreen-state
+            if ($LASTEXITCODE -ne 0) { throw 'Pure native fullscreen state restoration failed.' }
+            & (Join-Path $root '.tools/dotnet/dotnet.exe') (Join-Path $root 'tools/acceptance/WebViewProbe/bin/Debug/net10.0-windows10.0.26100.0/WebViewProbe.dll') --check-audio-output-picker
+            if ($LASTEXITCODE -ne 0) { throw 'Headless endpoint picker identity synchronization failed.' }
             & (Join-Path $root 'tests/setup/CleanupChecks.ps1')
             & (Join-Path $root 'tests/setup/MediaInterfaceChecks.ps1')
             & (Join-Path $root 'tests/setup/HolePunchingChecks.ps1')

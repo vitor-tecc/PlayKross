@@ -11,11 +11,12 @@ public partial class MainWindow : Window
 {
     private readonly HttpClient http = new(new HttpClientHandler { AllowAutoRedirect = false, UseCookies = false });
     private MainWindowViewModel? model;
+    private readonly JKiller.Windows.Viewing.PlaybackAudioGate playbackAudioGate = new();
     private RoomHttpClient? roomClient;
     private string root = "";
     private Window? viewingWindow;
     private CancellationTokenSource? command;
-    private bool closing, closed;
+    private bool closing, closed, synchronizingAudio;
     public MainWindow()
     {
         InitializeComponent();
@@ -25,8 +26,22 @@ public partial class MainWindow : Window
             for (var directory = new DirectoryInfo(AppContext.BaseDirectory); directory is not null; directory = directory.Parent)
                 if (File.Exists(Path.Combine(directory.FullName, "config/dependencies.json"))) { root = directory.FullName; break; }
         }
-        roomClient = new(http); model = new(root, roomClient); DataContext = model;
-        model.PropertyChanged += (_, args) => Dispatcher.InvokeAsync(() => { if (args.PropertyName == nameof(model.CaptureLive)) SetControls(); });
+        roomClient = new(http); model = new(root, roomClient, playbackAudioGate); DataContext = model;
+        model.PropertyChanged += (_, args) => Dispatcher.InvokeAsync(() =>
+        {
+            if (args.PropertyName == nameof(model.CaptureLive)) SetControls();
+            if (args.PropertyName == nameof(model.Audio))
+            {
+                synchronizingAudio = true;
+                try
+                {
+                    AudioModePicker.SelectedIndex = (int)model.Audio.Mode;
+                    AudioSource.IsEnabled = model.Audio.Mode == AudioMode.Application;
+                    AudioOutput.IsEnabled = model.Audio.Mode == AudioMode.SystemOutput;
+                }
+                finally { synchronizingAudio = false; }
+            }
+        });
     }
     private void SetControls()
     {
@@ -75,8 +90,22 @@ public partial class MainWindow : Window
         Bitrate.Value = (double)StreamSettings.DefaultFor(int.Parse(resolution.Tag.ToString()!), int.Parse(fps.Tag.ToString()!)).BitrateMbps;
     }
     private void BitrateChanged(object sender, RoutedPropertyChangedEventArgs<double> args) { if (BitrateLabel is not null) BitrateLabel.Text = $"{args.NewValue:0.0} Mbps requested (megabits per second)"; }
-    private void AudioChanged(object sender, SelectionChangedEventArgs args) { if (AudioReason is not null) AudioReason.Text = BroadcasterModel.AudioEligibilityFor(AudioSource.SelectedItem as SourceDescriptor).Reason; }
-    private void AudioOffClick(object sender, RoutedEventArgs args) => AudioSource.SelectedItem = null;
+    private void AudioModeChanged(object sender, SelectionChangedEventArgs args)
+    {
+        if (synchronizingAudio || model is null || AudioSource is null || AudioOutput is null) return;
+        var mode = (AudioMode)AudioModePicker.SelectedIndex;
+        AudioSource.IsEnabled = mode == AudioMode.Application; AudioOutput.IsEnabled = mode == AudioMode.SystemOutput;
+        model.Audio = mode switch
+        {
+            AudioMode.Application => new(AudioMode.Application, (AudioSource.SelectedItem as SourceDescriptor)?.Process),
+            AudioMode.SystemOutput => new(AudioMode.SystemOutput, RenderEndpointId: (AudioOutput.SelectedItem as AudioOutputDescriptor)?.Id),
+            _ => AudioSelection.Off
+        };
+    }
+    private void AudioChanged(object sender, SelectionChangedEventArgs args)
+    {
+        if (model is not null && AudioModePicker.SelectedIndex == (int)AudioMode.Application && AudioSource.SelectedItem is SourceDescriptor source) model.SelectApplicationAudio(source);
+    }
     private void CopyClick(object sender, RoutedEventArgs args) { if (model!.RoomLink.Length > 0) Clipboard.SetText(model.RoomLink); }
     private void ViewClick(object sender, RoutedEventArgs args)
     {
@@ -86,10 +115,8 @@ public partial class MainWindow : Window
     private async void WatchClick(object sender, RoutedEventArgs args) => await Run(async token =>
     {
         var parsed = new Uri(model!.RoomLink); viewingWindow?.Close();
-        var viewer = new Viewing.RoomWebView(root, roomClient!);
-        var window = new Window { Title = "PlayKross • Room viewer", Width = 1000, Height = 740, Content = viewer, Owner = this }; viewingWindow = window;
-        var previousState = WindowState.Normal; var previousStyle = WindowStyle.SingleBorderWindow;
-        viewer.FullscreenChanged += (_, _) => { if (viewer.IsFullscreen) { previousState = window.WindowState; previousStyle = window.WindowStyle; window.WindowStyle = WindowStyle.None; window.WindowState = WindowState.Maximized; } else { window.WindowStyle = previousStyle; window.WindowState = previousState; } };
+        var viewer = new Viewing.RoomWebView(root, roomClient!, playbackAudioGate);
+        var window = Viewing.RoomViewerWindow.Create(viewer); window.Owner = this; viewingWindow = window;
         window.Closed += (_, _) => { viewer.Dispose(); if (viewingWindow == window) viewingWindow = null; };
         window.Show();
         try { await viewer.OpenRoomAsync(parsed, token); } catch { window.Close(); throw; }

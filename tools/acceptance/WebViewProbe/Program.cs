@@ -10,32 +10,142 @@ using System.Windows;
 using System.IO;
 using System.Net.Http;
 using JKiller.Acceptance.Probes;
+using JKiller.Windows.Viewing;
+using System.Windows.Controls;
+using Microsoft.Web.WebView2.Wpf;
 internal static class Program
 {
-    [STAThread] private static int Main()
+    [STAThread] private static int Main(string[] args)
     {
+        if (args.SequenceEqual(new[] { "--check-audio-output-picker" }))
+        {
+            try { CheckAudioOutputPicker(); return 0; }
+            catch (Exception error) { Console.Error.WriteLine(error); return 1; }
+        }
+        if (args.SequenceEqual(new[] { "--check-native-fullscreen-state" }))
+        {
+            var state = new ViewerFullscreenState();
+            var normal = new ViewerWindowMode(WindowState.Normal, WindowStyle.ToolWindow, ResizeMode.CanResizeWithGrip);
+            var entered = state.Update(true, normal);
+            if (entered != new ViewerWindowMode(WindowState.Maximized, WindowStyle.None, normal.Resize)) throw new Exception("Fullscreen mode incorrect.");
+            if (state.Update(true, entered) != entered || state.Update(false, entered) != normal || state.Update(false, normal) != normal) throw new Exception("Repeated fullscreen notifications lost original native window mode.");
+            var maximized = new ViewerWindowMode(WindowState.Maximized, WindowStyle.SingleBorderWindow, ResizeMode.NoResize);
+            var again = state.Update(true, maximized);
+            if (state.Update(false, again) != maximized) throw new Exception("Second fullscreen cycle lost previous native window state/style/resize.");
+            Console.WriteLine("PASS: actual native fullscreen state preserves original state/style/resize across enter/exit, repeated notifications and a second cycle; no Window created.");
+            return 0;
+        }
+        // Pure WPF measure/arrange: no Window, WebView/Core initialization, capture or device access.
+        if (args.SequenceEqual(new[] { "--check-playback-notice-layout" }))
+        {
+            try { CheckPlaybackNoticeLayout(); return 0; }
+            catch (Exception error) { Console.Error.WriteLine(error); return 1; }
+        }
         var app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown }; int result = 1;
         app.Startup += async (_, _) => { try { await Run(); result = 0; } catch (Exception error) { Console.Error.WriteLine(error); } finally { app.Shutdown(); } };
         app.Run(); return result;
     }
+    private static void CheckAudioOutputPicker()
+    {
+        var outputs = new PickerAudioCatalog();
+        var model = new BroadcasterModel(_ => throw new Exception("Capture must not start."), null!, new PickerSourceCatalog(), audioCatalog: outputs);
+        model.Video = new("monitor", SourceKind.Monitor, 1, null, "Display");
+        model.RefreshAsync(CancellationToken.None).GetAwaiter().GetResult();
+        model.Audio = new(AudioMode.SystemOutput);
+        var picker = new JKiller.App.Controls.AudioOutputPicker { DataContext = model };
+        void DrainBindings() => picker.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.ContextIdle);
+        DrainBindings();
+        if (picker.SelectedItem is not null || model.Audio.RenderEndpointId is not null) throw new Exception("Picker silently selected a default output.");
+        picker.SelectedItem = model.AudioOutputs.Single(output => output.Id == "render:selected");
+        if (model.Audio.RenderEndpointId != "render:selected") throw new Exception("Explicit picker selection did not update the model.");
+        outputs.Outputs = [new("render:other", "Other default", true)];
+        model.RefreshAsync(CancellationToken.None).GetAwaiter().GetResult();
+        DrainBindings();
+        if (picker.SelectedItem is not null || model.Audio.RenderEndpointId != "render:selected" || model.AudioEligibility.Allowed)
+            throw new Exception("Missing output was substituted or its retained identity cleared.");
+        outputs.Outputs = [new("render:other", "Other default", true), new("render:selected", "Returned output", false)];
+        model.RefreshAsync(CancellationToken.None).GetAwaiter().GetResult();
+        DrainBindings();
+        if ((picker.SelectedItem as AudioOutputDescriptor)?.Id != "render:selected" || model.Audio.RenderEndpointId != "render:selected" || !model.AudioEligibility.Allowed)
+            throw new Exception("Returning endpoint is eligible but the production picker did not visibly restore render:selected.");
+        var selectionControls = new StackPanel { IsEnabled = false };
+        selectionControls.Children.Add(picker);
+        model.SelectSystemAudio(model.AudioOutputs[0]);
+        DrainBindings();
+        if ((picker.SelectedItem as AudioOutputDescriptor)?.Id != "render:other") throw new Exception("Audio change did not synchronize visible endpoint identity.");
+        if (picker.IsEnabled) throw new Exception("Selection synchronization re-enabled disabled capture controls.");
+        model.Audio = AudioSelection.Off;
+        DrainBindings();
+        if (picker.SelectedItem is not null || model.Audio != AudioSelection.Off) throw new Exception("Synchronizing Off selected an output or changed audio mode.");
+        picker.DataContext = null;
+        model.SelectSystemAudio(model.AudioOutputs[1]);
+        DrainBindings();
+        if (picker.SelectedItem is not null || picker.Items.Count != 0) throw new Exception("Detached picker retained model subscription/items.");
+        picker.DataContext = model;
+        DrainBindings();
+        if ((picker.SelectedItem as AudioOutputDescriptor)?.Id != "render:selected") throw new Exception("Attached picker did not display the retained model identity.");
+        Console.WriteLine("PASS: production endpoint picker restores visible endpoint ID after disappearance/return, retains missing identity, never substitutes default, handles explicit selection/model changes and detaches; no Window, WebView or devices initialized.");
+    }
+    private sealed class PickerSourceCatalog : IWindowsSourceCatalog
+    {
+        public Task<IReadOnlyList<SourceDescriptor>> ListSourcesAsync(CancellationToken token) => Task.FromResult<IReadOnlyList<SourceDescriptor>>([]);
+    }
+    private sealed class PickerAudioCatalog : IWindowsAudioCatalog
+    {
+        public IReadOnlyList<AudioOutputDescriptor> Outputs = [new("render:selected", "Selected output", false), new("render:other", "Other default", true)];
+        public Task<IReadOnlyList<AudioOutputDescriptor>> ListOutputsAsync(CancellationToken token) => Task.FromResult(Outputs);
+        public Task<AudioOutputDescriptor?> ResolveDefaultAsync(CancellationToken token) => throw new Exception("Picker must not resolve a default device.");
+    }
+    private static void CheckPlaybackNoticeLayout()
+    {
+        using var http = new HttpClient(); var playbackGate = new PlaybackAudioGate();
+        using var viewer = new RoomWebView(Environment.CurrentDirectory, new RoomHttpClient(http), playbackGate);
+        var area = viewer.Children.OfType<Grid>().SingleOrDefault() ?? throw new Exception("Viewer browser area is not available without initializing WebView.");
+        var notice = viewer.Children.OfType<Border>().Single();
+        var reload = ((DockPanel)notice.Child).Children.OfType<Button>().Single();
+        var explanation = ((DockPanel)notice.Child).Children.OfType<TextBlock>().Single();
+        explanation.Text = "Room sound is muted during system audio sharing. Reload the viewer to refresh sound controls, or stop system audio sharing to restore sound.";
+        var surface = new Border(); area.Children.Add(surface);
+        void Layout() { viewer.Measure(new Size(900, 600)); viewer.Arrange(new Rect(0, 0, 900, 600)); viewer.UpdateLayout(); }
+        Layout();
+        if (Math.Abs(area.ActualHeight - 600) > 0.5 || notice.ActualHeight > 0.5) throw new Exception("Collapsed notice consumes normal viewer/fullscreen space.");
+        notice.Visibility = Visibility.Visible; Layout();
+        var noticeTop = notice.TranslatePoint(new Point(), viewer).Y;
+        var browserTop = area.TranslatePoint(new Point(), viewer).Y;
+        if (notice.ActualHeight <= 0 || explanation.ActualHeight <= 0 || reload.ActualHeight <= 0 || !reload.IsEnabled || area.ActualHeight <= 0 || noticeTop + notice.ActualHeight > browserTop + 0.5)
+            throw new Exception("Failure guidance/reload overlaps the browser airspace or leaves no usable browser surface.");
+        if (!ReferenceEquals(surface, area.Children.OfType<Border>().Single())) throw new Exception("Showing guidance replaced the viewer surface.");
+        notice.Visibility = Visibility.Collapsed; Layout();
+        if (Math.Abs(area.ActualHeight - 600) > 0.5) throw new Exception("Dismissing the notice did not restore normal viewer/fullscreen space.");
+        Console.WriteLine("PASS: headless real viewer layout gives failure guidance/reload separate space, preserves surface identity, and restores full browser space when collapsed; no Window or WebView initialized.");
+    }
     private static async Task Run()
     {
-        var root = Environment.CurrentDirectory; using var deadline = new CancellationTokenSource(TimeSpan.FromMinutes(2));
+        var developerRoot = Environment.CurrentDirectory;
+        var root = Environment.GetEnvironmentVariable("JKILLER_PROBE_ROOT") ?? developerRoot;
+        if (!Path.IsPathFullyQualified(root)) throw new Exception("Probe root must be absolute.");
+        using var deadline = new CancellationTokenSource(TimeSpan.FromMinutes(2));
         var token = deadline.Token;
         using var fixture = Process.GetProcessById(int.Parse(Environment.GetEnvironmentVariable("JKILLER_FIXTURE_PID")!)); fixture.Refresh();
         var identity = ProcessIdentityReader.Read(fixture.Id) ?? throw new Exception("Fixture disappeared.");
-        if (!string.Equals(Path.GetFullPath(identity.ExecutablePath), Path.GetFullPath(Path.Combine(root, ".artifacts/native/Debug/CaptureFixture.exe")), StringComparison.OrdinalIgnoreCase)) throw new Exception("Only the synthetic fixture may be used in this probe.");
+        if (!string.Equals(Path.GetFullPath(identity.ExecutablePath), Path.GetFullPath(Path.Combine(developerRoot, ".artifacts/native/Debug/CaptureFixture.exe")), StringComparison.OrdinalIgnoreCase)) throw new Exception("Only the synthetic fixture may be used in this probe.");
         using var http = new HttpClient(new HttpClientHandler { UseCookies = false, AllowAutoRedirect = false }); var room = new RoomHttpClient(http);
-        await using var model = new BroadcasterModel(fallback => new ObsMediaEngine(new OwnedObsProcess(root), fallback), room, new WindowsSourceCatalog());
+        var playbackAudioGate = new PlaybackAudioGate();
+        await using var model = new BroadcasterModel(fallback => new ObsMediaEngine(new OwnedObsProcess(root), fallback, playbackAudioGate), room, new WindowsSourceCatalog(), audioCatalog: new WindowsAudioCatalog());
         var link = Environment.GetEnvironmentVariable("JKILLER_PROBE_JOIN_LINK")!; model.RoomLink = link; model.Nickname = "Embedded viewer probe";
-        await model.JoinAsync(token); model.Video = model.Sources.Single(s => s.Kind == SourceKind.Window && s.NativeHandle == unchecked((ulong)(long)fixture.MainWindowHandle));
+        await model.JoinAsync(token);
         var captureMode = Environment.GetEnvironmentVariable("JKILLER_PROBE_CAPTURE_MODE") ?? "application";
-        model.Audio = ProbeCaptureMode.SelectAudio(captureMode, model.Video);
+        model.Video = captureMode == "system-output"
+            ? model.Sources.Single(s => s.Kind == SourceKind.Monitor && s.Id == (Environment.GetEnvironmentVariable("JKILLER_PROBE_MONITOR_ID") ?? throw new Exception("System-output probe requires an explicit monitor ID.")))
+            : model.Sources.Single(s => s.Kind == SourceKind.Window && s.NativeHandle == unchecked((ulong)(long)fixture.MainWindowHandle));
+        model.Audio = ProbeCaptureMode.SelectAudio(captureMode, model.Video, Environment.GetEnvironmentVariable("JKILLER_PROBE_RENDER_ENDPOINT_ID"));
         await model.StartAsync(token);
-        using var viewer = new RoomWebView(root, room); var window = new Window { Content = viewer, Width = 1080, Height = 850, Title = "JKiller synthetic WebView validation" }; window.Show();
+        using var viewer = new RoomWebView(root, room, playbackAudioGate); var window = RoomViewerWindow.Create(viewer); window.Width = 1080; window.Height = 850; window.Title = "JKiller synthetic WebView validation"; window.Show();
         try
         {
             await viewer.OpenRoomAsync(new Uri(link), token);
+            if (viewer.Core.IsMuted != playbackAudioGate.IsBlocked) throw new Exception("Late-opened viewer did not inherit native playback mute.");
+            if (captureMode == "system-output" && (!viewer.Core.IsMuted || !playbackAudioGate.IsBlocked)) throw new Exception("System output viewing lacks native feedback protection.");
             await Wait(async () => await viewer.Core.ExecuteScriptAsync("[...document.querySelectorAll('button')].some(b=>b.textContent==='Watch stream')") == "true", token);
             await viewer.Core.ExecuteScriptAsync("[...document.querySelectorAll('button')].find(b=>b.textContent==='Watch stream').click()");
             await Wait(async () => await viewer.Core.ExecuteScriptAsync("document.querySelector('video')?.videoHeight===1080 && document.querySelector('video').getVideoPlaybackQuality().totalVideoFrames>120") == "true", token);
@@ -44,18 +154,26 @@ internal static class Program
             // Change the nickname through the native control path while the embedded peer stays active.
             model.Nickname = "Renamed embedded probe"; await model.RenameAsync(token);
             await Wait(async () => await viewer.Core.ExecuteScriptAsync("document.body.textContent.includes('Renamed embedded probe')") == "true", token);
+            await viewer.Core.ExecuteScriptAsync("window.jkFullscreenVideo=document.querySelector('video');window.jkFullscreenMedia=window.jkFullscreenVideo.srcObject;");
+            var priorState = window.WindowState; var priorStyle = window.WindowStyle; var priorResize = window.ResizeMode;
             await Click(viewer, "Fullscreen"); await Wait(() => Task.FromResult(viewer.IsFullscreen), token);
+            await Wait(async () => await viewer.Core.ExecuteScriptAsync("document.fullscreenElement?.classList.contains('fullscreen-chrome-hidden')") == "true", token);
+            if (window.WindowStyle != WindowStyle.None || window.WindowState != WindowState.Maximized) throw new Exception("Native fullscreen geometry was not applied.");
+            await viewer.Core.ExecuteScriptAsync("document.fullscreenElement.dispatchEvent(new PointerEvent('pointermove',{bubbles:true}));");
             await Click(viewer, "Return to room"); await Wait(() => Task.FromResult(!viewer.IsFullscreen), token);
+            if (window.WindowState != priorState || window.WindowStyle != priorStyle || window.ResizeMode != priorResize) throw new Exception("Native window state/style/resize was not restored.");
+            if (await viewer.Core.ExecuteScriptAsync("document.querySelector('video')===window.jkFullscreenVideo && window.jkFullscreenVideo.srcObject===window.jkFullscreenMedia") != "true") throw new Exception("Fullscreen recreated native viewer media.");
             await Wait(async () => int.Parse(await viewer.Core.ExecuteScriptAsync("document.querySelector('video').getVideoPlaybackQuality().totalVideoFrames")) > before + 60, token);
             await viewer.Core.ExecuteScriptAsync("fetch('/api/me').then(r=>r.json()).then(s=>window.jkProbeSession=s.sessionId)");
             await Wait(async () => await viewer.Core.ExecuteScriptAsync($"window.jkProbeSession==='{sessionId}'") == "true", token);
             if (room.Session.SessionId.ToString() != sessionId || !model.CaptureLive) throw new Exception("Viewing disturbed publication ownership.");
             if (viewer.Core.Settings.AreHostObjectsAllowed || viewer.Core.Settings.IsWebMessageEnabled) throw new Exception("Native bridge is exposed.");
+            await CheckScriptFailureNotice(viewer, playbackAudioGate, token);
             var source = viewer.Core.Source; viewer.Core.Navigate("https://untrusted.invalid/"); await Task.Delay(300, token);
             if (new Uri(viewer.Core.Source).Host != new Uri(source).Host) throw new Exception("Untrusted navigation was permitted.");
             try { await viewer.Core.CallDevToolsProtocolMethodAsync("Page.crash", "{}").WaitAsync(TimeSpan.FromSeconds(5)); }
             catch (Exception e) when (e is System.Runtime.InteropServices.COMException or TimeoutException) { }
-            await Wait(() => Task.FromResult(viewer.Children.OfType<System.Windows.Controls.StackPanel>().Any()), token);
+            await Wait(() => Task.FromResult(viewer.Children.OfType<Grid>().Single().Children.OfType<StackPanel>().Any()), token);
             if (!model.CaptureLive) throw new Exception("Viewer failure stopped the native publication.");
             await viewer.OpenRoomAsync(new Uri(link), token);
             await Wait(async () => await viewer.Core.ExecuteScriptAsync("[...document.querySelectorAll('button')].some(b=>b.textContent==='Watch stream')") == "true", token);
@@ -65,6 +183,34 @@ internal static class Program
             Console.WriteLine("Runtime: " + viewer.Core.Environment.BrowserVersionString + "; captureMode=" + captureMode + "; no screen/audio recording saved. Video-only does not validate audio exclusion or A/V sync.");
         }
         finally { window.Close(); await model.StopAsync(CancellationToken.None); }
+    }
+    private static async Task CheckScriptFailureNotice(RoomWebView viewer, PlaybackAudioGate playbackGate, CancellationToken token)
+    {
+        var core = viewer.Core;
+        var browser = viewer.Children.OfType<Grid>().Single().Children.OfType<WebView2>().Single();
+        await core.ExecuteScriptAsync("window.jkProbeVideo=document.querySelector('video');window.jkProbeMedia=window.jkProbeVideo.srcObject;Object.defineProperty(window,'playkrossPlaybackAudioBlocked',{value:'forced-script-update-failure',configurable:false});");
+        await using (var lease = await playbackGate.AcquireAsync(token))
+        {
+            viewer.UpdateLayout();
+            var notice = viewer.Children.OfType<Border>().Single();
+            var reload = ((DockPanel)notice.Child).Children.OfType<Button>().Single();
+            var noticeTop = notice.TranslatePoint(new Point(), viewer).Y;
+            var browserTop = browser.TranslatePoint(new Point(), viewer).Y;
+            if (!notice.IsVisible || notice.ActualHeight <= 0 || !reload.IsVisible || !reload.IsEnabled || !browser.IsVisible || browser.ActualHeight <= 0 || noticeTop + notice.ActualHeight > browserTop + 0.5)
+                throw new Exception("Forced script failure did not expose usable native guidance outside the still-visible WebView airspace.");
+            if (!ReferenceEquals(core, viewer.Core) || !core.IsMuted || await core.ExecuteScriptAsync("document.querySelector('video')===window.jkProbeVideo && window.jkProbeVideo.srcObject===window.jkProbeMedia") != "true")
+                throw new Exception("Showing script-failure guidance replaced browser/media or lost native mute.");
+            // Exercise the native action, not a page command bridge. Explicit reload may
+            // restart page playback but must retain this WebView/Core and native mute.
+            reload.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            await Wait(() => Task.FromResult(notice.Visibility == Visibility.Collapsed), token);
+            if (!ReferenceEquals(core, viewer.Core) || !core.IsMuted) throw new Exception("Reload action replaced WebView or lost mute protection.");
+            await Wait(async () => await core.ExecuteScriptAsync("window.playkrossPlaybackAudioBlocked===true && [...document.querySelectorAll('button')].some(b=>b.textContent==='Watch stream')") == "true", token);
+            await core.ExecuteScriptAsync("[...document.querySelectorAll('button')].find(b=>b.textContent==='Watch stream').click()");
+            await Wait(async () => await core.ExecuteScriptAsync("document.querySelector('video')?.getVideoPlaybackQuality().totalVideoFrames>60") == "true", token);
+        }
+        if (core.IsMuted != playbackGate.IsBlocked) throw new Exception("Forced-failure probe released another publisher's mute state.");
+        Console.WriteLine("PASS: forced script-update failure exposes nonoverlapping native guidance/reload, retains browser/video/media until explicit reload, and keeps native mute protected.");
     }
     private static async Task Wait(Func<Task<bool>> condition, CancellationToken token)
     {

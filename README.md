@@ -2,11 +2,13 @@
 
 ![PlayKross](assets/branding/playkross-logo.png)
 
-Self-hosted Windows broadcasting with browser viewers. The first implemented milestone provides one publisher per room: native Windows Graphics Capture, NVIDIA H.264 encoding, MediaMTX forwarding, anonymous nicknames, settings controls, fullscreen, diagnostics and in-app viewing. Application audio is restored as an explicitly experimental, off-by-default option for Steam Geometry Dash. Microphone capture is absent.
+Self-hosted Windows broadcasting with browser and in-app viewers. The M2 candidate supports concurrent broadcasters, independent stream playback, Windows Graphics Capture, shared H.264/Opus encoding and fullscreen controls that hide immediately and after two seconds of inactivity. Audio starts Off; explicitly choose Application or System output for monitor sharing. Microphone capture is absent.
 
-**M1 accepted with known limitations (2026-10-16):** core streaming has practical sign-off. Brief startup stutters are deferred; the recorded external benchmark is no longer a prerequisite for M1 closure. Unmeasured external performance and strict audio exclusion are not marked passed. Current room limit remains eight participants including the publisher, with one active broadcaster; eight-viewer capacity and concurrent streams are later milestones. See the [current roadmap and acceptance basis](docs/ROADMAP.md). M2 design/planning can begin; its detailed plan has not been written.
+**M1 accepted with known limitations (2026-10-16); M2 acceptance pending:** fixed room participant/publisher quotas have been removed, while each session still owns at most one publication. Functional evidence and remaining checks are recorded in [M2 results](docs/validation/milestone-2-results.md). No maximum capacity is proven. Startup stutters, strict audio isolation and external numerical characterization remain deferred. See the [current roadmap](docs/ROADMAP.md).
 
 Project owner and contributor: [@vitor-tecc](https://github.com/vitor-tecc). See [contributors](CONTRIBUTORS.md) and the [M2 handoff](docs/M2-HANDOFF.md).
+
+The [approved M2 design](docs/superpowers/specs/2026-10-16-milestone-2-design.md) uses small functional checks; no eight-viewer or large-group acceptance campaign is required. Scaling work follows observed problems.
 
 For friends who broadcast, use the [portable ZIP instructions](docs/setup/portable.md). Extract the whole package and open **PlayKross.exe**; .NET is bundled. Browser-only viewers need only the public room invitation. The room host runs separately.
 
@@ -17,7 +19,7 @@ On this already-prepared PC, run PowerShell 7 from the project folder:
 ./scripts/Start-Broadcaster.ps1
 ```
 
-Paste the printed `http://localhost:5000/#invite=...` link into the native app, choose a nickname, Join, choose a video source, and Start. Audio stays off unless explicitly selected: the supported Steam Geometry Dash profile captures the app and its children. Direct Discord/browser and room-playback audio selection is blocked, but Windows also captures future children, whose exclusion is not guaranteed. Other apps stay video-only. See the [M1 remaining work](docs/validation/milestone-1-next-steps.md). The room page opens in a browser or with **Watch in app**. Localhost links work only on this PC.
+Paste the printed `http://localhost:5000/#invite=...` link into the native app, choose a nickname, Join, select video and Start. Application audio captures the selected process and its children. System output requires a selected monitor and concrete render device, captures mixed device playback including Discord, and mutes in-app room playback to prevent recapture. External browsers can still be captured; use a separate output or application audio. Display selection never enables audio automatically. The room page opens in a browser or with **Watch in app**. Localhost links work only on this PC.
 
 In a browser, **Join room**, then click **Watch stream**; use **Enable sound** separately. For Firefox on this PC, start the server with `./scripts/Start-Local.ps1 -MediaInterface Ethernet` instead of default startup. This explicitly uses the Ethernet address for encrypted UDP media while the website/admin stay on localhost. Default loopback-only media was observed to fail in Firefox here, while Edge worked. See [Firefox local viewing](docs/setup/windows.md#firefox-on-the-host-pc) for scope and adapter selection.
 
@@ -31,7 +33,7 @@ Use **Leave room** for immediate departure. A closed browser or lost connection 
 
 [Fresh Windows setup](docs/setup/windows.md) · [Friends outside your home / no domain](docs/setup/internet.md) · [Measurements and pending acceptance](docs/validation/milestone-1-results.md) · [Diagnostic field meanings](docs/validation/room-diagnostics.md) · [Approved architecture](docs/superpowers/specs/2026-10-13-screen-sharing-design.md) · [Implementation plan](docs/superpowers/plans/2026-10-13-milestone-1.md)
 
-One encoder feeds the media server; it forwards copies to viewers. This avoids encoding per viewer, while still consuming server upload per copy. At 15–20 Mbps, eight viewers need approximately 120–160 Mbps before overhead. Several streams multiply this load and also require viewer decoding work. Shared lower-quality previews and separately selectable quality levels are future milestones; one quality level currently means slower viewers may stall or discard frames without receiving a lower rendition.
+Each broadcaster has one shared encoder pipeline; the media server forwards copies to viewers. Upload and viewer decoding needs grow with active streams. Shared previews and separate quality levels remain future work; slower viewers may stall or discard frames.
 
 ```powershell
 ./scripts/Verify.ps1 -Mode Automated

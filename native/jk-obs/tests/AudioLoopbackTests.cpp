@@ -2,6 +2,9 @@
 #include <windows.h>
 #include <mmsystem.h>
 #include "ProcessLoopback.hpp"
+#include "EndpointLoopback.hpp"
+#include <mmdeviceapi.h>
+#include <wrl/client.h>
 #include <chrono>
 #include <cmath>
 #include <iostream>
@@ -36,20 +39,31 @@ int main(int argc, char** argv) {
     std::wstring command = L"\"" + std::wstring(executable) + L"\" --tone";
     STARTUPINFOW startup{}; startup.cb = sizeof(startup); PROCESS_INFORMATION child{};
     if (!CreateProcessW(nullptr, command.data(), nullptr, nullptr, FALSE, CREATE_NO_WINDOW, nullptr, nullptr, &startup, &child)) return 2;
+    const bool system = argc == 2 && std::string(argv[1]) == "--system-endpoint";
+    std::wstring endpoint_id;
+    if (system && SUCCEEDED(CoInitializeEx(nullptr, COINIT_MULTITHREADED))) {
+        // Opt-in fixture resolves one concrete ID once; capture never follows default changes.
+        Microsoft::WRL::ComPtr<IMMDeviceEnumerator> enumerator;
+        Microsoft::WRL::ComPtr<IMMDevice> device;
+        LPWSTR id = nullptr;
+        if (SUCCEEDED(CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL, IID_PPV_ARGS(&enumerator))) &&
+            SUCCEEDED(enumerator->GetDefaultAudioEndpoint(eRender, eConsole, &device)) && SUCCEEDED(device->GetId(&id))) endpoint_id = id;
+        CoTaskMemFree(id); device.Reset(); enumerator.Reset(); CoUninitialize();
+    }
     int result = 1;
     {
         auto token = jk::ReadProcessToken(child.dwProcessId);
         auto binding = token ? jk::ProcessBinding::Open(*token) : jk::BindingResult{nullptr, "No child identity"};
-        Sink sink; jk::ProcessLoopback capture;
-        auto started = binding.binding ? capture.Start(*binding.binding, sink) : jk::CaptureResult{false, binding.error};
-        if (!started.started) std::cerr << "FAIL: Process capture failed: " << started.error << '\n';
+        Sink sink; jk::ProcessLoopback capture; jk::EndpointLoopback endpoint_capture;
+        auto started = binding.binding ? (system ? endpoint_capture.Start(endpoint_id, *binding.binding, sink) : capture.Start(*binding.binding, sink)) : jk::CaptureResult{false, binding.error};
+        if (!started.started) std::cerr << "FAIL: Selected audio capture failed: " << started.error << '\n';
         else {
             std::this_thread::sleep_for(std::chrono::seconds(2));
-            capture.Stop();
+            capture.Stop(); endpoint_capture.Stop();
             std::lock_guard lock(sink.mutex);
             const double rms = sink.samples ? std::sqrt(sink.squared / sink.samples) : 0;
-            if (sink.samples > 24000 && rms > 0.001 && !capture.Running()) { std::cout << "PASS: process-only synthetic tone, samples=" << sink.samples << ", RMS=" << rms << '\n'; result = 0; }
-            else std::cerr << "FAIL: intended application audio absent, samples=" << sink.samples << ", RMS=" << rms << '\n';
+            if (sink.samples > 24000 && rms > 0.001 && !capture.Running() && !endpoint_capture.Running()) { std::cout << "PASS: selected capture synthetic tone, samples=" << sink.samples << ", RMS=" << rms << '\n'; result = 0; }
+            else std::cerr << "FAIL: selected capture audio absent, samples=" << sink.samples << ", RMS=" << rms << '\n';
         }
     }
     WaitForSingleObject(child.hProcess, 8000);

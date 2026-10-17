@@ -2,7 +2,7 @@ using JKiller.Contracts;
 using JKiller.Host.Security;
 using System.Globalization;
 namespace JKiller.Host.Rooms;
-public sealed record RoomLimits(int Participants = 8, int Publishers = 1, int Rooms = 16);
+public sealed record RoomLimits(int Rooms = 16);
 public sealed class RoomStore(SessionStore sessions, MediaGrantStore grants, TimeProvider clock, RoomLimits? limits = null)
 {
     private sealed class Room(Guid id, byte[] inviteHash)
@@ -40,7 +40,6 @@ public sealed class RoomStore(SessionStore sessions, MediaGrantStore grants, Tim
         var name = ValidateNickname(nickname);
         if (!OpaqueSecrets.TryId(invite, 'i', out var roomId) || !rooms.TryGetValue(roomId, out var room) || !OpaqueSecrets.Matches(invite, room.InviteHash))
             throw new UnauthorizedAccessException("Room invitation is invalid.");
-        if (room.Participants.Count >= limits.Participants) throw new InvalidOperationException("This room is full.");
         var session = sessions.Issue(room.Id); room.Participants.Add(session.Identity.SessionId, new(name, clock.GetTimestamp())); room.Revision++;
         return new SessionGrant(room.Id, session.Identity.SessionId, session.Token, session.Identity.ExpiresAt, Snapshot(room));
     });
@@ -49,14 +48,13 @@ public sealed class RoomStore(SessionStore sessions, MediaGrantStore grants, Tim
         var name = ValidateNickname(nickname); var room = RequireRoom(sessionId); room.Participants[sessionId].Nickname = name; room.Revision++; return Snapshot(room);
     });
     // A credential may outlive presence. Rejoining still requires the invitation
-    // and available room capacity, and restores no previous media permissions.
+    // and restores no previous media permissions.
     public RoomSnapshot Rejoin(Guid sessionId, string nickname) => Run(() =>
     {
         var name = ValidateNickname(nickname); var session = sessions.FindActive(sessionId);
         if (session is null || !rooms.TryGetValue(session.RoomId, out var room)) throw new UnauthorizedAccessException("Session expired. Join again.");
         if (!room.Participants.ContainsKey(sessionId))
         {
-            if (room.Participants.Count >= limits.Participants) throw new InvalidOperationException("This room is full.");
             room.Participants.Add(sessionId, new(name, clock.GetTimestamp()));
         }
         else { room.Participants[sessionId].Nickname = name; room.Participants[sessionId].RenewedAt = clock.GetTimestamp(); }
@@ -87,7 +85,6 @@ public sealed class RoomStore(SessionStore sessions, MediaGrantStore grants, Tim
         var publication = room.Streams.Values.SingleOrDefault(x => x.Owner == sessionId);
         if (publication is null)
         {
-            if (room.Streams.Count >= limits.Publishers) throw new InvalidOperationException("This milestone allows one publisher per room.");
             var id = Guid.NewGuid(); publication = new(id, sessionId, $"rooms/{room.Id:N}/streams/{id:N}/main", clock.GetTimestamp());
             room.Streams.Add(id, publication); room.Revision++;
         }
@@ -183,5 +180,5 @@ public sealed class RoomStore(SessionStore sessions, MediaGrantStore grants, Tim
         if (length is < 1 or > 32) throw new ArgumentException("Nickname must contain 1–32 Unicode text elements.");
         return name;
     }
-    private static RoomLimits ValidateLimits(RoomLimits value) => value.Participants is >= 1 and <= 128 && value.Publishers >= 1 && value.Publishers <= value.Participants && value.Rooms is >= 1 and <= 128 ? value : throw new ArgumentOutOfRangeException(nameof(value));
+    private static RoomLimits ValidateLimits(RoomLimits value) => value.Rooms is >= 1 and <= 128 ? value : throw new ArgumentOutOfRangeException(nameof(value));
 }

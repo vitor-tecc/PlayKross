@@ -5,6 +5,28 @@ using Xunit;
 namespace JKiller.Core.Tests;
 public sealed class DiagnosticsExportTests
 {
+    [Theory]
+    [InlineData("off")]
+    [InlineData("application")]
+    [InlineData("system-output")]
+    public void AudioObservationsExportOnlyEnumeratedModeAndNumbers(string mode)
+    {
+        var sample = Assert.Single(DiagnosticsExport.Redact([new(Guid.Empty, "publisher",
+            new Dictionary<string, double?> { ["audioQueueMs"] = 2, ["droppedAudioFrames"] = 48, ["activeVideoEncoders"] = 1, ["activeAudioEncoders"] = 1 },
+            new Dictionary<string, string> { ["audioMode"] = mode, ["audioError"] = "private device error", ["audioIdentity"] = "endpoint:private" })]).Samples);
+        Assert.Equal(4, sample.Metrics.Count); Assert.Equal(mode, Assert.Single(sample.Metadata).Value);
+        Assert.Empty(Assert.Single(DiagnosticsExport.Redact([sample with { Metadata = new Dictionary<string, string> { ["audioMode"] = "private" } }]).Samples).Metadata);
+    }
+    [Fact]
+    public void VideoPayloadEstimateBasisSurvivesRedactionWithoutAllowingArbitraryStrings()
+    {
+        var host = new DiagnosticsEnvelope(Guid.Empty, "host", new Dictionary<string, double?> { ["estimatedViewerMbps"] = 36 }, new Dictionary<string, string> { ["estimateBasis"] = "video-payload-only", ["sessionToken"] = "session-secret" });
+        var sample = Assert.Single(DiagnosticsExport.Redact([host]).Samples);
+        Assert.Equal("video-payload-only", sample.Metadata["estimateBasis"]);
+        Assert.DoesNotContain("sessionToken", sample.Metadata.Keys);
+        var malicious = host with { Metadata = new Dictionary<string, string> { ["estimateBasis"] = "session-secret" } };
+        Assert.Empty(Assert.Single(DiagnosticsExport.Redact([malicious]).Samples).Metadata);
+    }
     [Fact]
     public void ExportContainsNoCredentialsOrPrivateImagePaths()
     {

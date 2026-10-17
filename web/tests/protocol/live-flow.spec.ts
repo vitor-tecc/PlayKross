@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { mkdirSync, writeFileSync } from "node:fs";
+import { checkFullscreen } from "./fullscreen";
 test("native broadcaster controller sends the requested live smoke preset", async ({ page, browser }) => {
   test.skip(!process.env.JKILLER_LIVE_FLOW, "Run with the native live-flow harness.");
   const link = new URL(process.env.JKILLER_PROBE_JOIN_LINK ?? "");
@@ -48,6 +49,6 @@ test("native broadcaster controller sends the requested live smoke preset", asyn
   expect(metrics.codec.toLowerCase()).toBe("video/h264"); expect(metrics.audioCodec.toLowerCase()).toBe("audio/opus"); expect(metrics.audioPackets).toBeGreaterThan(0);
   expect(metrics.pixelLumaVariance, "Actual received video must contain varied pixels, rather than a blank decoded frame").toBeGreaterThan(1);
   console.log(JSON.stringify({ browser: browser.version(), topology: link.protocol === "https:" ? "same-PC viewer via HTTPS origin; not external-network evidence" : "loopback", check: "short-live-smoke-only", captureMode: process.env.JKILLER_PROBE_CAPTURE_MODE ?? "application", audioValidation: process.env.JKILLER_PROBE_CAPTURE_MODE === "video-only" ? "pending; application audio disabled" : "short delivery only; Discord and sync pending", ...metrics }));
-  await page.getByRole("button", { name: "Fullscreen", exact: true }).click(); await page.getByRole("button", { name: "Return to room" }).click();
+  await checkFullscreen(page, page.locator(".stream-card"));
   await page.close();
 });

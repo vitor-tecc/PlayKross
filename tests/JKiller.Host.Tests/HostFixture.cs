@@ -8,6 +8,7 @@ using Microsoft.Extensions.Logging;
 using System.Net.Http.Json;
 using System.Net.Http.Headers;
 using JKiller.Host.Media;
+using JKiller.Host.Diagnostics;
 namespace JKiller.Host.Tests;
 internal sealed class HostFixture : IAsyncDisposable
 {
@@ -16,17 +17,18 @@ internal sealed class HostFixture : IAsyncDisposable
     public TestClock Clock { get; } = new();
     public FakeMediaControl Control { get; } = new();
     public HostOptions Options { get; } = new(new("https://room.test"), new("http://127.0.0.1:8889"), new("http://127.0.0.1:9997"), new string('b', 43), new string('a', 43));
-    private HostFixture(HttpMessageHandler? media = null)
+    private HostFixture(HttpMessageHandler? media = null, IHostTrafficReader? traffic = null)
     {
         var builder = WebApplication.CreateBuilder(); builder.Logging.ClearProviders(); builder.WebHost.UseTestServer();
         builder.Services.AddSingleton<TimeProvider>(Clock);
         builder.Services.AddSingleton<IMediaControl>(Control);
+        if (traffic is not null) builder.Services.AddSingleton(traffic);
         if (media is not null) builder.Services.AddSingleton(new HttpClient(media) { BaseAddress = Options.MediaOrigin });
         App = HostApplication.Build(builder, Options);
     }
-    public static async Task<HostFixture> Start(HttpMessageHandler? media = null)
+    public static async Task<HostFixture> Start(HttpMessageHandler? media = null, IHostTrafficReader? traffic = null)
     {
-        var fixture = new HostFixture(media); await fixture.App.StartAsync(); fixture.Client = fixture.App.GetTestClient(); fixture.Client.BaseAddress = fixture.Options.PublicOrigin; return fixture;
+        var fixture = new HostFixture(media, traffic); await fixture.App.StartAsync(); fixture.Client = fixture.App.GetTestClient(); fixture.Client.BaseAddress = fixture.Options.PublicOrigin; return fixture;
     }
     public string Invite => App.Services.GetRequiredService<RoomStore>().CreateRoom().Invite;
     public async Task<SessionGrant> Join(string? invite = null, string nickname = "friend")

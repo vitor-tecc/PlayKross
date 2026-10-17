@@ -24,7 +24,7 @@ public sealed class BroadcastControllerTests
         await WaitUntil(() => controller.State == BroadcastState.Faulted);
         Assert.Equal(0, media.Live); Assert.Contains(room.Id, room.Stopped);
     }
-    private static BroadcastRequest Request => new(new("fixture", SourceKind.Window, 42, new(123, 456, "fixture.exe"), "Fixture"), new(null), new(1920, 1080, 60, 15));
+    private static BroadcastRequest Request => new(new("fixture", SourceKind.Window, 42, new(123, 456, "fixture.exe"), "Fixture"), AudioSelection.Off, new(1920, 1080, 60, 15));
     private static BroadcastController Controller(FakeMedia media, FakeRoom room, TestClock? clock = null) => new(media, room, new("http://localhost:5000"), clock ?? new());
     [Fact]
     public async Task InvalidSettingEditDoesNotStopAnExistingBroadcast()

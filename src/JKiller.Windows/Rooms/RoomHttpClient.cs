@@ -45,14 +45,7 @@ public sealed class RoomHttpClient(HttpClient http, TimeProvider? timeProvider =
         catch (InvalidOperationException) when (Session?.ExpiresAt <= clock.GetUtcNow()) { /* Expiry can race the send check. */ }
         finally { Session = null; Origin = null; }
     }
-    public async Task<PublishReservation> ReservePublishAsync(CancellationToken token)
-    {
-        try { return await Auth<PublishReservation>(HttpMethod.Post, "/api/streams", null, token); }
-        catch (HttpRequestException error) when (error.StatusCode == System.Net.HttpStatusCode.Conflict)
-        {
-            throw new InvalidOperationException("This version allows one broadcaster per room. Stop the current stream before starting another. Watching your friend's stream is still supported.", error);
-        }
-    }
+    public Task<PublishReservation> ReservePublishAsync(CancellationToken token) => Auth<PublishReservation>(HttpMethod.Post, "/api/streams", null, token);
     public async Task RenewPublishAsync(Guid id, CancellationToken token) => await Auth<RoomSnapshot>(HttpMethod.Post, $"/api/streams/{id:D}/lease", null, token);
     public async Task StopPublishAsync(Guid id, CancellationToken token) => await Auth<RoomSnapshot>(HttpMethod.Delete, $"/api/streams/{id:D}", null, token);
     public Task<PlaybackGrant> GetPlaybackAsync(Guid id, CancellationToken token) => Auth<PlaybackGrant>(HttpMethod.Get, $"/api/streams/{id:D}/playback", null, token);
@@ -72,7 +65,7 @@ public sealed class RoomHttpClient(HttpClient http, TimeProvider? timeProvider =
         // Omitting Origin also permits the host PC to use localhost behind its public proxy.
         if (body is not null) request.Content = JsonContent.Create(body);
         using var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, deadline.Token);
-        if (!response.IsSuccessStatusCode) throw new HttpRequestException($"The room server rejected the request (HTTP {(int)response.StatusCode}).", null, response.StatusCode);
+        if (!response.IsSuccessStatusCode) throw new HttpRequestException($"The room server rejected the request (HTTP {(int)response.StatusCode}). Check the connection and room session, then retry.", null, response.StatusCode);
         await response.Content.LoadIntoBufferAsync(path == "/api/diagnostics" && method == HttpMethod.Get ? 8388608 : 131072, deadline.Token);
         return await response.Content.ReadFromJsonAsync<T>(deadline.Token) ?? throw new InvalidDataException("The room server returned an empty response.");
     }

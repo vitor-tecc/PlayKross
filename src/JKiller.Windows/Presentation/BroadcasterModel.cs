@@ -11,7 +11,7 @@ using System.Runtime.CompilerServices;
 using JKiller.Windows.Obs;
 using JKiller.Core.Diagnostics;
 namespace JKiller.Windows.Presentation;
-public class BroadcasterModel(Func<bool, IMediaEngine> engineFactory, IRoomClient room, IWindowsSourceCatalog catalog, SessionVault? vault = null) : INotifyPropertyChanged, IAsyncDisposable
+public class BroadcasterModel(Func<bool, IMediaEngine> engineFactory, IRoomClient room, IWindowsSourceCatalog catalog, SessionVault? vault = null, IWindowsAudioCatalog? audioCatalog = null) : INotifyPropertyChanged, IAsyncDisposable
 {
     private BroadcastController? controller;
     private IMediaEngine? engine;
@@ -26,23 +26,61 @@ public class BroadcasterModel(Func<bool, IMediaEngine> engineFactory, IRoomClien
     private string status = "Join a room and select a source. Nothing is captured until Start.";
     public string RoomLink { get; set; } = "";
     public string Nickname { get; set; } = "Player";
-    public SourceDescriptor? Video { get; set; }
-    public SourceDescriptor? Audio { get; set; }
+    private SourceDescriptor? video;
+    private AudioSelection audio = AudioSelection.Off;
+    public SourceDescriptor? Video
+    {
+        get => video;
+        set
+        {
+            EnsureSelectionEditable(); video = value; Notify();
+            if (video?.Kind == SourceKind.Window && audio.Mode == AudioMode.SystemOutput)
+            {
+                Audio = AudioSelection.Off;
+                Status = "Audio turned off: system output requires sharing a display. Select application audio for a window.";
+            }
+            Notify(nameof(AudioEligibility));
+        }
+    }
+    public AudioSelection Audio { get => audio; set { EnsureSelectionEditable(); ArgumentNullException.ThrowIfNull(value); if (audio == value) return; audio = value; Notify(); Notify(nameof(AudioEligibility)); } }
+    public IReadOnlyList<AudioOutputDescriptor> AudioOutputs { get; private set; } = [];
+    public AudioEligibility AudioEligibility
+    {
+        get
+        {
+            var eligibility = AudioPolicy.EvaluateSelection(Audio, Video?.Kind ?? SourceKind.Window, Environment.ProcessId);
+            return eligibility.Allowed && Audio.Mode == AudioMode.SystemOutput && !AudioOutputs.Any(output => output.Id == Audio.RenderEndpointId)
+                ? new(false, "The selected output device is unavailable. Select an available output again; capture will not follow the default device.") : eligibility;
+        }
+    }
+    private void EnsureSelectionEditable()
+    {
+        if (controller?.State is BroadcastState.Preparing or BroadcastState.Starting or BroadcastState.Broadcasting or BroadcastState.Reconfiguring or BroadcastState.Stopping)
+            throw new InvalidOperationException("Stop broadcasting before changing capture selections.");
+    }
+    public void SelectApplicationAudio(SourceDescriptor? source) => Audio = source is null ? AudioSelection.Off : new(AudioMode.Application, source.Process);
+    public void SelectSystemAudio(AudioOutputDescriptor output) => Audio = new(AudioMode.SystemOutput, RenderEndpointId: output.Id);
     public bool AllowCpuFallback { get; set; }
     public BroadcastSettings Settings { get; set; } = new(1920, 1080, 60, 15);
     public IReadOnlyList<SourceDescriptor> Sources { get; private set; } = [];
+    public IReadOnlyList<SourceDescriptor> AudioApplications => Sources.Where(source => source.Kind == SourceKind.Window).ToArray();
     public string Status { get => status; private set { status = value; Notify(); } }
     public string AppliedText => controller?.Applied is { } applied ? $"Applied: {applied.Settings.Width}×{applied.Settings.Height}, {applied.Settings.Fps} FPS target, {applied.Settings.BitrateMbps} Mbps target; {applied.Encoder}/{applied.Codec}. Hardware initialized: {applied.HardwareVerified}. Delivered FPS/bitrate require measurement." : "No active encoder.";
     public bool CaptureLive => controller?.State == BroadcastState.Broadcasting;
     public bool IsJoined => origin is not null;
     public static AudioEligibility AudioEligibilityFor(SourceDescriptor? source)
     {
-        if (source is null) return new(false, "Audio off. Select a supported application to opt into experimental audio.");
+        if (source is null) return new(false, "Select a running application for application audio.");
         return AudioPolicy.EvaluateApplication(source.Process, Environment.ProcessId);
     }
     public event PropertyChangedEventHandler? PropertyChanged;
     protected void Notify([CallerMemberName] string? name = null) => PropertyChanged?.Invoke(this, new(name));
-    public async Task RefreshAsync(CancellationToken token) { Sources = await catalog.ListSourcesAsync(token); Notify(nameof(Sources)); }
+    public async Task RefreshAsync(CancellationToken token)
+    {
+        Sources = await catalog.ListSourcesAsync(token); Notify(nameof(Sources)); Notify(nameof(AudioApplications));
+        if (audioCatalog is not null) AudioOutputs = await audioCatalog.ListOutputsAsync(token);
+        Notify(nameof(AudioOutputs)); Notify(nameof(AudioEligibility));
+    }
     public async Task JoinAsync(CancellationToken token)
     {
         ObjectDisposedException.ThrowIf(disposed, this);
@@ -57,7 +95,7 @@ public class BroadcasterModel(Func<bool, IMediaEngine> engineFactory, IRoomClien
         presenceCancellation = new(); presenceTask = MaintainPresence(presenceCancellation.Token);
         await room.HeartbeatAsync(token);
         if (vault is not null) await vault.SaveAsync(new(origin, joined), token);
-        Status = "Joined. Select video, then Start. Audio stays off unless you select a supported app; it is experimental.";
+        Status = "Joined. Select video, then Start. Audio stays off until you explicitly select application or system output audio.";
         await RefreshAsync(token);
     }
     public async Task RenameAsync(CancellationToken token) { await room.RenameAsync(Nickname, token); Status = "Nickname updated; your session identity stays the same."; }
@@ -66,12 +104,12 @@ public class BroadcasterModel(Func<bool, IMediaEngine> engineFactory, IRoomClien
         ObjectDisposedException.ThrowIf(disposed, this);
         if (origin is null) throw new InvalidOperationException("Join a room first.");
         var video = Video ?? throw new InvalidOperationException("Select the display or window to capture.");
-        if (Audio is not null && !AudioEligibilityFor(Audio).Allowed) throw new InvalidOperationException(AudioEligibilityFor(Audio).Reason);
         if (CaptureLive) return;
+        if (!AudioEligibility.Allowed) throw new InvalidOperationException(AudioEligibility.Reason);
         await ReleaseControllerAsync();
         engine = engineFactory(AllowCpuFallback); controller = new(engine, room, origin, TimeProvider.System);
         controller.BroadcastStateChanged += OnState;
-        await controller.StartAsync(new(video, new(Audio?.Process), Settings), token);
+        await controller.StartAsync(new(video, Audio, Settings), token);
         if (engine is ObsMediaEngine native)
         {
             diagnosticsCancellation = new(); diagnosticsTask = Observe(native, diagnosticsCancellation.Token);
@@ -143,17 +181,20 @@ public class BroadcasterModel(Func<bool, IMediaEngine> engineFactory, IRoomClien
                 var capture = Rate(previous?.CaptureFrames, current.CaptureFrames); var encoded = Rate(previous?.ActualEncodedFrames, current.ActualEncodedFrames);
                 var sent = Rate(previous?.SentFrames, current.SentFrames); var mbps = Rate(previous?.SentMediaBytes, current.SentMediaBytes) * 8 / 1e6;
                 string Format(double? value) => value is null ? "unavailable" : value.Value.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture);
-                ObservedText = $"Observed: source {current.CaptureWidth}×{current.CaptureHeight}, encoded {current.EncodedWidth}×{current.EncodedHeight}; capture {Format(capture)}, encoded {Format(encoded)}, sent {Format(sent)} FPS; {Format(mbps)} Mbps to host. Encode API {Format(current.EncodeApiCallMs)} ms; input→packet {Format(current.InputToOutputPacketMs)} ms; fresh capture→packet {Format(current.FreshCaptureToPacketMs)} ms. GPU kernel timing unavailable. Viewer/network measurements are in Playback diagnostics.";
+                ObservedText = $"Observed: source {current.CaptureWidth}×{current.CaptureHeight}, encoded {current.EncodedWidth}×{current.EncodedHeight}; capture {Format(capture)}, encoded {Format(encoded)}, sent {Format(sent)} FPS; {Format(mbps)} Mbps to host. Encode API {Format(current.EncodeApiCallMs)} ms; input→packet {Format(current.InputToOutputPacketMs)} ms; fresh capture→packet {Format(current.FreshCaptureToPacketMs)} ms. GPU kernel timing unavailable. Audio {current.AudioModeName ?? "unavailable"}; capture initialized/running: {current.AudioRunning}; captured/emitted frames {current.CapturedAudioFrames}/{current.EmittedAudioFrames}; queue {Format(current.AudioQueueMs)} ms, dropped frames {current.DroppedAudioFrames}; active owned video/audio encoders {current.ActiveVideoEncoders}/{current.ActiveAudioEncoders}. Audio error: {current.AudioError ?? "unavailable"}. Viewer audibility requires a playback check. Viewer/network measurements are in Playback diagnostics.";
                 if (room is RoomHttpClient client && controller?.StreamId is { } id && controller.Applied is { } applied)
                 {
-                    var metrics = new Dictionary<string, double?> { ["captureFps"] = capture, ["encodedFps"] = encoded, ["sentFps"] = sent, ["sendMbps"] = mbps,
+                    var metrics = new Dictionary<string, double?> { ["audioQueueMs"] = current.AudioQueueMs, ["droppedAudioFrames"] = current.DroppedAudioFrames, ["activeVideoEncoders"] = current.ActiveVideoEncoders, ["activeAudioEncoders"] = current.ActiveAudioEncoders,
+                        ["captureFps"] = capture, ["encodedFps"] = encoded, ["sentFps"] = sent, ["sendMbps"] = mbps,
                         ["compositorFps"] = Rate(previous?.CompositorFrames, current.CompositorFrames), ["encodeApiCallMs"] = current.EncodeApiCallMs, ["inputToOutputPacketMs"] = current.InputToOutputPacketMs,
                         ["captureToRenderMs"] = current.CaptureToRenderMs, ["freshCaptureToPacketMs"] = current.FreshCaptureToPacketMs, ["nativeRenderAverageMs"] = current.NativeRenderAverageMs,
                         ["width"] = current.EncodedWidth, ["height"] = current.EncodedHeight, ["sourceWidth"] = current.CaptureWidth, ["sourceHeight"] = current.CaptureHeight,
                         ["requestedWidth"] = Settings.Width, ["requestedHeight"] = Settings.Height, ["requestedFps"] = Settings.Fps, ["requestedMbps"] = (double)Settings.BitrateMbps,
                         ["appliedWidth"] = applied.Settings.Width, ["appliedHeight"] = applied.Settings.Height, ["appliedFps"] = applied.Settings.Fps, ["appliedMbps"] = (double)applied.Settings.BitrateMbps };
                     using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token); deadline.CancelAfter(TimeSpan.FromSeconds(3));
-                    try { await client.ReportDiagnosticsAsync(new(id, "publisher", metrics, new Dictionary<string, string> { ["encoder"] = current.Encoder, ["codec"] = current.Codec, ["captureApi"] = current.CaptureApi, ["hardwareInitialized"] = current.HardwareInitialized ? "true" : "false", ["provenance"] = "native-monotonic-interval" }), deadline.Token); }
+                    var metadata = new Dictionary<string, string> { ["encoder"] = current.Encoder, ["codec"] = current.Codec, ["captureApi"] = current.CaptureApi, ["hardwareInitialized"] = current.HardwareInitialized ? "true" : "false", ["provenance"] = "native-monotonic-interval" };
+                    if (current.AudioModeName is "off" or "application" or "system-output") metadata["audioMode"] = current.AudioModeName;
+                    try { await client.ReportDiagnosticsAsync(new(id, "publisher", metrics, metadata), deadline.Token); }
                     catch (Exception e) when (e is HttpRequestException || e is OperationCanceledException && !token.IsCancellationRequested) { }
                 }
                 previous = current;

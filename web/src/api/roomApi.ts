@@ -1,7 +1,7 @@
 import { HubConnectionBuilder, LogLevel } from "@microsoft/signalr";
 import type { PlaybackGrant, RoomSnapshot, SessionGrant, SessionOverview } from "./contracts";
 export class RoomApiError extends Error {
-  constructor(public readonly status: number) { super(status === 401 || status === 403 ? "Your room session is unavailable. Open the invitation link and join again." : status === 409 ? "The room or broadcaster capacity is full." : status === 429 ? "Too many join attempts. Wait a minute before retrying." : "Room request failed. Check the connection and nickname, then retry."); }
+  constructor(public readonly status: number) { super(status === 401 || status === 403 ? "Your room session is unavailable. Open the invitation link and join again." : status === 429 ? "Too many join attempts. Wait a minute before retrying." : "Room request failed. Check the connection and nickname, then retry."); }
 }
 async function request<T>(path: string, init: RequestInit): Promise<T> {
   const response = await fetch(path, { ...init, credentials: "same-origin" });

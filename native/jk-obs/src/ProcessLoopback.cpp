@@ -143,4 +143,5 @@ void ProcessLoopback::Stop() {
 }
 bool ProcessLoopback::Running() const { return impl_ && impl_->running.load(); }
 std::string ProcessLoopback::Error() const { if (!impl_) return ""; std::lock_guard lock(impl_->mutex); return impl_->error; }
+AudioQueueStats ProcessLoopback::QueueStats() const { if (!impl_) return {}; std::lock_guard lock(impl_->mutex); return {impl_->queue.DurationMs(), impl_->queue.DroppedFrames()}; }
 }

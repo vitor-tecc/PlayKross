@@ -26,6 +26,29 @@ public sealed class MediaProxyTests
         }
     }
     [Fact]
+    public async Task StoppingOnePublicationKeepsOtherPublishAndReadResourcesUsable()
+    {
+        await using var host = await HostFixture.Start(new Upstream()); var invite = host.Invite;
+        var aOwner = await host.Join(invite); var bOwner = await host.Join(invite); var viewer = await host.Join(invite);
+        var rooms = (JKiller.Host.Rooms.RoomStore)host.App.Services.GetService(typeof(JKiller.Host.Rooms.RoomStore))!;
+        var a = rooms.ReservePublish(aOwner.SessionId); var b = rooms.ReservePublish(bOwner.SessionId);
+        var read = rooms.GetPlayback(viewer.SessionId, b.StreamId);
+        using var aResponse = await host.Client.SendAsync(Offer(host, a.WhipUri.ToString(), a.Token));
+        using var bResponse = await host.Client.SendAsync(Offer(host, b.WhipUri.ToString(), b.Token));
+        using var readResponse = await host.Client.SendAsync(Offer(host, read.WhepUri.ToString(), read.Token));
+        Assert.Equal(HttpStatusCode.Created, aResponse.StatusCode); Assert.Equal(HttpStatusCode.Created, bResponse.StatusCode); Assert.Equal(HttpStatusCode.Created, readResponse.StatusCode);
+        rooms.StopPublish(aOwner.SessionId, a.StreamId);
+        Assert.Equal(HttpStatusCode.Forbidden, (await host.Client.SendAsync(host.Request(HttpMethod.Delete, aResponse.Headers.Location!.ToString(), a.Token))).StatusCode);
+        foreach (var (location, credential) in new[] { (bResponse.Headers.Location!, b.Token), (readResponse.Headers.Location!, read.Token) })
+        {
+            using var patch = host.Request(HttpMethod.Patch, location.ToString(), credential);
+            patch.Content = new StringContent("a=ice-ufrag:test\r\n", Encoding.UTF8, "application/trickle-ice-sdpfrag");
+            Assert.Equal(HttpStatusCode.NoContent, (await host.Client.SendAsync(patch)).StatusCode);
+        }
+        Assert.Equal(HttpStatusCode.Created, (await host.Client.SendAsync(Offer(host, b.WhipUri.ToString(), b.Token))).StatusCode);
+        Assert.Equal(HttpStatusCode.Created, (await host.Client.SendAsync(Offer(host, read.WhepUri.ToString(), read.Token))).StatusCode);
+    }
+    [Fact]
     public async Task NoContentOptionsNeverWritesAnUpstreamBody()
     {
         await using var host = await HostFixture.Start(new Upstream { Empty204Options = true }); var owner = await host.Join();

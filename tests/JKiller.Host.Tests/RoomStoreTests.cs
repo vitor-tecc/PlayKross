@@ -53,7 +53,9 @@ public sealed class RoomStoreTests
         var store = Create(); var invite = store.CreateRoom(); var owner = store.Join(invite.Invite, "owner"); var other = store.Join(invite.Invite, "owner");
         var stream = store.ReservePublish(owner.SessionId);
         Assert.Throws<UnauthorizedAccessException>(() => store.StopPublish(other.SessionId, stream.StreamId));
-        Assert.Throws<InvalidOperationException>(() => store.ReservePublish(other.SessionId));
+        var independent = store.ReservePublish(other.SessionId);
+        Assert.NotEqual(stream.StreamId, independent.StreamId);
+        Assert.Contains(store.Snapshot(owner.SessionId).Streams, x => x.StreamId == stream.StreamId);
         var different = store.Join(store.CreateRoom().Invite, "different");
         Assert.Throws<UnauthorizedAccessException>(() => store.GetPlayback(different.SessionId, stream.StreamId));
     }
@@ -64,6 +66,66 @@ public sealed class RoomStoreTests
         var streams = await Task.WhenAll(Enumerable.Range(0, 20).Select(_ => Task.Run(() => store.ReservePublish(owner.SessionId))));
         Assert.Single(streams.Select(x => x.StreamId).Distinct()); Assert.Single(store.Snapshot(owner.SessionId).Streams);
     }
+    [Fact]
+    public void JoinAndRejoinBeyondFormerLimit()
+    {
+        var store = Create(); var invite = store.CreateRoom();
+        var members = Enumerable.Range(0, 12).Select(i => store.Join(invite.Invite, $"member {i}")).ToArray();
+        var snapshot = store.Snapshot(members[0].SessionId);
+        Assert.Equal(12, snapshot.Participants.Count);
+        foreach (var member in members.Skip(1)) store.Connect(member.SessionId, $"tab-{member.SessionId}");
+        clock.Now = clock.Now.AddSeconds(31); store.SweepExpired();
+        Assert.Equal(11, store.Snapshot(members[1].SessionId).Participants.Count);
+        snapshot = store.Rejoin(members[0].SessionId, "returned");
+        Assert.Equal(12, snapshot.Participants.Count);
+        Assert.Equal("returned", Assert.Single(snapshot.Participants, p => p.SessionId == members[0].SessionId).Nickname);
+    }
+    [Fact]
+    public async Task ConcurrentOwnersHaveIndependentStreams()
+    {
+        var store = Create(); var invite = store.CreateRoom();
+        var owners = Enumerable.Range(0, 3).Select(i => store.Join(invite.Invite, $"owner {i}")).ToArray();
+        var viewer = store.Join(invite.Invite, "viewer").SessionId;
+        var reservations = await Task.WhenAll(owners.Select(owner => Task.Run(() => store.ReservePublish(owner.SessionId))));
+        Assert.Equal(3, reservations.Select(x => x.StreamId).Distinct().Count());
+        var a = reservations[0]; var b = reservations[1]; var aOwner = owners[0].SessionId;
+        Assert.NotEqual(a.Path, b.Path);
+        Assert.Throws<UnauthorizedAccessException>(() => store.StopPublish(aOwner, b.StreamId));
+        Assert.Throws<UnauthorizedAccessException>(() => store.RenewPublish(aOwner, b.StreamId));
+        Assert.Equal(a.StreamId, store.ReservePublish(aOwner).StreamId);
+        var revokedPaths = new List<string>(); store.StreamRevoked += revokedPaths.Add;
+        store.StopPublish(aOwner, a.StreamId);
+        Assert.Contains(store.Snapshot(viewer).Streams, x => x.StreamId == b.StreamId);
+        Assert.Contains(store.Snapshot(viewer).Streams, x => x.StreamId == reservations[2].StreamId);
+        Assert.Equal(a.Path, Assert.Single(revokedPaths));
+        Assert.DoesNotContain(b.Path, revokedPaths);
+    }
+    [Fact]
+    public void SameNicknameLeaveRevokesOnlyItsOwner()
+    {
+        var store = Create(); var invite = store.CreateRoom();
+        var aOwner = store.Join(invite.Invite, "same").SessionId; var bOwner = store.Join(invite.Invite, "same").SessionId;
+        var a = store.ReservePublish(aOwner); var b = store.ReservePublish(bOwner);
+        var revokedPaths = new List<string>(); store.StreamRevoked += revokedPaths.Add;
+        store.Leave(aOwner);
+        var snapshot = store.Snapshot(bOwner);
+        Assert.Equal(bOwner, Assert.Single(snapshot.Participants).SessionId);
+        Assert.Equal(b.StreamId, Assert.Single(snapshot.Streams).StreamId);
+        Assert.Equal(a.Path, Assert.Single(revokedPaths));
+        Assert.DoesNotContain(b.Path, revokedPaths);
+    }
+    [Fact]
+    public void RoomCountRemainsBounded()
+    {
+        var store = new RoomStore(new(clock), new(clock), clock, new(Rooms: 2));
+        store.CreateRoom(); store.CreateRoom();
+        Assert.Throws<InvalidOperationException>(() => store.CreateRoom());
+    }
+    [Theory]
+    [InlineData(0)]
+    [InlineData(129)]
+    public void InvalidRoomCountRejected(int count) =>
+        Assert.Throws<ArgumentOutOfRangeException>(() => new RoomStore(new(clock), new(clock), clock, new(Rooms: count)));
     [Theory]
     [InlineData("")]
     [InlineData("   ")]
@@ -73,13 +135,11 @@ public sealed class RoomStoreTests
         var store = Create(); Assert.Throws<ArgumentException>(() => store.Join(store.CreateRoom().Invite, nickname));
     }
     [Fact]
-    public void UnicodeLengthCountsTextElementsAndCapacityIsBounded()
+    public void UnicodeLengthCountsTextElements()
     {
         var store = Create(); var room = store.CreateRoom();
         var family = string.Concat(Enumerable.Repeat("👨‍👩‍👧‍👦", 32));
         Assert.Equal(family, store.Join(room.Invite, family).Room.Participants[0].Nickname);
-        for (int i = 1; i < 8; i++) store.Join(room.Invite, "participant");
-        Assert.Throws<InvalidOperationException>(() => store.Join(room.Invite, "ninth"));
     }
     [Fact]
     public void SessionExpiryRevokesOwnedMediaAndEmitsDisconnectPath()

@@ -4,7 +4,8 @@ using System.Net.NetworkInformation;
 using System.Text;
 using System.Text.Json;
 namespace JKiller.Host.Diagnostics;
-public interface IHostTrafficReader { Task<DiagnosticsEnvelope> ReadAsync(RoomSnapshot room, CancellationToken token); }
+public sealed record HostTrafficSnapshot(DiagnosticsEnvelope Aggregate, IReadOnlyDictionary<Guid, int?> ReaderCounts);
+public interface IHostTrafficReader { Task<HostTrafficSnapshot> ReadAsync(RoomSnapshot room, CancellationToken token); }
 // Byte counters are cumulative for currently live sessions, not lifetime totals or NIC attribution.
 public sealed class HostTrafficReader : IHostTrafficReader, IDisposable
 {
@@ -20,9 +21,10 @@ public sealed class HostTrafficReader : IHostTrafficReader, IDisposable
         client = new(handler ?? new SocketsHttpHandler { AllowAutoRedirect = false }) { BaseAddress = options.AdminOrigin, Timeout = TimeSpan.FromSeconds(3), MaxResponseContentBufferSize = 262144 };
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", Convert.ToBase64String(Encoding.UTF8.GetBytes("jk-admin:" + options.AdminSecret)));
     }
-    public async Task<DiagnosticsEnvelope> ReadAsync(RoomSnapshot room, CancellationToken token)
+    public async Task<HostTrafficSnapshot> ReadAsync(RoomSnapshot room, CancellationToken token)
     {
         var metrics = new Dictionary<string, double?> { ["mediaBytesSent"] = null, ["mediaBytesReceived"] = null, ["activeMediaSessions"] = null, ["estimatedViewerMbps"] = null, ["hostNicBytesSent"] = null, ["hostNicBytesReceived"] = null };
+        var readers = room.Streams.ToDictionary(s => s.StreamId, _ => (int?)null);
         await gate.WaitAsync(token);
         try
         {
@@ -58,6 +60,11 @@ public sealed class HostTrafficReader : IHostTrafficReader, IDisposable
                 var selected = cache.Where(s => paths.Contains(s.Path)).ToArray();
                 metrics["mediaBytesSent"] = selected.Sum(s => s.Sent); metrics["mediaBytesReceived"] = selected.Sum(s => s.Received); metrics["activeMediaSessions"] = selected.Length;
                 metrics["activeReaders"] = selected.Count(s => s.State == "read");
+                foreach (var stream in room.Streams)
+                {
+                    var path = $"rooms/{room.RoomId:N}/streams/{stream.StreamId:N}/main";
+                    readers[stream.StreamId] = selected.Count(s => s.Path == path && s.State == "read");
+                }
                 metrics["mediaSendMbps"] = selected.All(s => s.SendMbps is not null) ? selected.Sum(s => s.SendMbps) : null;
                 metrics["mediaReceiveMbps"] = selected.All(s => s.ReceiveMbps is not null) ? selected.Sum(s => s.ReceiveMbps) : null;
             }
@@ -69,7 +76,7 @@ public sealed class HostTrafficReader : IHostTrafficReader, IDisposable
             metrics["hostNicBytesSent"] = nics.Sum(s => (double)s.BytesSent); metrics["hostNicBytesReceived"] = nics.Sum(s => (double)s.BytesReceived);
         }
         catch (NetworkInformationException) { }
-        return new(Guid.Empty, "host", metrics, new Dictionary<string, string> { ["provenance"] = "mediamtx-api-and-all-active-nics" });
+        return new(new(Guid.Empty, "host", metrics, new Dictionary<string, string> { ["provenance"] = "mediamtx-api-and-all-active-nics" }), readers);
     }
     public void Dispose() { client.Dispose(); gate.Dispose(); }
 }

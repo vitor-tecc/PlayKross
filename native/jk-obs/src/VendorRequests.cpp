@@ -6,7 +6,6 @@
 namespace jk {
 namespace {
 obs_websocket_vendor vendor = nullptr;
-std::string audio_source_name;
 std::mutex vendor_mutex;
 std::wstring Wide(const char* text) {
     const int size = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, text, -1, nullptr, 0);
@@ -20,8 +19,7 @@ void Status(obs_data_t*, obs_data_t* response, void*) {
     obs_data_set_bool(response, "armed", module_guard.Active());
     obs_data_set_string(response, "stopReason", GuardStopReasonCode(module_guard.StopReason()));
     obs_data_set_bool(response, "graphSafe", AuditScene());
-    obs_data_set_string(response, "audioSource", audio_source_name.c_str());
-    DescribeAudioSource(audio_source_name.c_str(), response);
+    DescribeSelectedAudio(response);
     DescribeVideo(response);
 }
 void Arm(obs_data_t* request, obs_data_t* response, void*) {
@@ -39,12 +37,24 @@ void Arm(obs_data_t* request, obs_data_t* response, void*) {
         const std::string name = obs_data_get_string(request, "audioSource");
         const std::string video_name = obs_data_get_string(request, "videoSource");
         if (!VideoSourceReady(video_name.c_str(), generation)) throw std::runtime_error("Original capture item is unavailable.");
-        if (!AudioSourceReady(name.c_str(), generation, owner.pid)) throw std::runtime_error("Selected application audio is unavailable or belongs to room playback.");
-        if (!module_guard.Arm(std::move(binding.binding), name, generation)) throw std::runtime_error("Capture guard could not be armed.");
-        audio_source_name = name;
+        // During managed migration only, absence of audioMode infers Off/Application.
+        // Explicit callers must use the canonical enum strings; never guess a fallback.
+        const std::string mode = obs_data_has_user_value(request, "audioMode") ? obs_data_get_string(request, "audioMode") : name.empty() ? "Off" : "Application";
+        if (mode != "Off" && mode != "Application" && mode != "SystemOutput") throw std::runtime_error("Unknown audio mode. Use Off, Application or SystemOutput.");
+        if ((mode == "Off") != name.empty()) throw std::runtime_error("Audio mode and selected source do not match.");
+        std::optional<AudioRoute> selected;
+        if (mode != "Off") {
+            if (!AudioSourceReady(name.c_str(), generation, owner.pid)) throw std::runtime_error("Selected audio is unavailable or belongs to room playback. " + AudioSourceError(name.c_str(), generation));
+            selected = SelectedAudioRoute(name.c_str(), generation, owner.pid);
+            if (!selected || selected->mode != (mode == "SystemOutput" ? AudioMode::SystemOutput : AudioMode::Application)) throw std::runtime_error("Selected audio mode or identity is unavailable.");
+            if (obs_data_has_user_value(request, "audioIdentity") && selected->identity_key != obs_data_get_string(request, "audioIdentity")) throw std::runtime_error("Selected audio identity does not match the prepared source.");
+        }
+        else if (obs_data_has_user_value(request, "audioIdentity") && *obs_data_get_string(request, "audioIdentity")) throw std::runtime_error("Audio off cannot include an identity.");
+        if (!module_guard.Arm(std::move(binding.binding), selected, generation)) throw std::runtime_error("Capture guard could not be armed.");
         SelectGuardVideo(video_name, generation);
         last_heartbeat_ns.store(os_gettime_ns());
-        AuditScene(); // Applies the single approved track; all other routes remain zero.
+        AuditScene(); // First apply the selected mixer (new sources start muted).
+        if (!AuditScene()) throw std::runtime_error("Selected capture audio graph is unavailable or unsafe.");
         obs_data_set_bool(response, "armed", true);
     } catch (const std::exception& error) {
         module_guard.Disarm(); AuditScene();
