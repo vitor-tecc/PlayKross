@@ -1,5 +1,7 @@
 # M2 candidate results
 
+2026-10-17 follow-up: the user reports the playback/interface features working as intended, except for browser Application audio being blocked. The obsolete managed/native denial is corrected in the [browser-audio follow-up](2026-10-17-browser-audio-followup.md), which also records the cursor-capture answer and a focused M2 closure list. This feedback does not identify which of the still-pending System/device-loss/listening cases below were exercised; retain their evidence limits.
+
 Updated 2026-10-17. **M2 acceptance remains pending.** Application/Off transport checks reached their assertions, but complete browser protocol runs failed at automated Escape. Human listening and full System-output publication remain pending. The code implementation and independent reviews are complete; the recorded functional limits below remain open.
 
 Final reviewed delivery: `.artifacts/releases/PlayKross-win-x64-milestone-2-candidate-20261017-final-035747.zip`, 267903935 bytes, 2544 verified files, app/native source commit `5bc322ace2f79445d03fbc08fd730faa4f89474a`. SHA-256: `E40B137A12E6744C9B661A33B88D47FCA532F16AEF3E6A7EE05D0348E3447BA3`. Fresh final CodeOnly verification passed 263 managed tests, 46 browser tests, 37 native checks, setup/portable checks, app/probe builds and all three headless UI checks. Whole-branch review and its scoped fix review are clean.

@@ -3,15 +3,18 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import userEvent from "@testing-library/user-event";
 import { StreamPlayer } from "../src/room/StreamPlayer";
 import type { PlaybackGrant } from "../src/api/contracts";
+import type { WhepDiagnostic } from "../src/media/WhepSession";
 import { readFileSync } from "node:fs";
 // Vitest strips CSS imports; load the real rules to exercise opacity and pointer hit testing.
 const styles = readFileSync("src/style.css", "utf8");
 
-const mocks = vi.hoisted(() => ({ sessions: [] as { start: ReturnType<typeof vi.fn>; close: ReturnType<typeof vi.fn> }[], media: { getTracks: () => [] } }));
+const mocks = vi.hoisted(() => ({ sessions: [] as { start: ReturnType<typeof vi.fn>; close: ReturnType<typeof vi.fn>; report: (sample: WhepDiagnostic) => void; fail: (error: Error) => void }[], media: { getTracks: () => [] } }));
 vi.mock("../src/media/WhepSession", () => ({ WhepSession: class {
   start = vi.fn(async () => mocks.media); close = vi.fn(async () => {});
   getPeer = () => null;
-  constructor() { mocks.sessions.push(this); }
+  report: (sample: WhepDiagnostic) => void;
+  fail: (error: Error) => void;
+  constructor(_deps?: unknown, onFailure?: (error: Error) => void, onDiagnostic?: (sample: WhepDiagnostic) => void) { this.report = sample => onDiagnostic?.(sample); this.fail = error => onFailure?.(error); mocks.sessions.push(this); }
 } }));
 beforeEach(() => {
   const style = document.createElement("style"); style.textContent = styles; document.head.append(style);
@@ -179,4 +182,56 @@ it("StoppingOneCardKeepsTheOtherCardPlayingAcrossRename", async () => {
   expect(aVideo!.srcObject).toBeNull(); expect(bVideo!.srcObject).toBe(mocks.media);
   expect(screen.getByText("Renamed Bob")).toBeDefined();
   expect(mocks.sessions).toHaveLength(2); expect(mocks.sessions[0]!.close).toHaveBeenCalledOnce(); expect(mocks.sessions[1]!.close).not.toHaveBeenCalled();
+});
+
+it("EachStreamHasIndependentVolumeThatSurvivesReconnectAndHostMuting", async () => {
+  const getPlayback = vi.fn(async (streamId: string) => ({ streamId }) as PlaybackGrant);
+  getPlayback.mockRejectedValueOnce(new Error("Temporary failure"));
+  const players = (blocked = false) => <><StreamPlayer streamId="a" nickname="Alice" getPlayback={getPlayback} audioBlocked={blocked} /><StreamPlayer streamId="b" nickname="Bob" getPlayback={getPlayback} audioBlocked={blocked} /></>;
+  const view = render(players());
+  const [a, b] = view.container.querySelectorAll<HTMLElement>(".stream-card");
+  const aVideo = a!.querySelector("video")!; const bVideo = b!.querySelector("video")!;
+  fireEvent.change(within(a!).getByRole("slider", { name: "Alice's volume" }), { target: { value: "25" } });
+  fireEvent.change(within(b!).getByRole("slider", { name: "Bob's volume" }), { target: { value: "70" } });
+  expect(aVideo.volume).toBe(.25); expect(bVideo.volume).toBe(.7);
+  vi.useFakeTimers();
+  try {
+    await act(async () => { fireEvent.click(within(a!).getByRole("button", { name: "Watch stream" })); });
+    expect(within(a!).getByText(/Reconnecting/)).toBeDefined();
+    await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+    expect(aVideo.srcObject).toBe(mocks.media); expect(aVideo.volume).toBe(.25);
+    await act(async () => { fireEvent.click(within(a!).getByRole("button", { name: "Enable sound" })); });
+    expect(aVideo.muted).toBe(false); expect(bVideo.muted).toBe(true);
+    view.rerender(players(true)); expect(aVideo.muted).toBe(true); expect(aVideo.volume).toBe(.25);
+    view.rerender(players()); expect(aVideo.muted).toBe(false); expect(aVideo.volume).toBe(.25); expect(bVideo.volume).toBe(.7);
+    fireEvent.change(within(a!).getByRole("slider", { name: "Alice's volume" }), { target: { value: "0" } });
+    expect(aVideo.volume).toBe(0); expect(bVideo.volume).toBe(.7);
+    fireEvent.click(within(a!).getByRole("button", { name: "Stop watching" }));
+    await act(async () => { fireEvent.click(within(a!).getByRole("button", { name: "Watch stream" })); });
+    expect(aVideo.volume).toBe(0); expect(aVideo.srcObject).toBe(mocks.media);
+  } finally { vi.useRealTimers(); }
+});
+
+it("KeepsTheLastFourConnectionResultsAcrossRetryAndResetsForAnotherStream", async () => {
+  const getPlayback = vi.fn(async (streamId: string) => ({ streamId }) as PlaybackGrant);
+  const player = (streamId: string) => <StreamPlayer streamId={streamId} nickname="Alice" getPlayback={getPlayback} />;
+  const view = render(player("a"));
+  fireEvent.click(screen.getByRole("button", { name: "Watch stream" }));
+  await waitFor(() => expect(view.container.querySelector("video")!.srcObject).toBe(mocks.media));
+  const sample: WhepDiagnostic = { at: "2026-10-17T12:00:00Z", outcome: "failed", stage: "post", failure: "stream-unavailable", elapsedMs: 100, timingsMs: { post: 20 }, optionsStatus: 200, postStatus: 404, gatheringState: "complete", iceState: "new", connectionState: "new", candidates: { host: 1, srflx: 0, prflx: 0, relay: 0 }, grantRemainingMs: 5000 };
+  act(() => { for (let index = 0; index < 5; index++) mocks.sessions[0]!.report({ ...sample, at: `attempt-${index}` }); });
+  fireEvent.click(screen.getByLabelText("Connection diagnostics"));
+  const results = view.container.querySelector(".connection-diagnostics ol")!;
+  expect(results.children).toHaveLength(4); expect(results.textContent).not.toContain("attempt-0"); expect(results.textContent).toContain("attempt-4");
+  vi.useFakeTimers();
+  try {
+    act(() => mocks.sessions[0]!.fail(new Error("Temporary disconnect")));
+    expect(screen.getByText(/Reconnecting/)).toBeDefined();
+    await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+    expect(view.container.querySelector("video")!.srcObject).toBe(mocks.media);
+  } finally { vi.useRealTimers(); }
+  expect(results.children).toHaveLength(4);
+  view.rerender(player("b"));
+  expect(screen.getByText("No connection result yet. Start watching to collect one.")).toBeDefined();
+  expect(view.container.querySelectorAll(".connection-diagnostics li")).toHaveLength(0);
 });

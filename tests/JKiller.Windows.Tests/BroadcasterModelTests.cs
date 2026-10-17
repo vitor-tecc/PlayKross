@@ -39,9 +39,67 @@ public sealed class BroadcasterModelTests
         await model.JoinAsync(CancellationToken.None);
         model.Video = new("monitor", SourceKind.Monitor, 1, null, "Display");
         model.SelectSystemAudio(model.AudioOutputs[0]); await model.StartAsync(CancellationToken.None);
-        Assert.Throws<InvalidOperationException>(() => model.Audio = AudioSelection.Off);
         model.Settings = new(1280, 720, 30, 4); await model.ApplySettingsAsync(CancellationToken.None);
         Assert.Equal(2, media.Prepares); Assert.Equal("render:selected", media.Request!.Audio.RenderEndpointId);
+    }
+    [Fact]
+    public async Task LiveSourceEditsStayStagedUntilExplicitRestart()
+    {
+        var media = new Media();
+        await using var model = new BroadcasterModel(_ => media, new Room(), new Catalog(), audioCatalog: new AudioCatalog()) { RoomLink = "http://localhost:5000/#invite=test" };
+        await model.JoinAsync(CancellationToken.None);
+        model.Video = new("monitor", SourceKind.Monitor, 1, null, "Display");
+        model.SelectSystemAudio(model.AudioOutputs[0]);
+        await model.StartAsync(CancellationToken.None);
+        var original = media.Request;
+        var window = new SourceDescriptor("window", SourceKind.Window, 2, new(42, 100, "Game.exe"), "Game");
+        model.Video = window;
+        Assert.Equal(AudioSelection.Off, model.Audio);
+        Assert.Same(original, media.Request);
+        Assert.Equal(1, media.Prepares);
+        Assert.True(model.CaptureLive);
+        await model.ApplySettingsAsync(CancellationToken.None);
+        Assert.Equal(window, media.Request!.Video);
+        Assert.Equal(AudioSelection.Off, media.Request.Audio);
+        Assert.Equal(2, media.Prepares);
+        Assert.True(model.CaptureLive);
+    }
+    [Fact]
+    public async Task InvalidStagedAudioDoesNotInterruptCurrentBroadcast()
+    {
+        var media = new Media();
+        await using var model = new BroadcasterModel(_ => media, new Room(), new Catalog(), audioCatalog: new AudioCatalog()) { RoomLink = "http://localhost:5000/#invite=test" };
+        await model.JoinAsync(CancellationToken.None);
+        model.Video = new("monitor", SourceKind.Monitor, 1, null, "Display");
+        await model.StartAsync(CancellationToken.None);
+        model.Audio = new(AudioMode.SystemOutput, RenderEndpointId: "missing");
+        await Assert.ThrowsAsync<InvalidOperationException>(() => model.ApplySettingsAsync(CancellationToken.None));
+        Assert.True(model.CaptureLive);
+        Assert.Equal(1, media.Prepares);
+        Assert.Equal(AudioSelection.Off, media.Request!.Audio);
+    }
+    [Fact]
+    public async Task AudioModeAndEndpointChangesReachMediaOnlyOnApply()
+    {
+        var media = new Media();
+        await using var model = new BroadcasterModel(_ => media, new Room(), new Catalog(), audioCatalog: new AudioCatalog()) { RoomLink = "http://localhost:5000/#invite=test" };
+        await model.JoinAsync(CancellationToken.None);
+        model.Video = new("monitor", SourceKind.Monitor, 1, null, "Display");
+        await model.StartAsync(CancellationToken.None);
+        var app = new SourceDescriptor("game", SourceKind.Window, 2, new(42, 100, "Game.exe"), "Game");
+        model.SelectApplicationAudio(app);
+        Assert.Equal(AudioSelection.Off, media.Request!.Audio);
+        await model.ApplySettingsAsync(CancellationToken.None);
+        Assert.Equal(new AudioSelection(AudioMode.Application, app.Process), media.Request!.Audio);
+        model.SelectSystemAudio(model.AudioOutputs[0]);
+        Assert.Equal(AudioMode.Application, media.Request.Audio.Mode);
+        await model.ApplySettingsAsync(CancellationToken.None);
+        Assert.Equal("render:selected", media.Request.Audio.RenderEndpointId);
+        model.Audio = AudioSelection.Off;
+        Assert.Equal(AudioMode.SystemOutput, media.Request.Audio.Mode);
+        await model.ApplySettingsAsync(CancellationToken.None);
+        Assert.Equal(AudioSelection.Off, media.Request.Audio);
+        Assert.Equal(4, media.Prepares);
     }
     [Fact]
     public async Task JoinedIdleAppRenewsPresenceWithoutStartingCapture()
@@ -89,14 +147,19 @@ public sealed class BroadcasterModelTests
         Assert.Equal(0, media.Prepares); await model.DisposeAsync();
     }
     [Fact]
-    public async Task BrowserAudioIsRejectedEvenWhenScreenVideoIsAllowed()
+    public async Task BrowserAudioReachesMediaEvenWhenItsTitleMentionsDiscord()
     {
         var media = new Media(); var model = new BroadcasterModel(_ => media, new Room(), new Catalog()) { RoomLink = "http://localhost:5000/#invite=test" };
         await model.JoinAsync(CancellationToken.None);
         model.Video = new("monitor", SourceKind.Monitor, 1, null, "Display");
-        model.SelectApplicationAudio(new("browser", SourceKind.Window, 2, new(3, 4, "C:/msedge.exe"), "Discord in browser"));
-        await Assert.ThrowsAsync<InvalidOperationException>(() => model.StartAsync(CancellationToken.None));
-        Assert.Equal(0, media.Prepares); await model.DisposeAsync();
+        var browser = new ProcessIdentity(3, 4, "C:/msedge.exe");
+        model.SelectApplicationAudio(new("browser", SourceKind.Window, 2, browser, "Discord in browser"));
+        await model.StartAsync(CancellationToken.None);
+        Assert.Equal(1, media.Prepares);
+        Assert.Equal(AudioMode.Application, media.Request!.Audio.Mode);
+        Assert.Equal(browser, media.Request.Audio.Application);
+        Assert.Null(media.Request.Audio.RenderEndpointId);
+        await model.DisposeAsync();
     }
     [Fact]
     public async Task VideoOnlySelectionHasNoAudioAndUsesExplicitCpuFallbackChoice()

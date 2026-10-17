@@ -48,7 +48,8 @@ public partial class MainWindow : Window
         ConnectionControls.IsEnabled = command is null;
         Link.IsReadOnly = model?.CaptureLive == true;
         JoinButton.IsEnabled = model?.CaptureLive != true;
-        SelectionControls.IsEnabled = command is null && model?.CaptureLive != true;
+        SelectionControls.IsEnabled = command is null;
+        CpuFallbackChoice.IsEnabled = model?.CaptureLive != true;
         SettingsControls.IsEnabled = command is null; StartButton.IsEnabled = command is null && model?.CaptureLive != true;
     }
     private async Task Run(Func<CancellationToken, Task> action)

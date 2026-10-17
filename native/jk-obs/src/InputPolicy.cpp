@@ -14,8 +14,6 @@ bool AllowsApplicationAudioImage(std::wstring_view image) {
     // Keep in parity with managed AudioPolicy.EvaluateApplication. Native binding
     // and owner-tree validation remain independent requirements after eligibility.
     return name.find(L"discord") == std::wstring::npos && name.find(L"jkiller") == std::wstring::npos && name.find(L"playkross") == std::wstring::npos &&
-        name != L"obs64.exe" && name != L"chrome.exe" && name != L"msedge.exe" && name != L"msedgewebview2.exe" &&
-        name != L"firefox.exe" && name != L"brave.exe" && name != L"opera.exe" && name != L"chromium.exe" &&
-        name != L"steamwebhelper.exe" && name != L"explorer.exe" && name != L"rundll32.exe" && name != L"dllhost.exe";
+        name != L"obs64.exe";
 }
 }
