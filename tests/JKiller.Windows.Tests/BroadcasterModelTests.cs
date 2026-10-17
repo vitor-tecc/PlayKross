@@ -147,14 +147,19 @@ public sealed class BroadcasterModelTests
         Assert.Equal(0, media.Prepares); await model.DisposeAsync();
     }
     [Fact]
-    public async Task BrowserAudioIsRejectedEvenWhenScreenVideoIsAllowed()
+    public async Task BrowserAudioReachesMediaEvenWhenItsTitleMentionsDiscord()
     {
         var media = new Media(); var model = new BroadcasterModel(_ => media, new Room(), new Catalog()) { RoomLink = "http://localhost:5000/#invite=test" };
         await model.JoinAsync(CancellationToken.None);
         model.Video = new("monitor", SourceKind.Monitor, 1, null, "Display");
-        model.SelectApplicationAudio(new("browser", SourceKind.Window, 2, new(3, 4, "C:/msedge.exe"), "Discord in browser"));
-        await Assert.ThrowsAsync<InvalidOperationException>(() => model.StartAsync(CancellationToken.None));
-        Assert.Equal(0, media.Prepares); await model.DisposeAsync();
+        var browser = new ProcessIdentity(3, 4, "C:/msedge.exe");
+        model.SelectApplicationAudio(new("browser", SourceKind.Window, 2, browser, "Discord in browser"));
+        await model.StartAsync(CancellationToken.None);
+        Assert.Equal(1, media.Prepares);
+        Assert.Equal(AudioMode.Application, media.Request!.Audio.Mode);
+        Assert.Equal(browser, media.Request.Audio.Application);
+        Assert.Null(media.Request.Audio.RenderEndpointId);
+        await model.DisposeAsync();
     }
     [Fact]
     public async Task VideoOnlySelectionHasNoAudioAndUsesExplicitCpuFallbackChoice()

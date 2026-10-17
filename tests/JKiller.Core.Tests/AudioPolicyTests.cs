@@ -9,15 +9,23 @@ public sealed class AudioPolicyTests
     private static readonly SourceDescriptor Window = new("window:1:42:1000", SourceKind.Window, 1, Original, "Game 🎮");
     [Theory]
     [InlineData(ProcessClassification.Discord)]
-    [InlineData(ProcessClassification.Browser)]
-    [InlineData(ProcessClassification.SharedHost)]
     [InlineData(ProcessClassification.OwnProcessTree)]
     [InlineData(ProcessClassification.Unknown)]
-    public void OnlyVerifiedApplicationAudioIsEligible(ProcessClassification classification)
+    public void DiscordOwnPlaybackAndUnknownSourcesRemainIneligible(ProcessClassification classification)
     {
         var result = AudioPolicy.Evaluate(Window, classification);
         Assert.False(result.Allowed);
         Assert.NotEmpty(result.Reason);
+    }
+    [Theory]
+    [InlineData(ProcessClassification.Browser)]
+    [InlineData(ProcessClassification.SharedHost)]
+    public void SharedProcessesCanBeExplicitlySelectedWithoutTabIsolation(ProcessClassification classification)
+    {
+        var result = AudioPolicy.Evaluate(Window, classification);
+        Assert.True(result.Allowed);
+        Assert.Contains("child", result.Reason);
+        Assert.Contains("tabs", result.Reason);
     }
     [Fact]
     public void ExplicitKnownApplicationCanUseExperimentalTreeAudio()
@@ -33,7 +41,7 @@ public sealed class AudioPolicyTests
     [InlineData("C:/Steam/steamapps/common/Geometry Dash/GeometryDash.exe", true)]
     [InlineData("C:/Other/GeometryDash.exe", true)]
     [InlineData("C:/Discord.exe", false)]
-    [InlineData("C:/msedgewebview2.exe", false)]
+    [InlineData("C:/msedgewebview2.exe", true)]
     [InlineData("C:/PlayKross.exe", false)]
     [InlineData("C:/Game.exe", true)]
     public void SupportedAudioProfileIsIndependentOfUi(string image, bool allowed) =>
@@ -90,6 +98,13 @@ public sealed class AudioPolicyTests
 
     [Theory]
     [InlineData("C:/Apps/DISCORDcanary.exe")]
+    [InlineData("C:/Apps/PlayKross.exe")]
+    [InlineData("C:/Apps/JKiller.App.exe")]
+    [InlineData("C:/Apps/obs64.exe")]
+    public void DiscordAndOwnPlaybackRemainIneligible(string image) =>
+        Assert.False(AudioPolicy.EvaluateSelection(new(AudioMode.Application, Original with { ExecutablePath = image }), SourceKind.Window).Allowed);
+
+    [Theory]
     [InlineData("C:/Apps/chrome.exe")]
     [InlineData("C:\\Apps\\MSEDGE.exe")]
     [InlineData("C:/Apps/msedgewebview2.exe")]
@@ -101,11 +116,8 @@ public sealed class AudioPolicyTests
     [InlineData("C:/Windows/explorer.exe")]
     [InlineData("C:/Windows/rundll32.exe")]
     [InlineData("C:/Windows/dllhost.exe")]
-    [InlineData("C:/Apps/PlayKross.exe")]
-    [InlineData("C:/Apps/JKiller.App.exe")]
-    [InlineData("C:/Apps/obs64.exe")]
-    public void ExcludedNativeHostsRemainIneligible(string image) =>
-        Assert.False(AudioPolicy.EvaluateSelection(new(AudioMode.Application, Original with { ExecutablePath = image }), SourceKind.Window).Allowed);
+    public void BrowsersAndSharedHostsCanBeSelectedForApplicationAudio(string image) =>
+        Assert.True(AudioPolicy.EvaluateSelection(new(AudioMode.Application, Original with { ExecutablePath = image }), SourceKind.Window).Allowed);
 
     [Fact]
     public void OwnerCannotSelectItselfUnderAnUnrecognizedImageName() =>

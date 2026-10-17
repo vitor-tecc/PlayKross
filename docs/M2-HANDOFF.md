@@ -1,5 +1,7 @@
 # Milestone 2 handoff
 
+Latest follow-up: the user reports the playback/interface features working in practical use and identified an obsolete browser-audio refusal. See the [browser-audio correction, cursor answer and remaining M2 acceptance](validation/2026-10-17-browser-audio-followup.md). Browser/shared-host Application selection is permitted; tab isolation remains a disclosed limitation. Preserve the earlier evidence rather than treating that broad feedback as completion of unrecorded device-loss/System checks.
+
 M1 has practical acceptance with known limitations as of 2026-10-16. Start with [the current roadmap](ROADMAP.md). The approved M2 plan has been implemented through its candidate validation tooling; acceptance remains pending in [M2 results](validation/milestone-2-results.md). Use the [functional checklist](validation/milestone-2-checklist.md) for this revision; M1 measurements remain historical.
 
 The [2026-10-17 playback/interface iteration](validation/2026-10-17-m2-iteration.md) adds active source staging/restart, independent playback volume, overlay/grid/focus controls, desktop colors and a short user-local WebView2 profile path. It records fresh real Firefox and nested-portable WebView2 evidence. The reported three-404 Firefox sequence remains unreproduced and now has connection diagnostics; previous candidate ZIPs and their historical measurements do not include these changes.

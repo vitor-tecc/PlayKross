@@ -113,7 +113,7 @@ void* CreateForMode(obs_data_t* settings, obs_source_t* source, AudioMode mode) 
             const auto created = std::stoull(creation, &used);
             if (used != creation.size()) throw std::runtime_error("Invalid application creation identity.");
             ProcessToken token{static_cast<std::uint32_t>(pid), created, Wide(obs_data_get_string(settings, "image_path"))};
-            if (!AllowsApplicationAudioImage(token.image_path)) throw std::runtime_error("Discord, browser hosts and room playback cannot be audio sources.");
+            if (!AllowsApplicationAudioImage(token.image_path)) throw std::runtime_error("The Discord desktop app and the broadcaster's own playback cannot be audio sources.");
             const auto controller = ControllerIdentity();
             if (!controller || BelongsToOwnerTree(token, controller->pid)) throw std::runtime_error("Room playback and the controller's process tree cannot be captured.");
             auto result = ProcessBinding::Open(token);

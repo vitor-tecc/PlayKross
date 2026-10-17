@@ -33,12 +33,13 @@ public static class AudioPolicy
     {
         if (source.Process is not { Pid: > 0, CreationFileTime: > 0 } || string.IsNullOrWhiteSpace(source.Process.ExecutablePath))
             return new(false, "Select a running application with an exact process identity for audio; a display does not select audio.");
-        return classification == ProcessClassification.VerifiedApplication
+        return classification is ProcessClassification.Browser or ProcessClassification.SharedHost
+            ? new(true, "Captures this app and its child processes, potentially including other tabs, web Discord and room playback. Individual tabs are not isolated; avoid feedback.")
+            : classification == ProcessClassification.VerifiedApplication
             ? new(true, "Experimental: captures this app and its child processes. Future children cannot be guaranteed excluded; keep Discord and room playback outside this app's process tree.")
             : new(false, classification switch
             {
                 ProcessClassification.Discord => "Discord audio cannot be captured.",
-                ProcessClassification.Browser or ProcessClassification.SharedHost => "Shared browser processes cannot safely isolate Discord or individual tabs. Audio is disabled.",
                 ProcessClassification.OwnProcessTree => "Room playback cannot be captured; this prevents feedback.",
                 _ => "This application's audio isolation has not been verified. Video remains available."
             });
