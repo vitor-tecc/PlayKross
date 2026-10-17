@@ -33,16 +33,18 @@ public class BroadcasterModel(Func<bool, IMediaEngine> engineFactory, IRoomClien
         get => video;
         set
         {
-            EnsureSelectionEditable(); video = value; Notify();
+            video = value; Notify();
             if (video?.Kind == SourceKind.Window && audio.Mode == AudioMode.SystemOutput)
             {
                 Audio = AudioSelection.Off;
-                Status = "Audio turned off: system output requires sharing a display. Select application audio for a window.";
+                Status = CaptureLive
+                    ? "Audio off is staged for the selected window; current capture continues until Apply sources and settings (restart). System output requires sharing a display."
+                    : "Audio turned off: system output requires sharing a display. Select application audio for a window.";
             }
             Notify(nameof(AudioEligibility));
         }
     }
-    public AudioSelection Audio { get => audio; set { EnsureSelectionEditable(); ArgumentNullException.ThrowIfNull(value); if (audio == value) return; audio = value; Notify(); Notify(nameof(AudioEligibility)); } }
+    public AudioSelection Audio { get => audio; set { ArgumentNullException.ThrowIfNull(value); if (audio == value) return; audio = value; Notify(); Notify(nameof(AudioEligibility)); } }
     public IReadOnlyList<AudioOutputDescriptor> AudioOutputs { get; private set; } = [];
     public AudioEligibility AudioEligibility
     {
@@ -52,11 +54,6 @@ public class BroadcasterModel(Func<bool, IMediaEngine> engineFactory, IRoomClien
             return eligibility.Allowed && Audio.Mode == AudioMode.SystemOutput && !AudioOutputs.Any(output => output.Id == Audio.RenderEndpointId)
                 ? new(false, "The selected output device is unavailable. Select an available output again; capture will not follow the default device.") : eligibility;
         }
-    }
-    private void EnsureSelectionEditable()
-    {
-        if (controller?.State is BroadcastState.Preparing or BroadcastState.Starting or BroadcastState.Broadcasting or BroadcastState.Reconfiguring or BroadcastState.Stopping)
-            throw new InvalidOperationException("Stop broadcasting before changing capture selections.");
     }
     public void SelectApplicationAudio(SourceDescriptor? source) => Audio = source is null ? AudioSelection.Off : new(AudioMode.Application, source.Process);
     public void SelectSystemAudio(AudioOutputDescriptor output) => Audio = new(AudioMode.SystemOutput, RenderEndpointId: output.Id);
@@ -123,7 +120,9 @@ public class BroadcasterModel(Func<bool, IMediaEngine> engineFactory, IRoomClien
     public async Task ApplySettingsAsync(CancellationToken token)
     {
         if (controller is null) throw new InvalidOperationException("Start a broadcast before applying settings.");
-        await controller.ChangeSettingsAsync(Settings, token);
+        var selectedVideo = Video ?? throw new InvalidOperationException("Select the display or window to capture.");
+        if (!AudioEligibility.Allowed) throw new InvalidOperationException(AudioEligibility.Reason);
+        await controller.ChangeSourcesAsync(new(selectedVideo, Audio, Settings), token);
     }
     public async Task StopAsync(CancellationToken token) { await StopDiagnostics(); if (controller is not null) await controller.StopAsync(token); }
     public Task LeaveAsync(CancellationToken token)

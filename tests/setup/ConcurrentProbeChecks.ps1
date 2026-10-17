@@ -63,7 +63,7 @@ try {
         $kind=if($case.Directory){'Junction'}else{'SymbolicLink'}
         $metadataOnly=$false
         try{New-Item -ItemType $kind -Path $link -Target $target | Out-Null}catch{
-            if(-not $case.Directory -and $_.Exception.Message -match 'Administrator privilege required'){$metadataOnly=$true;$fileMetadataFallbacks++}else{throw}
+            if(-not $case.Directory -and $_.FullyQualifiedErrorId -like 'NewItemSymbolicLinkElevationRequired,*'){$metadataOnly=$true;$fileMetadataFallbacks++}else{throw}
         }
         if(-not $metadataOnly){$fixtureLinks.Add(@{Path=$link;Directory=[bool]$case.Directory})}
         try {

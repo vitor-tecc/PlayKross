@@ -146,8 +146,8 @@ internal static class Program
             await viewer.OpenRoomAsync(new Uri(link), token);
             if (viewer.Core.IsMuted != playbackAudioGate.IsBlocked) throw new Exception("Late-opened viewer did not inherit native playback mute.");
             if (captureMode == "system-output" && (!viewer.Core.IsMuted || !playbackAudioGate.IsBlocked)) throw new Exception("System output viewing lacks native feedback protection.");
-            await Wait(async () => await viewer.Core.ExecuteScriptAsync("[...document.querySelectorAll('button')].some(b=>b.textContent==='Watch stream')") == "true", token);
-            await viewer.Core.ExecuteScriptAsync("[...document.querySelectorAll('button')].find(b=>b.textContent==='Watch stream').click()");
+            await Wait(async () => await viewer.Core.ExecuteScriptAsync("[...document.querySelectorAll('button')].some(b=>(b.getAttribute('aria-label')||b.textContent)==='Watch stream')") == "true", token);
+            await viewer.Core.ExecuteScriptAsync("[...document.querySelectorAll('button')].find(b=>(b.getAttribute('aria-label')||b.textContent)==='Watch stream').click()");
             await Wait(async () => await viewer.Core.ExecuteScriptAsync("document.querySelector('video')?.videoHeight===1080 && document.querySelector('video').getVideoPlaybackQuality().totalVideoFrames>120") == "true", token);
             var sessionId = room.Session!.SessionId.ToString();
             var before = int.Parse(await viewer.Core.ExecuteScriptAsync("document.querySelector('video').getVideoPlaybackQuality().totalVideoFrames"));
@@ -176,8 +176,8 @@ internal static class Program
             await Wait(() => Task.FromResult(viewer.Children.OfType<Grid>().Single().Children.OfType<StackPanel>().Any()), token);
             if (!model.CaptureLive) throw new Exception("Viewer failure stopped the native publication.");
             await viewer.OpenRoomAsync(new Uri(link), token);
-            await Wait(async () => await viewer.Core.ExecuteScriptAsync("[...document.querySelectorAll('button')].some(b=>b.textContent==='Watch stream')") == "true", token);
-            await viewer.Core.ExecuteScriptAsync("[...document.querySelectorAll('button')].find(b=>b.textContent==='Watch stream').click()");
+            await Wait(async () => await viewer.Core.ExecuteScriptAsync("[...document.querySelectorAll('button')].some(b=>(b.getAttribute('aria-label')||b.textContent)==='Watch stream')") == "true", token);
+            await viewer.Core.ExecuteScriptAsync("[...document.querySelectorAll('button')].find(b=>(b.getAttribute('aria-label')||b.textContent)==='Watch stream').click()");
             await Wait(async () => await viewer.Core.ExecuteScriptAsync("document.querySelector('video')?.getVideoPlaybackQuality().totalVideoFrames>60") == "true", token);
             Console.WriteLine("PASS: real WebView2 native broadcast+1080p playback, nickname update, fullscreen return, continuing decoded frames, stable native session, bridge disabled, off-origin navigation canceled and renderer-crash recovery without stopping publication.");
             Console.WriteLine("Runtime: " + viewer.Core.Environment.BrowserVersionString + "; captureMode=" + captureMode + "; no screen/audio recording saved. Video-only does not validate audio exclusion or A/V sync.");
@@ -205,8 +205,8 @@ internal static class Program
             reload.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             await Wait(() => Task.FromResult(notice.Visibility == Visibility.Collapsed), token);
             if (!ReferenceEquals(core, viewer.Core) || !core.IsMuted) throw new Exception("Reload action replaced WebView or lost mute protection.");
-            await Wait(async () => await core.ExecuteScriptAsync("window.playkrossPlaybackAudioBlocked===true && [...document.querySelectorAll('button')].some(b=>b.textContent==='Watch stream')") == "true", token);
-            await core.ExecuteScriptAsync("[...document.querySelectorAll('button')].find(b=>b.textContent==='Watch stream').click()");
+            await Wait(async () => await core.ExecuteScriptAsync("window.playkrossPlaybackAudioBlocked===true && [...document.querySelectorAll('button')].some(b=>(b.getAttribute('aria-label')||b.textContent)==='Watch stream')") == "true", token);
+            await core.ExecuteScriptAsync("[...document.querySelectorAll('button')].find(b=>(b.getAttribute('aria-label')||b.textContent)==='Watch stream').click()");
             await Wait(async () => await core.ExecuteScriptAsync("document.querySelector('video')?.getVideoPlaybackQuality().totalVideoFrames>60") == "true", token);
         }
         if (core.IsMuted != playbackGate.IsBlocked) throw new Exception("Forced-failure probe released another publisher's mute state.");
@@ -219,8 +219,8 @@ internal static class Program
     }
     private static async Task Click(RoomWebView viewer, string label)
     {
-        await Wait(async () => await viewer.Core.ExecuteScriptAsync($"[...document.querySelectorAll('button')].some(b=>b.textContent==={JsonSerializer.Serialize(label)})") == "true", CancellationToken.None);
-        var json = await viewer.Core.ExecuteScriptAsync($"(()=>{{const b=[...document.querySelectorAll('button')].find(b=>b.textContent==={JsonSerializer.Serialize(label)}); b.scrollIntoView(); const r=b.getBoundingClientRect(); return {{x:r.x+r.width/2,y:r.y+r.height/2}};}})()");
+        await Wait(async () => await viewer.Core.ExecuteScriptAsync($"[...document.querySelectorAll('button')].some(b=>(b.getAttribute('aria-label')||b.textContent)==={JsonSerializer.Serialize(label)})") == "true", CancellationToken.None);
+        var json = await viewer.Core.ExecuteScriptAsync($"(()=>{{const b=[...document.querySelectorAll('button')].find(b=>(b.getAttribute('aria-label')||b.textContent)==={JsonSerializer.Serialize(label)}); b.scrollIntoView(); const r=b.getBoundingClientRect(); return {{x:r.x+r.width/2,y:r.y+r.height/2}};}})()");
         using var point = JsonDocument.Parse(json); var x = point.RootElement.GetProperty("x").GetDouble(); var y = point.RootElement.GetProperty("y").GetDouble();
         foreach (var type in new[] { "mousePressed", "mouseReleased" }) await viewer.Core.CallDevToolsProtocolMethodAsync("Input.dispatchMouseEvent", JsonSerializer.Serialize(new { type, x, y, button = "left", clickCount = 1 }));
     }
