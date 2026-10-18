@@ -6,12 +6,12 @@ namespace JKiller.Windows.Tests;
 public sealed class CpuFallbackProbeTests
 {
     [Fact]
-    public async Task InjectionSuppressesOnlyNvencDiscoveryLeavingSoftwareAndOpus()
+    public async Task InjectionSuppressesBothHardwareCandidatesLeavingSoftwareAndOpus()
     {
         await using var rpc = new CpuFallbackProbeRpc(new NativeReplies());
         var result = await rpc.RequestAsync("CallVendorRequest", JsonSerializer.SerializeToElement(new { requestType = "GetCapabilities" }), CancellationToken.None);
         var ids = result.GetProperty("responseData").GetProperty("encoders").EnumerateArray().Select(e => e.GetProperty("id").GetString()).ToArray();
-        Assert.DoesNotContain("obs_nvenc_h264_tex", ids); Assert.Contains("obs_x264", ids); Assert.Contains("ffmpeg_opus", ids);
+        Assert.Equal(new[] { "obs_x264", "ffmpeg_opus" }, ids);
     }
     [Fact]
     public async Task ActualEncoderRepliesAreNotFabricatedByCapabilityInjection()
@@ -24,7 +24,7 @@ public sealed class CpuFallbackProbeTests
     private sealed class NativeReplies : IObsRpcClient
     {
         public Task<JsonElement> RequestAsync(string type, JsonElement data, CancellationToken token) => Task.FromResult(data.GetProperty("requestType").GetString() == "GetCapabilities"
-            ? JsonSerializer.SerializeToElement(new { responseData = new { encoders = new[] { new { id = "obs_nvenc_h264_tex" }, new { id = "obs_x264" }, new { id = "ffmpeg_opus" } } } })
+            ? JsonSerializer.SerializeToElement(new { responseData = new { encoders = new[] { new { id = "obs_nvenc_h264_tex" }, new { id = "h264_texture_amf" }, new { id = "obs_x264" }, new { id = "ffmpeg_opus" } } } })
             : JsonSerializer.SerializeToElement(new { responseData = new { encoder = "obs_x264", bitrateKbps = 4000 } }));
     }
 }

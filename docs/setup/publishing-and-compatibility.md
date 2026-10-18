@@ -2,7 +2,7 @@
 
 Investigated 2026-10-18 against source `9c279a9` plus the first M3 interface/cursor slice. These are implementation notes and feasibility answers, not claims that browser publishing or AMD/Intel native encoders have shipped.
 
-**Scope revision, 2026-10-18:** AMD AMF H.264 compatibility is now M3's main goal, and publishing directly from the website using browser capture is an additional M3 feature. Both implementations remain pending. Shared lower-quality previews/transcoding are scrapped to prioritize broadcaster CPU/GPU workload and game performance. Intel Quick Sync is deferred because the current friend group does not need Intel GPUs. See [the current M3 handoff](../M3-HANDOFF.md).
+**M3 implementation update, 2026-10-18:** Native AMD AMF H.264 initialization/configuration is implemented and code-only verified; live AMD acceptance remains pending. Website broadcasting is the next implementation slice. Shared previews/transcoding are scrapped and Intel Quick Sync is deferred. See [the M3 handoff](../M3-HANDOFF.md) and [AMD verification](../validation/2026-10-18-m3-amd.md). The original investigation retains its historical baseline.
 
 ## Broadcasting entirely from the website
 
@@ -43,14 +43,15 @@ Sources: [project tunnel instructions](temporary-tunnel.md), [Cloudflare Quick T
 
 ## Broadcasting without NVIDIA NVENC
 
-The current native app already has an explicit **Allow CPU encoding if NVENC initialization fails** checkbox. Select it before starting. If NVENC is absent or fails initialization, the app can use bundled OBS x264 with an applied maximum of 720p30 and 4 Mbps, retaining lower requested settings. That is CPU encoding and may compete with a game for CPU time. An AMD/Intel PC must still satisfy Windows Graphics Capture and the application's other prerequisites; CPU fallback does not make the Windows app cross-platform. Real performance on each target machine needs testing.
+The native app attempts NVENC, then AMD AMF H.264, initializing and releasing candidates sequentially. Capability enumeration alone does not prove support. The **Allow CPU encoding if hardware initialization fails** checkbox remains off unless explicitly selected before starting. Only after both hardware candidates are unavailable/fail may it use x264 at a maximum of 720p30 and 4 Mbps, retaining lower requests. CPU encoding may compete with a game. Windows Graphics Capture and other Windows prerequisites still apply.
 
-M3 will add AMD AMF H.264; Intel Quick Sync H.264 is deferred. OBS supports these encoder families, but PlayKross currently chooses only NVENC/x264 and the native typed pipeline rejects other encoder IDs. AMD support requires both managed and native changes:
+The managed/native AMF path uses pinned OBS 32.2.2's obs-ffmpeg module and the installed AMD driver's AMF runtime. Its initial policy is CBR/High, one-second keyframes, no B-frames, repeated headers, speed preset, disabled pre-analysis/pre-encode/VBAQ and low-latency usage. NVIDIA settings are retained. Incompatible readback fails closed; CPU fallback cannot bypass it. Manual adapter/encoder selectors are outside this slice.
 
-- Discover supported encoders and attempt actual initialization; an enumerated encoder is not proof of working hardware/driver support. Offer Auto/hardware selection with clear applied-encoder diagnostics and explicit CPU fallback consent.
-- Add encoder-specific configuration/readback adapters. Preserve low latency, no B-frames/lookahead where supported, repeated H.264 parameter sets for late joiners, bitrate/keyframe settings and the shared one-encode-per-broadcaster pipeline. Do not reuse NVIDIA preset names for other encoders.
-- Generalize native validation and hardware-initialized diagnostics, then verify the packaged OBS modules and licensing/notices for each path.
-- Test real AMD systems, including relevant integrated/discrete and multi-adapter configurations, hardware failure, restart, late joins, audio and browser/WebView decoding. Measure observed game/frame-time impact. Mocked capability tests cannot establish working AMF encoding. Intel hardware testing belongs to its later scope.
+Applied encoder identity and successful hardware initialization are distinct from actual media activity. OBS can internally reroute `h264_texture_amf` to AMF hardware encoding through frame uploads while its public ID/caps retain the original registration. The transfer route is therefore **unverified**; this is not x264 fallback and does not establish zero copies or low CPU/GPU/game impact. Settings readback is configuration evidence, not a readback of every driver property.
+
+Use a matching rebuilt plugin after stopping the owned broadcaster or a fresh portable package. `Start-Broadcaster.ps1` rebuilds managed code only. CodeOnly does not install the plugin. The existing complete runtime includes obs-ffmpeg, obs-amf-test and FFmpeg dependencies; the driver supplies AMF. Existing licenses/source notices remain applicable.
+
+Real AMD validation remains pending for actual output/audio, browser/WebView decoding, late joins, failure, restart, concurrency and game/frame-time impact. Integrated/discrete and mixed-adapter configurations retain individual test limits; no universal minimum driver or performance guarantee is claimed. Intel Quick Sync stays deferred.
 
 Keep H.264/Opus for this compatibility work; changing to AV1/HEVC introduces a separate receiving-browser compatibility question. Prioritize the AMD hardware path, preserve NVIDIA and the existing explicit CPU fallback, and avoid extra encodes or expensive analysis that unnecessarily competes with games. Browser publishing would be another route for non-NVIDIA users, with browser-controlled encoding and the capture/audio limitations above.
 
