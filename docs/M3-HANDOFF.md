@@ -2,7 +2,7 @@
 
 Started 2026-10-18 from `main` at `9c279a9`. The owner confirmed all remaining M2 functional acceptance cases passed; see [M2 acceptance](validation/milestone-2-results.md). Preserve earlier automated failures, package hashes and measurement limits.
 
-The owner approved the AMD-first/browser-second design direction and the [written M3 specification](superpowers/specs/2026-10-18-milestone-3-design.md) in chat on 2026-10-18. The linked [native AMD plan](superpowers/plans/2026-10-18-m3-amd-broadcasting.md) and [browser broadcasting plan](superpowers/plans/2026-10-18-m3-browser-broadcasting.md) are available for owner review and execution-method selection. These record design/planning stages, not implementation or live acceptance.
+The owner approved the AMD-first/browser-second design direction and the [written M3 specification](superpowers/specs/2026-10-18-milestone-3-design.md) in chat on 2026-10-18. The linked [native AMD plan](superpowers/plans/2026-10-18-m3-amd-broadcasting.md) and [browser broadcasting plan](superpowers/plans/2026-10-18-m3-browser-broadcasting.md) were approved for native execution on 2026-10-18. Native AMD and browser implementations now pass code-only checks; final review and real AMD/browser acceptance are tracked separately.
 
 ## Revised main goal — AMD AMF H.264
 
@@ -16,7 +16,7 @@ Further grid/subscription polish, permanent hosting and Intel support are not M3
 
 ## Additional M3 feature — start broadcasting in the browser
 
-The owner added the ability to start a broadcast directly from the website using the browser's own capture method (`getDisplayMedia()`), alongside native AMD compatibility. A browser broadcaster must not need the PlayKross desktop app or its OBS helper. AMD AMF remains the main M3 goal; this is an additional deliverable. Implementation and real-browser acceptance are **pending**.
+The owner added the ability to start a broadcast directly from the website using the browser's own capture method (`getDisplayMedia()`), alongside native AMD compatibility. A browser broadcaster must not need the PlayKross desktop app or its OBS helper. AMD AMF remains the main M3 goal; this is an additional deliverable. Browser implementation is code-only verified; real-browser/audio acceptance remains **pending**. See [browser verification](validation/2026-10-18-m3-browser.md).
 
 - Provide explicit Start/Stop sharing controls and the browser's permission/source chooser for screen, window or tab capture where supported. Require a secure context (HTTPS or suitable localhost development), handle permission denial/cancellation, and never start capture automatically.
 - Publish the browser-captured tracks through the existing authenticated room/WHIP media flow. Preserve ownership, one publication per session, publication renewal, stop/restart and concurrent native/browser broadcasters. Reuse the single-feed distribution approach; do not add previews, simulcast renditions or per-viewer encoding.
@@ -24,7 +24,7 @@ The owner added the ability to start a broadcast directly from the website using
 - Handle the browser's own Stop sharing action, ended tracks, failures, page departure and publication cleanup. Failed or cancelled starts must release owned capture/media resources and any publication reservation.
 - Validate actual video and available audio in supported browsers, native/browser coexistence, broadcasting while watching, restart and cleanup. Record browser/OS limitations and observed CPU/GPU/game impact. Browser-selected encoding does not guarantee AMF/NVENC use or zero game interference; native AMD encoder settings do not control the browser's encoder.
 
-See [browser publishing implementation notes](setup/publishing-and-compatibility.md#broadcasting-entirely-from-the-website). The existing website currently receives broadcasts only; this scope addition is not a claim that browser publishing has shipped.
+See [browser publishing implementation notes](setup/publishing-and-compatibility.md#broadcasting-entirely-from-the-website). The website now contains the browser capture/WHIP flow; code-only and mocked UI checks do not establish live browser publication acceptance.
 
 ## Initial interface/cursor slice
 
