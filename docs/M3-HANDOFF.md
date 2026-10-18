@@ -2,6 +2,8 @@
 
 Started 2026-10-18 from `main` at `9c279a9`. The owner confirmed all remaining M2 functional acceptance cases passed; see [M2 acceptance](validation/milestone-2-results.md). Preserve earlier automated failures, package hashes and measurement limits.
 
+The owner approved the AMD-first/browser-second design direction in chat on 2026-10-18. The [written M3 specification](superpowers/specs/2026-10-18-milestone-3-design.md) is now available for owner review before implementation planning. This records a design stage, not implementation or live acceptance.
+
 ## Revised main goal — AMD AMF H.264
 
 The owner scrapped shared lower-quality previews and made **AMD AMF H.264 hardware broadcasting compatibility** M3's main goal. Intel Quick Sync is deferred: none of the current friend group uses Intel GPUs. This supersedes the earlier viewing-refinement/preview direction and historical M3 preview requirements. No preview implementation exists to remove; the change removes planned work.
