@@ -6,7 +6,7 @@ Updated 2026-10-18. This is the current milestone-status overview. M2 has the ow
 |---|---|---|
 | **1 — Core streaming** | **Accepted with known limitations** | One native Windows broadcaster, browser and in-app viewing, anonymous rooms, capture/settings controls, diagnostics, self-hosted connectivity and a portable broadcaster ZIP |
 | **2 — Concurrent broadcasting** | **Accepted after owner functional testing** | Multiple simultaneous broadcasters, no fixed per-room participant/publisher cap, explicit application/system audio, independent stream watching, and fullscreen bars that hide automatically; see [acceptance](validation/milestone-2-results.md) |
-| **3 — Viewing refinements** | **In progress** | First slice: correct native background/input colors, captured cursor on by default, and a compact website volume slider. Grid/focus and independent volume already shipped during M2; shared previews and further layout refinements remain future work. See [M3 handoff](M3-HANDOFF.md) |
+| **3 — AMD hardware broadcasting** | **In progress; AMF implementation pending** | Main goal: AMD AMF H.264 compatibility with minimal broadcaster CPU/GPU workload and game impact. Preserve one shared encode per broadcaster. Shared previews are scrapped; Intel is deferred. The initial native theme/cursor and compact website volume changes remain delivered work. See [M3 handoff](M3-HANDOFF.md) |
 | **4 — Complete experience** | Planned | UI polish, simpler setup/deployment, packaging refinements, recovery and broader compatibility validation |
 
 ## M1 acceptance
@@ -21,7 +21,7 @@ Experimental application audio remains off by default, initially limited to the 
 
 On 2026-10-18 the project owner confirmed that **every item in the remaining M2 closure list was tested and works as intended**: audible Application/System/Off delivery in browser and WebView (including the corrected browser Application selection), full System publication and native playback mute/restoration, application/endpoint loss and pinned-device behavior through default-device changes, and manual browser fullscreen Escape. M2 is accepted on that human functional evidence. The tested package hash, exact device/browser matrix and numerical results were not supplied; do not invent them or relabel earlier failed automated runs. See [M2 results](validation/milestone-2-results.md).
 
-M3 begins with the owner's three bounded interface/cursor changes. Website broadcasting and AMD/Intel encoding are feasibility questions at this point, not approved new subsystems. See [M3 handoff](M3-HANDOFF.md).
+M3 began with the owner's three bounded interface/cursor changes. The owner then replaced shared previews with **AMD AMF H.264 broadcasting compatibility** as M3's main goal. Minimizing broadcaster CPU/GPU workload and interference with games is the guiding priority. Keep one shared encoding pipeline per broadcaster; do not add preview encodes on the broadcaster or room host. Intel Quick Sync is deferred because none of the current friend group uses Intel GPUs. Website publishing remains a separate feasibility topic. This revised scope supersedes historical M3 preview requirements. See [M3 handoff](M3-HANDOFF.md).
 
 ## Implemented M2 scope and retained evidence
 

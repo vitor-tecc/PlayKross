@@ -2,6 +2,8 @@
 
 Investigated 2026-10-18 against source `9c279a9` plus the first M3 interface/cursor slice. These are implementation notes and feasibility answers, not claims that browser publishing or AMD/Intel native encoders have shipped.
 
+**Scope revision, 2026-10-18:** AMD AMF H.264 compatibility is now M3's main goal. Shared lower-quality previews/transcoding are scrapped to prioritize broadcaster CPU/GPU workload and game performance. Intel Quick Sync is deferred because the current friend group does not need Intel GPUs. Browser publishing remains a separate feasibility topic. See [the current M3 handoff](../M3-HANDOFF.md).
+
 ## Broadcasting entirely from the website
 
 Watching already works in the website. Broadcasting there needs a new browser publisher. The current React app contains WHEP receiving, but no screen-capture or WHIP publishing flow. The host already exposes authenticated publication reservations (`POST /api/streams`), renewal/stop and an authenticated WHIP proxy; those can be reused while preserving one publication per session and ownership/revocation.
@@ -43,13 +45,13 @@ Sources: [project tunnel instructions](temporary-tunnel.md), [Cloudflare Quick T
 
 The current native app already has an explicit **Allow CPU encoding if NVENC initialization fails** checkbox. Select it before starting. If NVENC is absent or fails initialization, the app can use bundled OBS x264 with an applied maximum of 720p30 and 4 Mbps, retaining lower requested settings. That is CPU encoding and may compete with a game for CPU time. An AMD/Intel PC must still satisfy Windows Graphics Capture and the application's other prerequisites; CPU fallback does not make the Windows app cross-platform. Real performance on each target machine needs testing.
 
-To improve hardware coverage, add AMD AMF H.264 and Intel Quick Sync H.264. OBS supports these encoder families, but PlayKross currently chooses only NVENC/x264 and the native typed pipeline rejects other encoder IDs. This requires both managed and native changes:
+M3 will add AMD AMF H.264; Intel Quick Sync H.264 is deferred. OBS supports these encoder families, but PlayKross currently chooses only NVENC/x264 and the native typed pipeline rejects other encoder IDs. AMD support requires both managed and native changes:
 
 - Discover supported encoders and attempt actual initialization; an enumerated encoder is not proof of working hardware/driver support. Offer Auto/hardware selection with clear applied-encoder diagnostics and explicit CPU fallback consent.
 - Add encoder-specific configuration/readback adapters. Preserve low latency, no B-frames/lookahead where supported, repeated H.264 parameter sets for late joiners, bitrate/keyframe settings and the shared one-encode-per-broadcaster pipeline. Do not reuse NVIDIA preset names for other encoders.
 - Generalize native validation and hardware-initialized diagnostics, then verify the packaged OBS modules and licensing/notices for each path.
-- Test real AMD/Intel systems, including integrated/discrete and multi-adapter configurations, hardware failure, restart, late joins, audio and browser/WebView decoding. Mocked capability tests cannot establish working AMF/QSV encoding.
+- Test real AMD systems, including relevant integrated/discrete and multi-adapter configurations, hardware failure, restart, late joins, audio and browser/WebView decoding. Measure observed game/frame-time impact. Mocked capability tests cannot establish working AMF encoding. Intel hardware testing belongs to its later scope.
 
-Keep H.264/Opus for this compatibility work; changing to AV1/HEVC introduces a separate receiving-browser compatibility question. Start by making the existing CPU option discoverable, then implement and validate vendor hardware paths. Browser publishing would be another route for non-NVIDIA users, with browser-controlled encoding and the capture/audio limitations above.
+Keep H.264/Opus for this compatibility work; changing to AV1/HEVC introduces a separate receiving-browser compatibility question. Prioritize the AMD hardware path, preserve NVIDIA and the existing explicit CPU fallback, and avoid extra encodes or expensive analysis that unnecessarily competes with games. Browser publishing would be another route for non-NVIDIA users, with browser-controlled encoding and the capture/audio limitations above.
 
 Source: [OBS hardware encoding](https://obsproject.com/kb/hardware-encoding). Current code: `src/JKiller.Windows/Obs/ObsMediaEngine.cs` and `native/jk-obs/src/ObsPipeline.cpp`.
