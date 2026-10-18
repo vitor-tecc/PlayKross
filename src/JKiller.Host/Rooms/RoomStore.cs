@@ -79,10 +79,11 @@ public sealed class RoomStore(SessionStore sessions, MediaGrantStore grants, Tim
         return true;
     });
     public RoomSnapshot Snapshot(Guid sessionId) => Run(() => Snapshot(RequireRoom(sessionId)));
-    public PublishReservation ReservePublish(Guid sessionId) => Run(() =>
+    public PublishReservation ReservePublish(Guid sessionId, bool requireNew = false) => Run(() =>
     {
         var room = RequireRoom(sessionId);
         var publication = room.Streams.Values.SingleOrDefault(x => x.Owner == sessionId);
+        if (requireNew && publication is not null) throw new InvalidOperationException("This session already owns a publication.");
         if (publication is null)
         {
             var id = Guid.NewGuid(); publication = new(id, sessionId, $"rooms/{room.Id:N}/streams/{id:N}/main", clock.GetTimestamp());
