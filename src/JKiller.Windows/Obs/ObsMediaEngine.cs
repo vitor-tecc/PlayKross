@@ -85,20 +85,33 @@ public sealed class ObsMediaEngine(IOwnedObsProcess helper, Func<OwnedEngineHand
                     audio_mode = "SystemOutput", endpoint_id = request.Audio.RenderEndpointId, selection_generation = generation
                 }, sceneItemEnabled = true }, cancellationToken);
             }
-            async Task<JsonElement> PrepareEncoder(string encoder) => await Vendor("PreparePipeline", new { encoder, bitrateKbps = settings.EncoderKbps, generation }, cancellationToken);
-            var encoded = Has("encoders", "obs_nvenc_h264_tex") ? await PrepareEncoder("obs_nvenc_h264_tex") : JsonSerializer.SerializeToElement(new { success = false });
+            JsonElement encoded = JsonSerializer.SerializeToElement(new { success = false });
+            async Task PrepareEncoder(string encoder)
+            {
+                ThrowIfInvalidated(current, cancellationToken);
+                encoded = await Vendor("PreparePipeline", new { encoder, bitrateKbps = settings.EncoderKbps, generation }, cancellationToken);
+                ThrowIfInvalidated(current, cancellationToken);
+                if (!encoded.TryGetProperty("success", out var success) || success.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
+                    throw new InvalidDataException("Encoder initialization response is incompatible. Use the complete matching PlayKross package.");
+                if (success.GetBoolean()) ValidateEncoderReadback(encoded, encoder, settings.EncoderKbps);
+            }
+            List<string> failures = [];
+            foreach (var (id, name) in new[] { ("obs_nvenc_h264_tex", "NVENC"), ("h264_texture_amf", "AMD AMF") })
+            {
+                ThrowIfInvalidated(current, cancellationToken);
+                if (!Has("encoders", id)) { failures.Add(name + " unavailable"); continue; }
+                await PrepareEncoder(id);
+                if (encoded.GetProperty("success").GetBoolean()) break;
+                failures.Add(name + " initialization failed");
+            }
             if (!encoded.GetProperty("success").GetBoolean() && allowCpuFallback && Has("encoders", "obs_x264"))
             {
                 var reduced = StreamSettings.DefaultFor(Math.Min(settings.Height, 720), 30);
                 settings = reduced with { BitrateMbps = Math.Min(settings.BitrateMbps, reduced.BitrateMbps) };
                 await ConfigureVideo();
-                encoded = await PrepareEncoder("obs_x264");
+                await PrepareEncoder("obs_x264");
             }
-            if (!encoded.GetProperty("success").GetBoolean()) throw new InvalidOperationException("NVENC could not initialize. CPU encoding requires explicitly selecting the fallback.");
-            if (encoded.GetProperty("bitrateKbps").GetInt32() != settings.EncoderKbps || encoded.GetProperty("bFrames").GetInt32() != 0 || encoded.GetProperty("lookahead").GetBoolean())
-                throw new InvalidDataException("Encoder readback does not match the low-latency configuration.");
-            if (!encoded.TryGetProperty("repeatHeaders", out var headers) || headers.ValueKind != JsonValueKind.True)
-                throw new InvalidDataException("H.264 setup header repetition is unavailable. Use the complete updated PlayKross package so browser viewers can decode the stream.");
+            if (!encoded.GetProperty("success").GetBoolean()) throw new InvalidOperationException(string.Join("; ", failures) + ". Check supported hardware/drivers and the complete package. CPU encoding requires explicitly selecting the fallback; an enabled but unavailable/failed fallback cannot publish.");
             var deadline = DateTimeOffset.UtcNow.AddSeconds(10);
             JsonElement captureState;
             while (!(captureState = await Vendor("GetSafetyStatus", new { }, cancellationToken)).GetProperty("videoReady").GetBoolean())
@@ -188,6 +201,19 @@ public sealed class ObsMediaEngine(IOwnedObsProcess helper, Func<OwnedEngineHand
     {
         token.ThrowIfCancellationRequested();
         if (current != Interlocked.Read(ref epoch)) throw new OperationCanceledException("An earlier operation was superseded by Stop.");
+    }
+    private static void ValidateEncoderReadback(JsonElement response, string requested, int bitrate)
+    {
+        bool Text(string name, string value) => response.TryGetProperty(name, out var field) && field.ValueKind == JsonValueKind.String && field.GetString() == value;
+        bool Flag(string name, bool value) => response.TryGetProperty(name, out var field) && field.ValueKind == (value ? JsonValueKind.True : JsonValueKind.False);
+        bool Number(string name, int value) => response.TryGetProperty(name, out var field) && field.ValueKind == JsonValueKind.Number && field.TryGetInt32(out var actual) && actual == value;
+        var amf = requested == "h264_texture_amf";
+        if (!Text("encoder", requested) || !Text("codec", "h264") || !Flag("hardwareInitialized", requested != "obs_x264") ||
+            !Number("bitrateKbps", bitrate) || !Number("bFrames", 0) || (!amf && !Flag("lookahead", false)) ||
+            (amf && (!Text("preset", "speed") || !Flag("preAnalysis", false) || !Text("amfOptions", "usage=lowlatency preanalysis=false vbaq=false"))))
+            throw new InvalidDataException("Encoder readback does not match the requested low-latency policy. Use the complete matching PlayKross package.");
+        if (!Flag("repeatHeaders", true))
+            throw new InvalidDataException("H.264 setup header repetition is unavailable. Use the complete updated PlayKross package so browser viewers can decode the stream.");
     }
     private Task<JsonElement> Request(string type, object data, CancellationToken token) => (rpc ?? throw new InvalidOperationException("Owned helper disconnected.")).RequestAsync(type, JsonSerializer.SerializeToElement(data), token);
     private async Task<JsonElement> Vendor(string type, object data, CancellationToken token) =>

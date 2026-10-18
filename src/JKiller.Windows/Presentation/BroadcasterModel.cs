@@ -62,7 +62,7 @@ public class BroadcasterModel(Func<bool, IMediaEngine> engineFactory, IRoomClien
     public IReadOnlyList<SourceDescriptor> Sources { get; private set; } = [];
     public IReadOnlyList<SourceDescriptor> AudioApplications => Sources.Where(source => source.Kind == SourceKind.Window).ToArray();
     public string Status { get => status; private set { status = value; Notify(); } }
-    public string AppliedText => controller?.Applied is { } applied ? $"Applied: {applied.Settings.Width}×{applied.Settings.Height}, {applied.Settings.Fps} FPS target, {applied.Settings.BitrateMbps} Mbps target; {applied.Encoder}/{applied.Codec}. Hardware initialized: {applied.HardwareVerified}. Delivered FPS/bitrate require measurement." : "No active encoder.";
+    public string AppliedText => controller?.Applied is { } applied ? $"Applied: {applied.Settings.Width}×{applied.Settings.Height}, {applied.Settings.Fps} FPS target, {applied.Settings.BitrateMbps} Mbps target; {applied.Encoder}/{applied.Codec}. Hardware initialized: {applied.HardwareVerified}.{(applied.Encoder == "h264_texture_amf" ? " AMF transfer route unverified; frame uploads may add CPU/GPU work." : "")} Delivered FPS/bitrate require measurement." : "No active encoder.";
     public bool CaptureLive => controller?.State == BroadcastState.Broadcasting;
     public bool IsJoined => origin is not null;
     public static AudioEligibility AudioEligibilityFor(SourceDescriptor? source)
@@ -193,6 +193,8 @@ public class BroadcasterModel(Func<bool, IMediaEngine> engineFactory, IRoomClien
                     using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token); deadline.CancelAfter(TimeSpan.FromSeconds(3));
                     var metadata = new Dictionary<string, string> { ["encoder"] = current.Encoder, ["codec"] = current.Codec, ["captureApi"] = current.CaptureApi, ["hardwareInitialized"] = current.HardwareInitialized ? "true" : "false", ["provenance"] = "native-monotonic-interval" };
                     if (current.AudioModeName is "off" or "application" or "system-output") metadata["audioMode"] = current.AudioModeName;
+                    if (current.EncoderFamily is "nvenc" or "amf" or "x264") metadata["encoderFamily"] = current.EncoderFamily;
+                    if (current.EncoderTransferRoute == "unverified") metadata["encoderTransferRoute"] = current.EncoderTransferRoute;
                     try { await client.ReportDiagnosticsAsync(new(id, "publisher", metrics, metadata), deadline.Token); }
                     catch (Exception e) when (e is HttpRequestException || e is OperationCanceledException && !token.IsCancellationRequested) { }
                 }

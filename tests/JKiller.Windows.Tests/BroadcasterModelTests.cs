@@ -8,6 +8,17 @@ namespace JKiller.Windows.Tests;
 public sealed class BroadcasterModelTests
 {
     [Fact]
+    public async Task AmfPresentationDoesNotClaimVerifiedTextureTransfer()
+    {
+        var media = new Media { Encoder = "h264_texture_amf" };
+        await using var model = new BroadcasterModel(_ => media, new Room(), new Catalog()) { RoomLink = "http://localhost:5000/#invite=test" };
+        await model.JoinAsync(CancellationToken.None);
+        model.Video = new("monitor", SourceKind.Monitor, 1, null, "Display");
+        await model.StartAsync(CancellationToken.None);
+        Assert.Contains("h264_texture_amf", model.AppliedText);
+        Assert.Contains("transfer route unverified", model.AppliedText, StringComparison.OrdinalIgnoreCase);
+    }
+    [Fact]
     public async Task SwitchToWindowClearsSystemSelection()
     {
         await using var model = new BroadcasterModel(_ => new Media(), new Room(), new Catalog(), audioCatalog: new AudioCatalog());
@@ -196,7 +207,8 @@ public sealed class BroadcasterModelTests
     {
         public event EventHandler<Exception>? SafetyFault { add { } remove { } }
         public int Prepares; public BroadcastRequest? Request;
-        public Task<AppliedMediaSettings> PrepareAsync(BroadcastRequest request, CancellationToken token) { Prepares++; Request = request; return Task.FromResult(new AppliedMediaSettings(request.Settings, "test", "h264", false)); }
+        public string Encoder = "test";
+        public Task<AppliedMediaSettings> PrepareAsync(BroadcastRequest request, CancellationToken token) { Prepares++; Request = request; return Task.FromResult(new AppliedMediaSettings(request.Settings, Encoder, "h264", Encoder.Contains("amf"))); }
         public Task StartAsync(Uri uri, string credential, CancellationToken token) => Task.CompletedTask;
         public Task StopAsync(CancellationToken token) => Task.CompletedTask;
     }

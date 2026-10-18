@@ -7,6 +7,59 @@ namespace JKiller.Windows.Tests;
 
 public sealed class ObsMediaEngineTests
 {
+    [Theory]
+    [InlineData(false)] [InlineData(true)]
+    public async Task AmdOnlyInitializesHardware(bool failNvenc)
+    {
+        var rpc = new FakeRpc { EncoderIds = failNvenc ? ["obs_nvenc_h264_tex", "h264_texture_amf", "obs_x264", "ffmpeg_opus"] : ["h264_texture_amf", "ffmpeg_opus"], FailNvenc = failNvenc };
+        await using var engine = new ObsMediaEngine(new FakeHelper(), (_, _) => Task.FromResult<IObsRpcClient>(rpc), allowCpuFallback: true);
+        var applied = await engine.PrepareAsync(Request, CancellationToken.None);
+        Assert.Equal("h264_texture_amf", applied.Encoder); Assert.True(applied.HardwareVerified); Assert.Equal(Request.Settings, applied.Settings);
+        Assert.Equal(failNvenc ? ["obs_nvenc_h264_tex", "h264_texture_amf"] : new[] { "h264_texture_amf" }, rpc.PreparedEncoders);
+    }
+    [Theory]
+    [InlineData(false)] [InlineData(true)]
+    public async Task BothHardwareFailuresRequireCpuConsent(bool consent)
+    {
+        var rpc = new FakeRpc { EncoderIds = ["obs_nvenc_h264_tex", "h264_texture_amf", "obs_x264", "ffmpeg_opus"], FailNvenc = true, FailAmf = true };
+        var helper = new FakeHelper();
+        await using var engine = new ObsMediaEngine(helper, (_, _) => Task.FromResult<IObsRpcClient>(rpc), allowCpuFallback: consent);
+        if (consent) Assert.Equal("obs_x264", (await engine.PrepareAsync(Request, CancellationToken.None)).Encoder);
+        else await Assert.ThrowsAsync<InvalidOperationException>(() => engine.PrepareAsync(Request, CancellationToken.None));
+        Assert.Equal(consent ? ["obs_nvenc_h264_tex", "h264_texture_amf", "obs_x264"] : new[] { "obs_nvenc_h264_tex", "h264_texture_amf" }, rpc.PreparedEncoders);
+    }
+    [Theory]
+    [InlineData("encoder")] [InlineData("codec")] [InlineData("hardware")]
+    [InlineData("bitrate")] [InlineData("bframes")] [InlineData("headers")]
+    [InlineData("preset")] [InlineData("analysis")] [InlineData("options")]
+    public async Task AmfPolicyReadbackIsRequired(string fault)
+    {
+        var rpc = new FakeRpc { EncoderIds = ["h264_texture_amf", "obs_x264", "ffmpeg_opus"], ReadbackFault = fault };
+        var helper = new FakeHelper();
+        await using var engine = new ObsMediaEngine(helper, (_, _) => Task.FromResult<IObsRpcClient>(rpc), allowCpuFallback: true);
+        await Assert.ThrowsAsync<InvalidDataException>(() => engine.PrepareAsync(Request, CancellationToken.None));
+        Assert.Equal(new[] { "h264_texture_amf" }, rpc.PreparedEncoders); Assert.Equal(1, helper.Stops);
+    }
+    [Fact]
+    public async Task StopBetweenCandidatesPreventsNextAttempt()
+    {
+        var rpc = new FakeRpc { EncoderIds = ["obs_nvenc_h264_tex", "h264_texture_amf", "ffmpeg_opus"], FailNvenc = true };
+        await using var engine = new ObsMediaEngine(new FakeHelper(), (_, _) => Task.FromResult<IObsRpcClient>(rpc));
+        Task? stopped = null; rpc.AfterPrepared = () => stopped = engine.StopAsync(CancellationToken.None);
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => engine.PrepareAsync(Request, CancellationToken.None));
+        await stopped!; Assert.Equal(new[] { "obs_nvenc_h264_tex" }, rpc.PreparedEncoders);
+    }
+    [Fact]
+    public async Task MissingHardwareNeverEnablesCpuAndLowerCpuRequestsAreRetained()
+    {
+        var rpc = new FakeRpc { EncoderIds = ["obs_x264", "ffmpeg_opus"] };
+        await using (var engine = new ObsMediaEngine(new FakeHelper(), (_, _) => Task.FromResult<IObsRpcClient>(rpc)))
+            await Assert.ThrowsAsync<InvalidOperationException>(() => engine.PrepareAsync(Request, CancellationToken.None));
+        Assert.Empty(rpc.PreparedEncoders);
+        await using var consented = new ObsMediaEngine(new FakeHelper(), (_, _) => Task.FromResult<IObsRpcClient>(rpc), allowCpuFallback: true);
+        var low = Request with { Settings = new(854, 480, 30, 1) };
+        Assert.Equal(low.Settings, (await consented.PrepareAsync(low, CancellationToken.None)).Settings);
+    }
     [Fact]
     public async Task OffCreatesNoAudioSource()
     {
@@ -339,6 +392,10 @@ public sealed class ObsMediaEngineTests
         public bool RepeatHeaders = true;
         public bool MissingAudioCapability, CancelOnArm, Disarmed, LoseAudioAfterArm;
         public bool AudioReady = true;
+        public string[] EncoderIds = ["obs_nvenc_h264_tex", "obs_x264", "ffmpeg_opus"];
+        public bool FailAmf;
+        public string? ReadbackFault;
+        public Action? AfterPrepared;
         public CancellationTokenSource? Cancellation;
         public JsonElement Arm;
         public string? UnarmedReason;
@@ -369,11 +426,16 @@ public sealed class ObsMediaEngineTests
             if (vendor == "Arm") { Arm = args.Clone(); response = new { armed = AudioReady, error = "Selected audio failed initialization." }; if (LoseAudioAfterArm) AudioReady = false; if (CancelOnArm) Cancellation!.Cancel(); }
             if (vendor == "GetSafetyStatus") response = new { videoReady = true, audioRunning = AudioReady, capturedAudioFrames = 0, emittedAudioFrames = 0, audioError = AudioReady ? "" : "Audio device initialization failed." };
             if (vendor == "Heartbeat" && UnarmedReason is not null) response = new { armed = false, stopReason = UnarmedReason };
-            if (vendor == "GetCapabilities") response = new { encoders = new[] { new { id = "obs_nvenc_h264_tex" }, new { id = "obs_x264" }, new { id = "ffmpeg_opus" } }, sources = (MissingAudioCapability ? new[] { "jk_bound_capture" } : new[] { "jk_bound_capture", "jk_process_audio", "jk_system_audio" }).Select(id => new { id }), services = new[] { new { id = "whip_custom" } } };
+            if (vendor == "GetCapabilities") response = new { encoders = EncoderIds.Select(id => new { id }), sources = (MissingAudioCapability ? new[] { "jk_bound_capture" } : new[] { "jk_bound_capture", "jk_process_audio", "jk_system_audio" }).Select(id => new { id }), services = new[] { new { id = "whip_custom" } } };
             if (vendor == "PreparePipeline")
             {
                 var encoder = args.GetProperty("encoder").GetString()!; PreparedEncoders.Add(encoder);
-                response = new { success = !(FailNvenc && encoder.Contains("nvenc")), encoder, codec = "h264", hardwareInitialized = encoder.Contains("nvenc"), bitrateKbps = args.GetProperty("bitrateKbps").GetInt32(), bFrames = 0, lookahead = false, repeatHeaders = RepeatHeaders };
+                response = new { success = !(FailNvenc && encoder.Contains("nvenc") || FailAmf && encoder.Contains("amf")), encoder = ReadbackFault == "encoder" ? "obs_x264" : encoder,
+                    codec = ReadbackFault == "codec" ? "hevc" : "h264", hardwareInitialized = ReadbackFault != "hardware" && encoder != "obs_x264",
+                    bitrateKbps = ReadbackFault == "bitrate" ? 1 : args.GetProperty("bitrateKbps").GetInt32(), bFrames = ReadbackFault == "bframes" ? 2 : 0,
+                    lookahead = false, repeatHeaders = RepeatHeaders && ReadbackFault != "headers", preset = ReadbackFault == "preset" ? null : "speed",
+                    preAnalysis = ReadbackFault == "analysis", amfOptions = ReadbackFault == "options" ? "" : "usage=lowlatency preanalysis=false vbaq=false" };
+                AfterPrepared?.Invoke();
             }
             if (vendor == "StartPipeline") { Starts++; StartEntered.TrySetResult(); if (DelayStart) await CompleteStart.Task; Publishing = true; }
             if (vendor is "StopPipeline" or "Disarm") { Publishing = false; Disarmed = true; }
