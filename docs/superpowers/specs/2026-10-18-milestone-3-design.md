@@ -1,6 +1,6 @@
 # M3: AMD AMF and browser broadcasting
 
-Date: 2026-10-18. Status: design direction approved in chat; written specification awaiting owner review. Implementation and live acceptance remain pending.
+Date: 2026-10-18. Status: design direction and written specification approved by the owner in chat. Implementation planning is authorized; implementation and live acceptance remain pending.
 
 ## Intent and baseline
 
@@ -128,7 +128,7 @@ Mocks and source/configuration tests establish orchestration, not working hardwa
 
 ## Delivery and review stages
 
-This specification is the artifact for the next owner review. After written-spec approval, produce the implementation plan with AMD tasks first and browser tasks second; the owner then reviews that plan and chooses execution method. If agents are later selected, every agent/reviewer must explicitly use `gpt-6.1-sol` with a chosen reasoning effort, including nested agents. Never substitute Astra.
+The owner approved this written specification in chat on 2026-10-18. The implementation plan is split into [native AMD tasks](../plans/2026-10-18-m3-amd-broadcasting.md), followed by [browser broadcasting tasks](../plans/2026-10-18-m3-browser-broadcasting.md); the owner reviews the plans and chooses execution method before implementation. If agents are later selected, every agent/reviewer must explicitly use `gpt-6.1-sol` with a chosen reasoning effort, including nested agents. Never substitute Astra.
 
 For each implemented slice, verify, update handoff/compatibility/validation notes, commit and push on a `codex/` branch, and open/update the appropriate PR. Recheck PR #10 and the remote base first. Do not merge or rewrite published history without instruction. Keep generated binaries, credentials, invitations, caches, runtime state and raw artifacts out of Git. Implementation completion and live hardware/browser acceptance must be reported separately.
 

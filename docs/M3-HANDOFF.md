@@ -2,7 +2,7 @@
 
 Started 2026-10-18 from `main` at `9c279a9`. The owner confirmed all remaining M2 functional acceptance cases passed; see [M2 acceptance](validation/milestone-2-results.md). Preserve earlier automated failures, package hashes and measurement limits.
 
-The owner approved the AMD-first/browser-second design direction in chat on 2026-10-18. The [written M3 specification](superpowers/specs/2026-10-18-milestone-3-design.md) is now available for owner review before implementation planning. This records a design stage, not implementation or live acceptance.
+The owner approved the AMD-first/browser-second design direction and the [written M3 specification](superpowers/specs/2026-10-18-milestone-3-design.md) in chat on 2026-10-18. The linked [native AMD plan](superpowers/plans/2026-10-18-m3-amd-broadcasting.md) and [browser broadcasting plan](superpowers/plans/2026-10-18-m3-browser-broadcasting.md) are available for owner review and execution-method selection. These record design/planning stages, not implementation or live acceptance.
 
 ## Revised main goal — AMD AMF H.264
 
