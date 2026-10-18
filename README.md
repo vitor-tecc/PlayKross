@@ -2,11 +2,11 @@
 
 ![PlayKross](assets/branding/playkross-logo.png)
 
-Self-hosted Windows broadcasting with browser and in-app viewers. The M2 candidate supports concurrent broadcasters, independent stream playback, Windows Graphics Capture, shared H.264/Opus encoding and fullscreen controls that hide immediately and after two seconds of inactivity. Audio starts Off; explicitly choose Application or System output for monitor sharing. Microphone capture is absent.
+Self-hosted Windows broadcasting with browser and in-app viewers. PlayKross supports concurrent broadcasters, independent stream playback, Windows Graphics Capture, shared H.264/Opus encoding and fullscreen controls that hide immediately and after two seconds of inactivity. Audio starts Off; explicitly choose Application or System output for monitor sharing. Microphone capture is absent.
 
-**M1 accepted with known limitations (2026-10-16); M2 acceptance pending:** fixed room participant/publisher quotas have been removed, while each session still owns at most one publication. Functional evidence and remaining checks are recorded in [M2 results](docs/validation/milestone-2-results.md). No maximum capacity is proven. Startup stutters, strict audio isolation and external numerical characterization remain deferred. See the [current roadmap](docs/ROADMAP.md).
+**M1 accepted with known limitations (2026-10-16); M2 accepted after owner testing (2026-10-18); M3 in progress:** fixed room participant/publisher quotas have been removed, while each session still owns at most one publication. Functional evidence and the owner's sign-off are recorded in [M2 results](docs/validation/milestone-2-results.md). No maximum capacity is proven. Startup stutters, strict audio isolation and external numerical characterization remain deferred. See the [current roadmap](docs/ROADMAP.md) and [M3 handoff](docs/M3-HANDOFF.md).
 
-Project owner and contributor: [@vitor-tecc](https://github.com/vitor-tecc). See [contributors](CONTRIBUTORS.md) and the [M2 handoff](docs/M2-HANDOFF.md).
+Project owner and contributor: [@vitor-tecc](https://github.com/vitor-tecc). See [contributors](CONTRIBUTORS.md) and the [M3 handoff](docs/M3-HANDOFF.md).
 
 The [approved M2 design](docs/superpowers/specs/2026-10-16-milestone-2-design.md) uses small functional checks; no eight-viewer or large-group acceptance campaign is required. Scaling work follows observed problems.
 

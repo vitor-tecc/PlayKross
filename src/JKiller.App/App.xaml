@@ -6,7 +6,11 @@
     <SolidColorBrush x:Key="PlayKrossSurface" Color="#17283D"/>
     <SolidColorBrush x:Key="PlayKrossHover" Color="#243D54"/>
     <SolidColorBrush x:Key="PlayKrossDisabled" Color="#718899"/>
-    <Style TargetType="Window"><Setter Property="Background" Value="#0E182A"/><Setter Property="Foreground" Value="{StaticResource PlayKrossBlue}"/><Setter Property="FontFamily" Value="Segoe UI"/></Style>
+    <SolidColorBrush x:Key="PlayKrossBackground" Color="#0E182A"/>
+    <SolidColorBrush x:Key="PlayKrossInput" Color="#252B35"/>
+    <SolidColorBrush x:Key="PlayKrossInputText" Color="#E3E8EF"/>
+    <Style x:Key="PlayKrossWindowStyle" TargetType="Window"><Setter Property="Background" Value="{StaticResource PlayKrossBackground}"/><Setter Property="Foreground" Value="{StaticResource PlayKrossBlue}"/><Setter Property="FontFamily" Value="Segoe UI"/></Style>
+    <Style TargetType="Window" BasedOn="{StaticResource PlayKrossWindowStyle}"/>
     <Style TargetType="Button">
       <Setter Property="Padding" Value="12,6"/><Setter Property="Margin" Value="0,4,8,4"/><Setter Property="Background" Value="{StaticResource PlayKrossSurface}"/><Setter Property="Foreground" Value="{StaticResource PlayKrossBlue}"/><Setter Property="BorderBrush" Value="{StaticResource PlayKrossBlue}"/>
       <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button">
@@ -19,9 +23,9 @@
         </ControlTemplate.Triggers>
       </ControlTemplate></Setter.Value></Setter>
     </Style>
-    <Style TargetType="TextBox"><Setter Property="Padding" Value="8,6"/><Setter Property="Background" Value="{StaticResource PlayKrossSurface}"/><Setter Property="Foreground" Value="{StaticResource PlayKrossBlue}"/><Setter Property="CaretBrush" Value="{StaticResource PlayKrossBlue}"/><Setter Property="SelectionBrush" Value="#3B5871"/><Setter Property="BorderBrush" Value="{StaticResource PlayKrossBlue}"/><Style.Triggers><Trigger Property="IsEnabled" Value="False"><Setter Property="Foreground" Value="{StaticResource PlayKrossDisabled}"/></Trigger></Style.Triggers></Style>
+    <Style TargetType="TextBox"><Setter Property="Padding" Value="8,6"/><Setter Property="Background" Value="{StaticResource PlayKrossInput}"/><Setter Property="Foreground" Value="{StaticResource PlayKrossInputText}"/><Setter Property="CaretBrush" Value="{StaticResource PlayKrossInputText}"/><Setter Property="SelectionBrush" Value="#3B5871"/><Setter Property="BorderBrush" Value="{StaticResource PlayKrossBlue}"/><Style.Triggers><Trigger Property="IsEnabled" Value="False"><Setter Property="Foreground" Value="{StaticResource PlayKrossDisabled}"/></Trigger></Style.Triggers></Style>
     <Style TargetType="ComboBox">
-      <Setter Property="Padding" Value="8,6"/><Setter Property="Background" Value="{StaticResource PlayKrossSurface}"/><Setter Property="Foreground" Value="{StaticResource PlayKrossBlue}"/><Setter Property="BorderBrush" Value="{StaticResource PlayKrossBlue}"/><Setter Property="ScrollViewer.CanContentScroll" Value="True"/>
+      <Setter Property="Padding" Value="8,6"/><Setter Property="Background" Value="{StaticResource PlayKrossInput}"/><Setter Property="Foreground" Value="{StaticResource PlayKrossInputText}"/><Setter Property="BorderBrush" Value="{StaticResource PlayKrossBlue}"/><Setter Property="ScrollViewer.CanContentScroll" Value="True"/>
       <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ComboBox">
         <Grid>
           <ToggleButton Focusable="False" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" IsChecked="{Binding IsDropDownOpen, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}" ClickMode="Press">
@@ -30,12 +34,12 @@
           <ContentPresenter Margin="8,6,30,6" IsHitTestVisible="False" VerticalAlignment="Center" Content="{TemplateBinding SelectionBoxItem}" ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}" ContentTemplateSelector="{TemplateBinding ItemTemplateSelector}"/>
           <Path Margin="0,0,10,0" HorizontalAlignment="Right" VerticalAlignment="Center" Fill="{TemplateBinding Foreground}" Data="M 0 0 L 8 0 L 4 4 Z" IsHitTestVisible="False"/>
           <Popup x:Name="PART_Popup" Placement="Bottom" IsOpen="{TemplateBinding IsDropDownOpen}" AllowsTransparency="True" Focusable="False" PopupAnimation="Slide">
-            <Border Background="{StaticResource PlayKrossSurface}" BorderBrush="{StaticResource PlayKrossBlue}" BorderThickness="1" MinWidth="{Binding ActualWidth, RelativeSource={RelativeSource TemplatedParent}}" MaxHeight="{TemplateBinding MaxDropDownHeight}"><ScrollViewer><ItemsPresenter KeyboardNavigation.DirectionalNavigation="Contained"/></ScrollViewer></Border>
+            <Border Background="{StaticResource PlayKrossInput}" BorderBrush="{StaticResource PlayKrossBlue}" BorderThickness="1" MinWidth="{Binding ActualWidth, RelativeSource={RelativeSource TemplatedParent}}" MaxHeight="{TemplateBinding MaxDropDownHeight}"><ScrollViewer><ItemsPresenter KeyboardNavigation.DirectionalNavigation="Contained"/></ScrollViewer></Border>
           </Popup>
         </Grid>
         <ControlTemplate.Triggers>
           <Trigger Property="IsKeyboardFocusWithin" Value="True"><Setter Property="BorderBrush" Value="{StaticResource PlayKrossYellow}"/></Trigger>
-          <Trigger Property="IsEnabled" Value="False"><Setter Property="Foreground" Value="{StaticResource PlayKrossDisabled}"/><Setter Property="BorderBrush" Value="#4B6073"/><Setter Property="Background" Value="#111E30"/></Trigger>
+          <Trigger Property="IsEnabled" Value="False"><Setter Property="Foreground" Value="{StaticResource PlayKrossDisabled}"/><Setter Property="BorderBrush" Value="#4B6073"/><Setter Property="Background" Value="#1B2029"/></Trigger>
         </ControlTemplate.Triggers>
       </ControlTemplate></Setter.Value></Setter>
     </Style>

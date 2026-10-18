@@ -1,5 +1,7 @@
 # Milestone 2 handoff
 
+**Accepted 2026-10-18:** the project owner confirmed that every remaining functional closure case was tested and works as intended. See the acceptance addendum in [M2 results](validation/milestone-2-results.md). Continue new development in [M3](M3-HANDOFF.md). Statements below about pending acceptance describe the earlier handoff, and historical run outcomes remain unchanged.
+
 Latest follow-up: the user reports the playback/interface features working in practical use and identified an obsolete browser-audio refusal. See the [browser-audio correction, cursor answer and remaining M2 acceptance](validation/2026-10-17-browser-audio-followup.md). Browser/shared-host Application selection is permitted; tab isolation remains a disclosed limitation. Preserve the earlier evidence rather than treating that broad feedback as completion of unrecorded device-loss/System checks.
 
 M1 has practical acceptance with known limitations as of 2026-10-16. Start with [the current roadmap](ROADMAP.md). The approved M2 plan has been implemented through its candidate validation tooling; acceptance remains pending in [M2 results](validation/milestone-2-results.md). Use the [functional checklist](validation/milestone-2-checklist.md) for this revision; M1 measurements remain historical.

@@ -1,12 +1,12 @@
 # PlayKross milestones
 
-Updated 2026-10-16. This is the current milestone-status overview. The latest user scope revision moves concurrent broadcasting into M2 and removes its fixed room-size and eight-viewer testing requirements. Original specifications, plans and measurement records remain available as historical context; they do not override the revised scope or M1 acceptance below.
+Updated 2026-10-18. This is the current milestone-status overview. M2 has the owner's functional acceptance and M3 development has begun. The revised scope moves concurrent broadcasting into M2 and removes its fixed room-size and eight-viewer testing requirements. Original specifications, plans and measurement records remain available as historical context; they do not override the revised scope or milestone acceptance below.
 
 | Milestone | Status | Scope |
 |---|---|---|
 | **1 — Core streaming** | **Accepted with known limitations** | One native Windows broadcaster, browser and in-app viewing, anonymous rooms, capture/settings controls, diagnostics, self-hosted connectivity and a portable broadcaster ZIP |
-| **2 — Concurrent broadcasting** | **Candidate implemented; functional acceptance pending** | Multiple simultaneous broadcasters, no fixed per-room participant/publisher cap, explicit application/system audio, independent stream watching, and fullscreen bars that hide automatically; see [current results](validation/milestone-2-results.md) |
-| **3 — Viewing refinements** | Planned as needed | Shared previews, richer subscription/layout and grid/focus controls; capacity/performance work driven by observed use |
+| **2 — Concurrent broadcasting** | **Accepted after owner functional testing** | Multiple simultaneous broadcasters, no fixed per-room participant/publisher cap, explicit application/system audio, independent stream watching, and fullscreen bars that hide automatically; see [acceptance](validation/milestone-2-results.md) |
+| **3 — Viewing refinements** | **In progress** | First slice: correct native background/input colors, captured cursor on by default, and a compact website volume slider. Grid/focus and independent volume already shipped during M2; shared previews and further layout refinements remain future work. See [M3 handoff](M3-HANDOFF.md) |
 | **4 — Complete experience** | Planned | UI polish, simpler setup/deployment, packaging refinements, recovery and broader compatibility validation |
 
 ## M1 acceptance
@@ -17,7 +17,13 @@ The previously required recorded ten-minute external benchmark is deferred as a 
 
 Experimental application audio remains off by default, initially limited to the supported Steam Geometry Dash profile. It includes child processes; exclusion of future children is not guaranteed. The previously accepted experimental limitation remains in place, and no microphone capture is added. Strict Discord exclusion and calibrated audiovisual timing are not marked passed.
 
-## Follow-up for M2 planning
+## M2 acceptance and M3 entry
+
+On 2026-10-18 the project owner confirmed that **every item in the remaining M2 closure list was tested and works as intended**: audible Application/System/Off delivery in browser and WebView (including the corrected browser Application selection), full System publication and native playback mute/restoration, application/endpoint loss and pinned-device behavior through default-device changes, and manual browser fullscreen Escape. M2 is accepted on that human functional evidence. The tested package hash, exact device/browser matrix and numerical results were not supplied; do not invent them or relabel earlier failed automated runs. See [M2 results](validation/milestone-2-results.md).
+
+M3 begins with the owner's three bounded interface/cursor changes. Website broadcasting and AMD/Intel encoding are feasibility questions at this point, not approved new subsystems. See [M3 handoff](M3-HANDOFF.md).
+
+## Implemented M2 scope and retained evidence
 
 - The [revised M2 design](superpowers/specs/2026-10-16-milestone-2-design.md) and [implementation plan](superpowers/plans/2026-10-16-milestone-2.md) are approved for subagent-driven execution. Implementation and code reviews are complete; the recorded functional checks still determine milestone acceptance.
 - Make concurrent broadcasting the main goal. Remove fixed room participant/publisher quotas and the UI's `/ 8` count; keep ownership, leases, and each stream's playback independent.
@@ -26,7 +32,7 @@ Experimental application audio remains off by default, initially limited to the 
 - Carry forward external numerical/stability characterization and retained unexpected-stop investigations. Do not interpret functional M1 acceptance as measured capacity or latency evidence.
 - On entering a stream's fullscreen view, hide the top and bottom bars immediately; reveal on cursor movement and hide again after two seconds of inactivity, with keyboard/touch access preserved.
 - Remove the one/four/eight-viewer capacity campaign and large-group external acceptance gate. Use a small two-publication functional check; investigate scaling when real use exposes a problem. Do not introduce the earlier proposed reader cap or bandwidth-admission system.
-- Continue the pending checks from the functional checklist/results; do not repeat completed implementation or restart planning. The milestone remains in progress until its required functional checks are satisfied.
+- The owner has now confirmed the remaining functional checks. Preserve the implementation and historical measurements; further work belongs to M3 unless a regression appears.
 
 ## Technical records
 
