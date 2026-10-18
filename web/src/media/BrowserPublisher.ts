@@ -12,13 +12,14 @@ export interface BrowserPublisherDependencies {
 interface Attempt {
   abort: AbortController; stream: MediaStream | null; grant: PublishReservation | null; transport: PublicationTransport | null;
   handlers: Map<MediaStreamTrack, () => void>; renewal: ReturnType<typeof setTimeout> | null; cutoff: ReturnType<typeof setTimeout> | null;
-  deadline: number; observed: boolean;
+  deadline: number; observed: boolean; observedBeforeGrant: Set<string>;
 }
 export class BrowserPublisher {
   private current: Attempt | null = null;
   private stopping: Promise<void> | null = null;
   private snapshot: PublisherSnapshot = { phase: "idle", streamId: null, hasAudio: false, error: null };
   private revision = -1;
+  private latestRoom: RoomSnapshot | null = null;
   constructor(private readonly deps: BrowserPublisherDependencies, private readonly changed: (state: PublisherSnapshot) => void) {}
   private update(value: Partial<PublisherSnapshot>) { this.snapshot = { ...this.snapshot, ...value }; this.changed({ ...this.snapshot }); }
   private valid(a: Attempt): boolean { return this.current === a && !a.abort.signal.aborted; }
@@ -28,7 +29,7 @@ export class BrowserPublisher {
     if (!this.deps.secureContext || !this.deps.capture || !Number.isFinite(expires) || expires <= Date.now()) {
       this.update({ phase: "idle", error: "Screen sharing requires a supported browser, HTTPS (or localhost) and an active room session." }); return;
     }
-    const a: Attempt = { abort: new AbortController(), stream: null, grant: null, transport: null, handlers: new Map(), renewal: null, cutoff: null, deadline: Infinity, observed: false };
+    const a: Attempt = { abort: new AbortController(), stream: null, grant: null, transport: null, handlers: new Map(), renewal: null, cutoff: null, deadline: Infinity, observed: false, observedBeforeGrant: new Set() };
     this.current = a; this.update({ phase: "choosing", error: null, streamId: null, hasAudio: false });
     try {
       // This callback must synchronously mute mounted room players before the
@@ -56,6 +57,14 @@ export class BrowserPublisher {
       const grant = await this.deps.api.reservePublication(AbortSignal.any([a.abort.signal, AbortSignal.timeout(15000)]));
       if (!this.valid(a)) { await this.releaseReservation(grant); return; }
       a.grant = grant; a.deadline = reservedAt + 50000; this.update({ streamId: grant.streamId });
+      // The host broadcasts creation before replying to reservePublication.
+      // Recover that observation only after a successful create-only grant
+      // identifies our stream; never adopt an ID merely from a room snapshot.
+      a.observed = a.observedBeforeGrant.has(grant.streamId) || Boolean(this.latestRoom?.streams.some(s => s.streamId === grant.streamId));
+      a.observedBeforeGrant.clear();
+      if (a.observed && this.latestRoom && !this.latestRoom.streams.some(s => s.streamId === grant.streamId)) {
+        await this.finish(a, "The publication was removed. Start sharing again."); return;
+      }
       this.scheduleCutoff(a); this.scheduleRenewal(a);
       if (!this.valid(a)) return;
       a.transport = this.deps.createTransport(() => { if (this.valid(a)) void this.finish(a, "The broadcast connection ended. Start sharing again to reconnect."); });
@@ -98,8 +107,14 @@ export class BrowserPublisher {
     if (this.valid(a)) this.scheduleRenewal(a);
   }
   reconcile(room: RoomSnapshot): void {
-    if (room.revision <= this.revision) return; this.revision = room.revision;
-    const a = this.current; if (!a?.grant) return;
+    if (room.revision <= this.revision) return; this.revision = room.revision; this.latestRoom = room;
+    const a = this.current; if (!a) return;
+    if (!a.grant) {
+      // Retain IDs only during the bounded reservation request, not while a
+      // permission chooser can remain open indefinitely. They confer no rights.
+      if (this.snapshot.phase === "starting") for (const stream of room.streams) a.observedBeforeGrant.add(stream.streamId);
+      return;
+    }
     if (room.streams.some(s => s.streamId === a.grant!.streamId)) a.observed = true;
     else if (a.observed) void this.finish(a, "The publication was removed. Start sharing again.");
   }

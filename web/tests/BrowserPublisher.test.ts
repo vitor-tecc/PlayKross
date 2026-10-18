@@ -79,6 +79,20 @@ it("SnapshotBeforeReservationAndOutOfOrderSnapshotsDoNotCancelStart", async () =
   c.publisher.reconcile(room(3)); c.publisher.reconcile(room(2, false)); expect(c.state().phase).toBe("live");
   c.publisher.reconcile(room(4, false)); await vi.waitFor(() => expect(c.state().phase).toBe("idle"));
 });
+it.each([false, true])("PreGrantCreationObservationSurvivesUntilOwnedRemoval: removalBeforeGrant=%s", async removalBeforeGrant => {
+  const c = setup(), reservation = deferred<typeof grant>(), requested = deferred<void>();
+  c.api.reservePublication.mockImplementationOnce(async () => { requested.resolve(); return reservation.promise; });
+  const start = c.publisher.start(false); await requested.promise;
+  c.publisher.reconcile(room(2));
+  if (removalBeforeGrant) c.publisher.reconcile(room(3, false));
+  reservation.resolve(grant); await start;
+  c.publisher.reconcile(room(2)); // An equal-revision renewal must not erase creation evidence.
+  if (!removalBeforeGrant) c.publisher.reconcile(room(3, false));
+  expect(c.stream.tracks[0]!.stop).toHaveBeenCalledOnce();
+  await vi.waitFor(() => expect(c.state().phase).toBe("idle"));
+  expect(c.api.stopPublication.mock.calls.map(call => call[0])).toEqual([grant.streamId]);
+  if (removalBeforeGrant) expect(c.transport.start).not.toHaveBeenCalled();
+});
 it.each(["insecure", "unsupported", "expired", "missing-video"])("UnavailableCaptureDoesNotReserve: %s", async reason => {
   const c = setup(); if (reason === "insecure") c.deps.secureContext = false; if (reason === "unsupported") c.deps.capture = undefined;
   if (reason === "expired") c.deps.sessionExpiresAt = "2000-01-01T00:00:00Z"; if (reason === "missing-video") c.stream.tracks = [];
