@@ -2,13 +2,13 @@
 
 Investigated 2026-10-18 against source `9c279a9` plus the first M3 interface/cursor slice. These are implementation notes and feasibility answers, not claims that browser publishing or AMD/Intel native encoders have shipped.
 
-**Scope revision, 2026-10-18:** AMD AMF H.264 compatibility is now M3's main goal. Shared lower-quality previews/transcoding are scrapped to prioritize broadcaster CPU/GPU workload and game performance. Intel Quick Sync is deferred because the current friend group does not need Intel GPUs. Browser publishing remains a separate feasibility topic. See [the current M3 handoff](../M3-HANDOFF.md).
+**Scope revision, 2026-10-18:** AMD AMF H.264 compatibility is now M3's main goal, and publishing directly from the website using browser capture is an additional M3 feature. Both implementations remain pending. Shared lower-quality previews/transcoding are scrapped to prioritize broadcaster CPU/GPU workload and game performance. Intel Quick Sync is deferred because the current friend group does not need Intel GPUs. See [the current M3 handoff](../M3-HANDOFF.md).
 
 ## Broadcasting entirely from the website
 
 Watching already works in the website. Broadcasting there needs a new browser publisher. The current React app contains WHEP receiving, but no screen-capture or WHIP publishing flow. The host already exposes authenticated publication reservations (`POST /api/streams`), renewal/stop and an authenticated WHIP proxy; those can be reused while preserving one publication per session and ownership/revocation.
 
-A browser publisher would need:
+The planned M3 browser publisher needs:
 
 1. A user-initiated Share screen/window/tab control using `getDisplayMedia()` over HTTPS (localhost is suitable for development). Every new capture requires the browser's source/permission chooser; the website cannot silently choose a source.
 2. A WHIP sender around `RTCPeerConnection`: attach screen video and optional supported capture-audio tracks, negotiate compatible media (prefer the existing H.264/Opus path), exchange SDP with the granted endpoint, handle ICE and clean up the WHIP resource.

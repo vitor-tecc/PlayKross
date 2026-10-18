@@ -8,9 +8,21 @@ The owner scrapped shared lower-quality previews and made **AMD AMF H.264 hardwa
 
 The priority is minimal CPU/GPU workload on a broadcaster who may also be gaming and hosting the room. Preserve one shared H.264/Opus encoding pipeline per broadcaster, existing NVIDIA NVENC support and explicitly enabled CPU fallback. Do not introduce an additional preview encode, server transcoding worker, per-viewer encoding or automatic CPU fallback. Hardware encoding does not guarantee zero game impact; report measured effects where evidence exists.
 
-M3's remaining work is to implement AMD hardware initialization/configuration, accurately report the active encoder, provide clear unsupported-driver/hardware failures, and validate the packaged path on real AMD hardware. Preserve browser/WebView playback, audio modes, start/stop/restart and concurrent broadcasting. Check game/frame-time impact on the AMD test system without inventing a universal numerical performance guarantee. Code-only tests or an AMD encoder listed in capabilities do not establish working AMD broadcasting. AMD implementation and live hardware acceptance are **pending**; this scope update does not claim they are complete.
+The AMD work is to implement hardware initialization/configuration, accurately report the active encoder, provide clear unsupported-driver/hardware failures, and validate the packaged path on real AMD hardware. Preserve browser/WebView playback, audio modes, start/stop/restart and concurrent broadcasting. Check game/frame-time impact on the AMD test system without inventing a universal numerical performance guarantee. Code-only tests or an AMD encoder listed in capabilities do not establish working AMD broadcasting. AMD implementation and live hardware acceptance are **pending**; this scope update does not claim they are complete.
 
-Further grid/subscription polish, browser publishing, permanent hosting and Intel support are not M3 acceptance requirements under this revision. [Publishing and compatibility notes](setup/publishing-and-compatibility.md) retain the earlier feasibility context and identify the new AMD priority.
+Further grid/subscription polish, permanent hosting and Intel support are not M3 acceptance requirements under this revision. [Publishing and compatibility notes](setup/publishing-and-compatibility.md) retain implementation context for AMD and the browser feature below.
+
+## Additional M3 feature — start broadcasting in the browser
+
+The owner added the ability to start a broadcast directly from the website using the browser's own capture method (`getDisplayMedia()`), alongside native AMD compatibility. A browser broadcaster must not need the PlayKross desktop app or its OBS helper. AMD AMF remains the main M3 goal; this is an additional deliverable. Implementation and real-browser acceptance are **pending**.
+
+- Provide explicit Start/Stop sharing controls and the browser's permission/source chooser for screen, window or tab capture where supported. Require a secure context (HTTPS or suitable localhost development), handle permission denial/cancellation, and never start capture automatically.
+- Publish the browser-captured tracks through the existing authenticated room/WHIP media flow. Preserve ownership, one publication per session, publication renewal, stop/restart and concurrent native/browser broadcasters. Reuse the single-feed distribution approach; do not add previews, simulcast renditions or per-viewer encoding.
+- Offer opt-in captured audio only where the browser/OS/source supports it, explain when audio is unavailable, and preserve the no-microphone scope. Browser capture does not promise the native app's per-process audio selection/isolation. Account for room-playback feedback when broadcasting while watching.
+- Handle the browser's own Stop sharing action, ended tracks, failures, page departure and publication cleanup. Failed or cancelled starts must release owned capture/media resources and any publication reservation.
+- Validate actual video and available audio in supported browsers, native/browser coexistence, broadcasting while watching, restart and cleanup. Record browser/OS limitations and observed CPU/GPU/game impact. Browser-selected encoding does not guarantee AMF/NVENC use or zero game interference; native AMD encoder settings do not control the browser's encoder.
+
+See [browser publishing implementation notes](setup/publishing-and-compatibility.md#broadcasting-entirely-from-the-website). The existing website currently receives broadcasts only; this scope addition is not a claim that browser publishing has shipped.
 
 ## Initial interface/cursor slice
 
@@ -21,9 +33,9 @@ The owner approved this bounded design in chat:
 - Bound the website volume track to 80 CSS pixels, allowing it to shrink in narrow cards. Keep the percentage where space permits, independent per-stream volume, keyboard control and fullscreen behavior.
 - Make verification, commit, push and a GitHub pull request the default delivery workflow in `AGENTS.md`, with private/generated runtime content excluded.
 
-Grid/focus, independent volume and overlay controls already shipped during M2. Do not redo them. The initial interface/cursor slice remains delivered work; it does not complete the revised AMD milestone.
+Grid/focus, independent volume and overlay controls already shipped during M2. Do not redo them. The initial interface/cursor slice remains delivered work; it does not complete the revised AMD/browser milestone.
 
-The earlier questions about browser publishing, clone-based self-hosting and non-NVIDIA encoding were initially feasibility-only. AMD AMF H.264 is now the explicitly requested M3 goal; browser publishing and Intel remain separate. No viewer quota or bandwidth-admission system is introduced.
+The earlier questions about browser publishing, clone-based self-hosting and non-NVIDIA encoding were initially feasibility-only. AMD AMF H.264 is now M3's main goal and browser publishing is an explicitly requested additional M3 feature. Intel remains deferred. No viewer quota or bandwidth-admission system is introduced.
 
 ## Verification and delivery
 

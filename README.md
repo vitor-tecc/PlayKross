@@ -37,7 +37,7 @@ Use **Leave room** for immediate departure. A closed browser or lost connection 
 
 [Fresh Windows setup](docs/setup/windows.md) · [Friends outside your home / no domain](docs/setup/internet.md) · [Measurements and pending acceptance](docs/validation/milestone-1-results.md) · [Diagnostic field meanings](docs/validation/room-diagnostics.md) · [Approved architecture](docs/superpowers/specs/2026-10-13-screen-sharing-design.md) · [Implementation plan](docs/superpowers/plans/2026-10-13-milestone-1.md)
 
-Each broadcaster has one shared encoder pipeline; the media server forwards copies to viewers. Upload and viewer decoding needs grow with active streams. M3 now prioritizes AMD AMF H.264 broadcasting with minimal game impact; AMD implementation is pending and Intel support is deferred. Shared lower-quality previews have been scrapped to avoid additional encoding workload. Separate viewer quality levels are not implemented; slower viewers may stall or discard frames.
+Each broadcaster has one shared encoder pipeline; the media server forwards copies to viewers. Upload and viewer decoding needs grow with active streams. M3 now prioritizes AMD AMF H.264 broadcasting with minimal game impact and also includes starting broadcasts from the website using browser capture. AMD and browser publishing implementations are pending; Intel support is deferred. Shared lower-quality previews have been scrapped to avoid additional encoding workload. Separate viewer quality levels are not implemented; slower viewers may stall or discard frames.
 
 ```powershell
 ./scripts/Verify.ps1 -Mode Automated
