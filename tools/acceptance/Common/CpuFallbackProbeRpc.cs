@@ -11,7 +11,7 @@ public sealed class CpuFallbackProbeRpc(IObsRpcClient inner) : IObsRpcClient, IA
         if (type != "CallVendorRequest" || !data.TryGetProperty("requestType", out var request) || request.GetString() != "GetCapabilities") return result;
         var json = JsonNode.Parse(result.GetRawText())!;
         var encoders = json["responseData"]!["encoders"]!.AsArray();
-        foreach (var encoder in encoders.Where(e => e?["id"]?.GetValue<string>() == "obs_nvenc_h264_tex").ToArray()) encoders.Remove(encoder);
+        foreach (var encoder in encoders.Where(e => e?["id"]?.GetValue<string>() is "obs_nvenc_h264_tex" or "h264_texture_amf").ToArray()) encoders.Remove(encoder);
         return JsonSerializer.SerializeToElement(json);
     }
     public ValueTask DisposeAsync() => inner is IAsyncDisposable disposable ? disposable.DisposeAsync() : ValueTask.CompletedTask;

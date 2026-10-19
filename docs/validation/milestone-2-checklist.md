@@ -1,5 +1,7 @@
 # M2 functional acceptance
 
+**Closure:** on 2026-10-18 the project owner confirmed all remaining functional cases were tested and work as intended. M2 is accepted; see [the results addendum](milestone-2-results.md). The procedure below is retained for future regressions, with original automated outcomes preserved.
+
 Record UTC date, source revision, package SHA-256, OS/browser/encoder, requested/applied settings, capture mode and evidence artifact directory for every run. Mark each item PASS, FAIL or PENDING with a concrete reason. M1 results and its strict-exclusion/benchmark validator are historical.
 
 Prepare a fresh matching ZIP and extract it twice into distinct writable roots. Do not copy the repository/cache, reuse personal OBS or remove supplied roots. Stop the owned broadcaster before installing a rebuilt native plugin. The runner locks each root, uses a shared local host, separate helper profiles/identities/control files, scoped environment variables and only cleans its own process identities.

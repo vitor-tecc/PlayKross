@@ -1,7 +1,7 @@
 # Shared archive/file boundaries; dot-sourcing this file never builds or launches anything.
 function Test-PortableNativeSourcePath([string]$Path) {
     if($Path -match '(^|/)\.\.(/|$)'){return $false}
-    return $Path -match '^(?:(?:src|include|tests)/[^/]+\.(?:cpp|hpp|h)|tests/audio-harness/(?:ModuleState\.hpp|obs-frontend-api\.h|util/platform\.h)|CMakeLists\.txt|LICENSE|README\.md|NOTICE\.md)$'
+    return $Path -match '^(?:(?:src|include|tests)/[^/]+\.(?:cpp|hpp|h)|tests/audio-harness/(?:ModuleState\.hpp|obs-frontend-api\.h|util/platform\.h)|tests/pipeline-harness/(?:ModuleState\.hpp|NativeDiagnostics\.hpp|util/platform\.h)|CMakeLists\.txt|LICENSE|README\.md|NOTICE\.md)$'
 }
 function Assert-PortableRelativePath {
     param([Parameter(Mandatory)][string]$Path)

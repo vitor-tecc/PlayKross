@@ -53,14 +53,24 @@ void Describe(obs_data_t* response) {
     // These are only this broadcaster's owned shared pipeline encoders.
     obs_data_set_int(response, "activeVideoEncoders", video && obs_encoder_active(video) ? 1 : 0);
     obs_data_set_int(response, "activeAudioEncoders", audio && obs_encoder_active(audio) ? 1 : 0);
+    obs_data_set_bool(response, "hardwareInitialized", false);
     if (!video) return;
     const char* id = obs_encoder_get_id(video);
+    const bool amf = strcmp(id, "h264_texture_amf") == 0;
+    const bool nvenc = strcmp(id, "obs_nvenc_h264_tex") == 0 || strcmp(id, "obs_nvenc_h264_soft") == 0;
     obs_data_set_string(response, "encoder", id); obs_data_set_string(response, "codec", obs_encoder_get_codec(video));
-    obs_data_set_bool(response, "hardwareInitialized", initialized && (strcmp(id, "obs_nvenc_h264_tex") == 0 || strcmp(id, "obs_nvenc_h264_soft") == 0));
+    obs_data_set_bool(response, "hardwareInitialized", initialized && (nvenc || amf));
+    obs_data_set_string(response, "encoderFamily", amf ? "amf" : nvenc ? "nvenc" : "x264");
+    // OBS returns orig_info for ID/caps even after AMF's internal frame-upload
+    // reroute. Initialization proves the encoder family, never zero-copy input.
+    obs_data_set_string(response, "encoderTransferRoute", "unverified");
     auto* settings = obs_encoder_get_settings(video);
     obs_data_set_int(response, "bitrateKbps", obs_data_get_int(settings, "bitrate"));
     obs_data_set_int(response, "bFrames", obs_data_get_int(settings, "bf")); obs_data_set_bool(response, "lookahead", obs_data_get_bool(settings, "lookahead"));
     obs_data_set_bool(response, "repeatHeaders", obs_data_get_bool(settings, "repeat_headers"));
+    obs_data_set_string(response, "preset", obs_data_get_string(settings, "preset"));
+    obs_data_set_bool(response, "preAnalysis", obs_data_get_bool(settings, "pre_analysis"));
+    obs_data_set_string(response, "amfOptions", obs_data_get_string(settings, "ffmpeg_opts"));
     obs_data_release(settings);
     if (output) {
         obs_data_set_int(response, "sentMediaBytes", static_cast<long long>(obs_output_get_total_bytes(output)));
@@ -77,7 +87,7 @@ void Prepare(obs_data_t* request, obs_data_t* response, void*) {
     const std::string id = obs_data_get_string(request, "encoder");
     const auto bitrate = obs_data_get_int(request, "bitrateKbps");
     const auto requested_generation = obs_data_get_int(request, "generation");
-    if ((id != "obs_nvenc_h264_tex" && id != "obs_x264") || bitrate < 1000 || bitrate > 25000 || bitrate % 500 || requested_generation <= 0) {
+    if ((id != "obs_nvenc_h264_tex" && id != "h264_texture_amf" && id != "obs_x264") || bitrate < 1000 || bitrate > 25000 || bitrate % 500 || requested_generation <= 0) {
         obs_data_set_bool(response, "success", false); obs_data_set_string(response, "error", "Invalid typed encoder configuration."); return;
     }
     auto* settings = obs_data_create();
@@ -88,6 +98,13 @@ void Prepare(obs_data_t* request, obs_data_t* response, void*) {
     obs_data_set_bool(settings, "repeat_headers", true);
     obs_data_set_string(settings, "profile", "high");
     if (id == "obs_x264") { obs_data_set_string(settings, "preset", "veryfast"); obs_data_set_string(settings, "tune", "zerolatency"); obs_data_set_string(settings, "x264opts", "bframes=0:rc-lookahead=0:sync-lookahead=0"); }
+    else if (id == "h264_texture_amf") {
+        obs_data_set_string(settings, "preset", "speed");
+        obs_data_set_bool(settings, "pre_analysis", false);
+        // OBS 32.2.2's preanalysis option controls PREENCODE_ENABLE, distinct
+        // from pre_analysis. Override both expensive defaults before Init.
+        obs_data_set_string(settings, "ffmpeg_opts", "usage=lowlatency preanalysis=false vbaq=false");
+    }
     else { obs_data_set_string(settings, "preset", "p4"); obs_data_set_string(settings, "tune", "ll"); obs_data_set_string(settings, "multipass", "disabled"); obs_data_set_bool(settings, "adaptive_quantization", false); }
     video = obs_video_encoder_create(id.c_str(), "JK Shared Video", settings, nullptr); obs_data_release(settings);
     auto* audio_settings = obs_data_create(); obs_data_set_int(audio_settings, "bitrate", 128);

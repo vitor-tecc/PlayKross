@@ -6,7 +6,7 @@ For code work while using the PC, run `./scripts/Verify.ps1 -Mode CodeOnly`. Thi
 
 Use Windows 11 x64 (tested build 26200). Process-loopback APIs need Windows build 20348 or newer; native capture currently targets SDK 10.0.26100, and broadcasting is Windows-only. Browser viewers can use other operating systems, subject to actual browser/codec tests.
 
-Install PowerShell 7.4+, Git, Node.js 24 LTS with npm, and Visual Studio C++ Desktop Build Tools including CMake, x64 MSVC and Windows 11 SDK 10.0.26100 or newer. The scripts recognize Visual Studio 2022/2026 generators. Microsoft Evergreen WebView2 is needed for **Watch in app**; [Microsoft runtime distribution](https://learn.microsoft.com/en-us/microsoft-edge/webview2/concepts/distribution) explains installation. NVIDIA's working driver/NVENC support is required for the default encoder. CPU fallback is an explicit opt-in and needs its own performance check.
+Install PowerShell 7.4+, Git, Node.js 24 LTS with npm, and Visual Studio C++ Desktop Build Tools including CMake, x64 MSVC and Windows 11 SDK 10.0.26100 or newer. The scripts recognize Visual Studio 2022/2026 generators. Microsoft Evergreen WebView2 is needed for **Watch in app**; [Microsoft runtime distribution](https://learn.microsoft.com/en-us/microsoft-edge/webview2/concepts/distribution) explains installation. Native source builds attempt compatible NVIDIA NVENC, then AMD AMF H.264 through the installed driver. CPU fallback is an explicit opt-in. AMD live validation remains pending; each hardware path needs its own performance check and matching native plugin/package.
 
 Open PowerShell in the repository. Do not run the app as administrator. Run:
 
@@ -67,7 +67,7 @@ The test downloads hash-pinned [Mozilla geckodriver0.37.1](https://github.com/mo
 | Component | Pin / purpose | Distribution considerations |
 |---|---|---|
 | .NET SDK/runtime | 10.0.401 / 10.0.12 | Microsoft .NET license/notices |
-| OBS / native plugin | 32.2.2 / shared NVENC H.264, Opus, WHIP | GPL-2.0-or-later; retain corresponding modified source and notices |
+| OBS / native plugin | 32.2.2 / shared NVENC or AMD AMF H.264, Opus, WHIP | GPL-2.0-or-later; retain corresponding modified source and notices |
 | MediaMTX | 1.21.2 / media forwarding | MIT, upstream notices |
 | WebView2 SDK | 1.0.4258.31 | Microsoft terms; runtime is separately installed Evergreen |
 | React / SignalR / Vite | exact web/package-lock.json | retain upstream licenses; development tools aren't media servers |

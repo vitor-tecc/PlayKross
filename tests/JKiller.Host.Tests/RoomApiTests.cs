@@ -7,6 +7,44 @@ namespace JKiller.Host.Tests;
 public sealed class RoomApiTests
 {
     [Fact]
+    public async Task CreateOnlyCannotAdoptOrRenewExistingPublication()
+    {
+        await using var host = await HostFixture.Start(); var owner = await host.Join();
+        var store = host.App.Services.GetRequiredService<JKiller.Host.Rooms.RoomStore>();
+        store.Connect(owner.SessionId, "publishing-tab");
+        using var first = await host.Client.SendAsync(host.Request(HttpMethod.Post, "/api/streams", owner.SessionToken));
+        var original = (await first.Content.ReadFromJsonAsync<PublishReservation>())!;
+        var revision = store.Snapshot(owner.SessionId).Revision;
+        host.Clock.Now = host.Clock.Now.AddSeconds(40);
+        using var rejected = await host.Client.SendAsync(host.Request(HttpMethod.Post, "/api/streams?requireNew=true", owner.SessionToken));
+        Assert.Equal(HttpStatusCode.Conflict, rejected.StatusCode);
+        Assert.Equal(revision, store.Snapshot(owner.SessionId).Revision);
+        Assert.Equal(original.StreamId, Assert.Single(store.Snapshot(owner.SessionId).Streams).StreamId);
+        host.Clock.Now = host.Clock.Now.AddSeconds(21); store.SweepExpired();
+        Assert.Empty(store.Snapshot(owner.SessionId).Streams);
+    }
+    [Fact]
+    public async Task ConcurrentCreateOnlyHasExactlyOneWinnerAndDoesNotLimitOtherOwners()
+    {
+        await using var host = await HostFixture.Start(); var owner = await host.Join(); var other = await host.Join();
+        var responses = await Task.WhenAll(Enumerable.Range(0, 2).Select(_ => host.Client.SendAsync(host.Request(HttpMethod.Post, "/api/streams?requireNew=true", owner.SessionToken))));
+        try {
+            Assert.Single(responses, r => r.StatusCode == HttpStatusCode.OK);
+            Assert.Single(responses, r => r.StatusCode == HttpStatusCode.Conflict);
+            using var independent = await host.Client.SendAsync(host.Request(HttpMethod.Post, "/api/streams?requireNew=true", other.SessionToken));
+            Assert.Equal(HttpStatusCode.OK, independent.StatusCode);
+        } finally { foreach (var response in responses) response.Dispose(); }
+    }
+    [Fact]
+    public async Task DefaultReservationRemainsIdempotentAfterCreateOnlyStart()
+    {
+        await using var host = await HostFixture.Start(); var owner = await host.Join();
+        using var first = await host.Client.SendAsync(host.Request(HttpMethod.Post, "/api/streams?requireNew=true", owner.SessionToken));
+        var original = (await first.Content.ReadFromJsonAsync<PublishReservation>())!;
+        using var next = await host.Client.SendAsync(host.Request(HttpMethod.Post, "/api/streams", owner.SessionToken));
+        Assert.Equal(original.StreamId, (await next.Content.ReadFromJsonAsync<PublishReservation>())!.StreamId);
+    }
+    [Fact]
     public async Task MultipleOwnersCanReserveWhileRejoiningBeyondTheFormerParticipantLimit()
     {
         await using var host = await HostFixture.Start(); var invite = host.Invite;

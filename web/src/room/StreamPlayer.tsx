@@ -5,7 +5,7 @@ import { observePlayer, type ViewerDiagnostics } from "../media/playerDiagnostic
 import { DiagnosticsPanel } from "./DiagnosticsPanel";
 import { useFullscreenChrome } from "./useFullscreenChrome";
 import { ConnectionDiagnostics } from "./ConnectionDiagnostics";
-export interface StreamPlayerProps { streamId: string; nickname: string; getPlayback: (id: string, signal: AbortSignal) => Promise<PlaybackGrant>; audioBlocked?: boolean; focused?: boolean; onFocusStream?: () => void }
+export interface StreamPlayerProps { streamId: string; nickname: string; getPlayback: (id: string, signal: AbortSignal) => Promise<PlaybackGrant>; audioBlocked?: boolean; audioBlockedReason?: string; focused?: boolean; onFocusStream?: () => void }
 type IconName = "eye" | "stop" | "play" | "sound" | "mute" | "fullscreen" | "focus" | "grid" | "retry";
 function Icon({ name }: { name: IconName }) {
   const paths: Record<IconName, React.ReactNode> = {
@@ -21,7 +21,7 @@ function Icon({ name }: { name: IconName }) {
   };
   return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{paths[name]}</svg>;
 }
-export function StreamPlayer({ streamId, nickname, getPlayback, audioBlocked = false, focused = false, onFocusStream }: StreamPlayerProps) {
+export function StreamPlayer({ streamId, nickname, getPlayback, audioBlocked = false, audioBlockedReason, focused = false, onFocusStream }: StreamPlayerProps) {
   const panel = useRef<HTMLDivElement>(null); const video = useRef<HTMLVideoElement>(null);
   const [watch, setWatch] = useState(false); const [retry, setRetry] = useState(0); const [sound, setSound] = useState(false);
   const [status, setStatus] = useState("Ready to watch"); const [error, setError] = useState(false); const [fullscreen, setFullscreen] = useState(false);
@@ -94,10 +94,10 @@ export function StreamPlayer({ streamId, nickname, getPlayback, audioBlocked = f
     <div className="video-surface"><video ref={video} autoPlay playsInline muted={audioBlocked || !sound} aria-label={`${nickname}'s stream`} onPlaying={() => setStatus("Playing")} onWaiting={() => watch && setStatus("Waiting for frames")} />{!watch && <div className="stream-placeholder" aria-hidden="true"><Icon name="eye" /></div>}{onFocusStream && !fullscreen && <button className="video-focus-target" aria-label={focused ? `Return ${nickname}'s stream to grid` : `Focus ${nickname}'s stream`} title={focused ? "Return to grid" : "Focus stream"} onClick={onFocusStream} />}</div>
     <div className="stream-overlay stream-overlay-bottom" {...chrome.overlayProps}>
     <div className={`stream-status${error || status.includes("Press Play") ? " needs-attention" : ""}`} role="status">{status}</div>
-    {audioBlocked && <div className="stream-status needs-attention" role="status">Room sound is muted to prevent recapture. Stop system audio sharing to restore sound, or use application audio.</div>}
+    {audioBlocked && <div className="stream-status needs-attention" role="status">{audioBlockedReason ?? "Room sound is muted to prevent recapture. Stop system audio sharing to restore sound, or use application audio."}</div>}
     <div className="stream-controls">
       <button className="icon-button watch-control" aria-label={watch ? "Stop watching" : "Watch stream"} title={watch ? "Stop watching" : "Watch stream"} onClick={() => setWatch(!watch)}><Icon name={watch ? "stop" : "eye"} /></button>
-      {watch && <><button className="icon-button" aria-label="Play" title="Play" onClick={() => { void play(); }}><Icon name="play" /></button><button className="icon-button" disabled={audioBlocked} aria-label={sound && !audioBlocked ? "Mute" : "Enable sound"} title={audioBlocked ? "Stop system audio sharing to restore room sound." : sound ? "Mute" : "Enable sound"} onClick={() => { void play(true); }}><Icon name={sound && !audioBlocked ? "sound" : "mute"} /></button></>}
+      {watch && <><button className="icon-button" aria-label="Play" title="Play" onClick={() => { void play(); }}><Icon name="play" /></button><button className="icon-button" disabled={audioBlocked} aria-label={sound && !audioBlocked ? "Mute" : "Enable sound"} title={audioBlocked ? (audioBlockedReason ?? "Stop system audio sharing to restore room sound.") : sound ? "Mute" : "Enable sound"} onClick={() => { void play(true); }}><Icon name={sound && !audioBlocked ? "sound" : "mute"} /></button></>}
       <label className="volume-control" title={`Volume: ${volume}%`}><span className="sr-only">{nickname}'s volume</span><input type="range" min="0" max="100" step="1" value={volume} onChange={event => setVolume(Number(event.target.value))} aria-valuetext={`${volume}%`} /><output aria-hidden="true">{volume}%</output></label>
       {error && <button className="icon-button" aria-label="Retry" title="Retry" onClick={() => setRetry(value => value + 1)}><Icon name="retry" /></button>}
       <DiagnosticsPanel sample={diagnostics} />

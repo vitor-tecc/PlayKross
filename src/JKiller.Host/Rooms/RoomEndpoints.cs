@@ -40,9 +40,9 @@ public static class RoomEndpoints
         {
             var snapshot = rooms.Rename(SessionAuthenticationHandler.Require(context).SessionId, request.Nickname); await connections.SendAsync(hub, snapshot); return Results.Ok(snapshot);
         }).RequireAuthorization();
-        app.MapPost("/api/streams", async (HttpContext context, RoomStore rooms, IHubContext<RoomHub> hub, RoomConnections connections) =>
+        app.MapPost("/api/streams", async (bool? requireNew, HttpContext context, RoomStore rooms, IHubContext<RoomHub> hub, RoomConnections connections) =>
         {
-            var session = SessionAuthenticationHandler.Require(context); var stream = rooms.ReservePublish(session.SessionId);
+            var session = SessionAuthenticationHandler.Require(context); var stream = rooms.ReservePublish(session.SessionId, requireNew == true);
             await connections.SendAsync(hub, rooms.Snapshot(session.SessionId)); return Results.Ok(stream);
         }).RequireAuthorization();
         app.MapDelete("/api/streams/{id:guid}", async (Guid id, HttpContext context, RoomStore rooms, IHubContext<RoomHub> hub, RoomConnections connections) =>

@@ -2,11 +2,11 @@
 
 ![PlayKross](assets/branding/playkross-logo.png)
 
-Self-hosted Windows broadcasting with browser and in-app viewers. The M2 candidate supports concurrent broadcasters, independent stream playback, Windows Graphics Capture, shared H.264/Opus encoding and fullscreen controls that hide immediately and after two seconds of inactivity. Audio starts Off; explicitly choose Application or System output for monitor sharing. Microphone capture is absent.
+Self-hosted Windows broadcasting with browser and in-app viewers. PlayKross supports concurrent broadcasters, independent stream playback, Windows Graphics Capture, shared H.264/Opus encoding and fullscreen controls that hide immediately and after two seconds of inactivity. Audio starts Off; explicitly choose Application or System output for monitor sharing. Microphone capture is absent.
 
-**M1 accepted with known limitations (2026-10-16); M2 acceptance pending:** fixed room participant/publisher quotas have been removed, while each session still owns at most one publication. Functional evidence and remaining checks are recorded in [M2 results](docs/validation/milestone-2-results.md). No maximum capacity is proven. Startup stutters, strict audio isolation and external numerical characterization remain deferred. See the [current roadmap](docs/ROADMAP.md).
+**M1 accepted with known limitations (2026-10-16); M2 accepted after owner testing (2026-10-18); M3 in progress:** fixed room participant/publisher quotas have been removed, while each session still owns at most one publication. Functional evidence and the owner's sign-off are recorded in [M2 results](docs/validation/milestone-2-results.md). No maximum capacity is proven. Startup stutters, strict audio isolation and external numerical characterization remain deferred. See the [current roadmap](docs/ROADMAP.md) and [M3 handoff](docs/M3-HANDOFF.md).
 
-Project owner and contributor: [@vitor-tecc](https://github.com/vitor-tecc). See [contributors](CONTRIBUTORS.md) and the [M2 handoff](docs/M2-HANDOFF.md).
+Project owner and contributor: [@vitor-tecc](https://github.com/vitor-tecc). See [contributors](CONTRIBUTORS.md) and the [M3 handoff](docs/M3-HANDOFF.md).
 
 The [approved M2 design](docs/superpowers/specs/2026-10-16-milestone-2-design.md) uses small functional checks; no eight-viewer or large-group acceptance campaign is required. Scaling work follows observed problems.
 
@@ -25,7 +25,7 @@ Video/audio selections can be staged while live and applied with **Apply sources
 
 Browsers and shared application hosts can be explicitly selected for Application audio. Capture includes their child processes and can include other tabs, Discord running in a browser, and room playback. The Discord desktop app remains excluded from direct Application selection; individual browser tabs are not isolated. System output still captures the selected device's mixed audio, including Discord.
 
-In a browser, **Join room**, then click **Watch stream**; use **Enable sound** separately. For Firefox on this PC, start the server with `./scripts/Start-Local.ps1 -MediaInterface Ethernet` instead of default startup. This explicitly uses the Ethernet address for encrypted UDP media while the website/admin stay on localhost. Default loopback-only media was observed to fail in Firefox here, while Edge worked. See [Firefox local viewing](docs/setup/windows.md#firefox-on-the-host-pc) for scope and adapter selection.
+In a browser, **Join room**, then click **Watch stream**; use **Enable sound** separately. To broadcast from this browser, use **Start sharing** and its source chooser over HTTPS or localhost; **Share captured audio** is optional and source/browser-dependent. Use **Stop sharing** to end it. No microphone or desktop helper is requested. See [browser publishing](docs/setup/publishing-and-compatibility.md#broadcasting-entirely-from-the-website) for limits and pending live validation. For Firefox on this PC, start the server with `./scripts/Start-Local.ps1 -MediaInterface Ethernet` instead of default startup. This explicitly uses the Ethernet address for encrypted UDP media while the website/admin stay on localhost. Default loopback-only media was observed to fail in Firefox here, while Edge worked. See [Firefox local viewing](docs/setup/windows.md#firefox-on-the-host-pc) for scope and adapter selection.
 
 ```powershell
 ./scripts/Stop-Local.ps1
@@ -37,7 +37,7 @@ Use **Leave room** for immediate departure. A closed browser or lost connection 
 
 [Fresh Windows setup](docs/setup/windows.md) · [Friends outside your home / no domain](docs/setup/internet.md) · [Measurements and pending acceptance](docs/validation/milestone-1-results.md) · [Diagnostic field meanings](docs/validation/room-diagnostics.md) · [Approved architecture](docs/superpowers/specs/2026-10-13-screen-sharing-design.md) · [Implementation plan](docs/superpowers/plans/2026-10-13-milestone-1.md)
 
-Each broadcaster has one shared encoder pipeline; the media server forwards copies to viewers. Upload and viewer decoding needs grow with active streams. Shared previews and separate quality levels remain future work; slower viewers may stall or discard frames.
+Each broadcaster has one shared encoder pipeline; the media server forwards copies to viewers. Upload and viewer decoding needs grow with active streams. M3 now prioritizes AMD AMF H.264 broadcasting with minimal game impact and also includes starting broadcasts from the website using browser capture. AMD and browser publishing are implemented and code-only verified; real AMD/browser audio/video/game-impact acceptance remains pending. Intel support is deferred. Shared lower-quality previews have been scrapped to avoid additional encoding workload. Separate viewer quality levels are not implemented; slower viewers may stall or discard frames.
 
 ```powershell
 ./scripts/Verify.ps1 -Mode Automated

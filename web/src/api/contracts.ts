@@ -4,3 +4,4 @@ export interface RoomSnapshot { roomId: string; revision: number; participants: 
 export interface SessionGrant { roomId: string; sessionId: string; sessionToken: string; expiresAt: string; room: RoomSnapshot }
 export interface SessionOverview { sessionId: string; expiresAt: string; room: RoomSnapshot }
 export interface PlaybackGrant { streamId: string; path: string; whepUri: string; token: string; expiresAt: string }
+export interface PublishReservation { streamId: string; path: string; whipUri: string; token: string; expiresAt: string }

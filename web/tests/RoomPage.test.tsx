@@ -2,9 +2,68 @@ import { afterEach, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { RoomSnapshot } from "../src/api/contracts";
 import { RoomPage } from "../src/room/RoomPage";
-const api = vi.hoisted(() => ({ me: vi.fn(), join: vi.fn(), rename: vi.fn(), leave: vi.fn(), playback: vi.fn(), watchRoom: vi.fn(async (_changed: (room: RoomSnapshot) => void, _signal: AbortSignal) => async () => {}) }));
+import { grant, Stream, Track, deferred } from "./publisherFakes";
+const sender = vi.hoisted(() => ({ start: vi.fn(async () => {}), close: vi.fn(async () => {}) }));
+vi.mock("../src/media/WhipSession", () => ({ WhipSession: class { start = sender.start; close = sender.close; } }));
+const api = vi.hoisted(() => ({ me: vi.fn(), join: vi.fn(), rename: vi.fn(), leave: vi.fn(), playback: vi.fn(), reservePublication: vi.fn(), renewPublication: vi.fn(), stopPublication: vi.fn(), watchRoom: vi.fn(async (_changed: (room: RoomSnapshot) => void, _signal: AbortSignal) => async () => {}) }));
 vi.mock("../src/api/roomApi", () => ({ roomApi: api, RoomApiError: class extends Error { status = 401; } }));
 afterEach(() => { cleanup(); delete window.playkrossPlaybackAudioBlocked; sessionStorage.clear(); history.replaceState(null, "", "/"); vi.clearAllMocks(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
+function sharingSetup() {
+  const stream = new Stream([new Track("video"), new Track("audio")]);
+  const capture = vi.fn(async () => stream.asMedia());
+  vi.stubGlobal("isSecureContext", true); vi.stubGlobal("navigator", { mediaDevices: { getDisplayMedia: capture } });
+  api.me.mockResolvedValue({ sessionId: "me", expiresAt: "2099-01-01T00:00:00Z", room: { roomId: "room", revision: 1, participants: [{ sessionId: "me", nickname: "Me" }], streams: [{ streamId: "other", ownerSessionId: "friend", nickname: "Friend", status: "live" }] } });
+  api.reservePublication.mockResolvedValue(grant); api.stopPublication.mockResolvedValue({ roomId: "room", revision: 3, participants: [], streams: [] });
+  vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(); vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => {});
+  return { stream, capture };
+}
+it("NoCaptureBeforeStartGestureAndStopWorksDuringChooser", async () => {
+  const c = sharingSetup(), chosen = deferred<MediaStream>(); c.capture.mockImplementation(() => chosen.promise);
+  render(<RoomPage />); const start = await screen.findByRole("button", { name: "Start sharing" }); expect(c.capture).not.toHaveBeenCalled();
+  fireEvent.click(start); expect(c.capture).toHaveBeenCalledOnce();
+  fireEvent.click(screen.getByRole("button", { name: "Stop sharing" }));
+  await act(async () => chosen.resolve(c.stream.asMedia()));
+  await waitFor(() => expect(c.stream.tracks[0]!.stop).toHaveBeenCalled()); expect(api.reservePublication).not.toHaveBeenCalled();
+});
+it("AudioMuteIsSynchronousAndRestoresPreferencesWithoutClearingNativeBlock", async () => {
+  const c = sharingSetup(), view = render(<RoomPage />); await screen.findByRole("button", { name: "Start sharing" });
+  const video = view.container.querySelector("video")!;
+  api.playback.mockResolvedValue({ streamId: "other" });
+  fireEvent.click(screen.getByRole("button", { name: "Watch stream" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Enable sound" }));
+  expect(video.muted).toBe(false);
+  fireEvent.change(screen.getByRole("slider", { name: "Friend's volume" }), { target: { value: "35" } });
+  fireEvent.click(screen.getByLabelText("Share captured audio"));
+  let mutedAtCapture = false;
+  c.capture.mockImplementation(async () => { mutedAtCapture = video.muted; return c.stream.asMedia(); });
+  fireEvent.click(screen.getByRole("button", { name: "Start sharing" })); expect(mutedAtCapture).toBe(true); await screen.findByText("Sharing video and captured audio");
+  await act(async () => { window.playkrossPlaybackAudioBlocked = true; window.dispatchEvent(new CustomEvent("playkross-playback-audio-blocked", { detail: true })); });
+  fireEvent.click(screen.getByRole("button", { name: "Stop sharing" })); await waitFor(() => expect(c.stream.tracks[0]!.stop).toHaveBeenCalled());
+  expect(video.muted).toBe(true); expect(video.volume).toBe(.35);
+  await act(async () => { window.playkrossPlaybackAudioBlocked = false; window.dispatchEvent(new CustomEvent("playkross-playback-audio-blocked", { detail: false })); });
+  expect(video.muted).toBe(false); expect(video.volume).toBe(.35);
+});
+it("OwnPublicationDoesNotCreateAViewerAndViewingTabDepartureDoesNotLeave", async () => {
+  sharingSetup(); let changed!: (room: RoomSnapshot) => void; api.watchRoom.mockImplementationOnce(async update => { changed = update; return async () => {}; });
+  const view = render(<RoomPage />); fireEvent.click(await screen.findByRole("button", { name: "Start sharing" })); await screen.findByText("Sharing video only");
+  await act(async () => changed({ roomId: "room", revision: 2, participants: [], streams: [{ streamId: grant.streamId, ownerSessionId: "me", nickname: "Me", status: "live" }] }));
+  const own = view.container.querySelector(`[data-stream-id="${grant.streamId}"]`)!;
+  expect(own).not.toBeNull(); expect(own.querySelector("video")).toBeNull(); expect(api.playback).not.toHaveBeenCalled();
+  await act(async () => window.dispatchEvent(new Event("pagehide"))); expect(api.stopPublication).toHaveBeenCalledOnce(); expect(api.leave).not.toHaveBeenCalled();
+});
+it("LeavingStopsOwnedCaptureBeforeMembershipRelease", async () => {
+  const c = sharingSetup(); api.leave.mockImplementation(async () => { expect(c.stream.tracks[0]!.stop).toHaveBeenCalledOnce(); expect(sender.close).toHaveBeenCalled(); return {}; });
+  render(<RoomPage />); fireEvent.click(await screen.findByRole("button", { name: "Start sharing" })); await screen.findByText("Sharing video only");
+  fireEvent.click(screen.getByRole("button", { name: "Leave room" })); await waitFor(() => expect(api.leave).toHaveBeenCalled());
+});
+it("ViewingTabDepartureDoesNotStopAnotherTabsPublication", async () => {
+  sharingSetup();
+  api.me.mockResolvedValue({ sessionId: "me", expiresAt: "2099-01-01T00:00:00Z", room: { roomId: "room", revision: 2, participants: [], streams: [{ streamId: grant.streamId, ownerSessionId: "me", nickname: "Me", status: "live" }] } });
+  render(<RoomPage />); await screen.findByRole("button", { name: "Start sharing" });
+  expect(screen.queryByRole("button", { name: "Stop sharing" })).toBeNull();
+  await act(async () => window.dispatchEvent(new Event("pagehide")));
+  expect(api.stopPublication).not.toHaveBeenCalled(); expect(api.leave).not.toHaveBeenCalled();
+});
 it("AnExplicitInvitationSelectsItsRoomInsteadOfRestoringAnotherRoom", async () => {
   history.replaceState(null, "", "/#invite=new-invitation");
   api.me.mockResolvedValue({ sessionId: "old-session", expiresAt: "later", room: { roomId: "old-room", revision: 1, participants: [{ sessionId: "old-session", nickname: "friend" }], streams: [] } });

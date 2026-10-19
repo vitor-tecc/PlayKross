@@ -2,6 +2,12 @@ $ErrorActionPreference = 'Stop'
 $helper = Join-Path $PSScriptRoot '../../scripts/PortablePackageTools.ps1'
 if (-not (Test-Path -LiteralPath $helper)) { throw 'Portable packaging safety implementation is missing.' }
 . $helper
+foreach ($sourcePath in @('tests/pipeline-harness/ModuleState.hpp','tests/pipeline-harness/NativeDiagnostics.hpp','tests/pipeline-harness/util/platform.h')) {
+    if (-not (Test-PortableNativeSourcePath $sourcePath)) { throw "Required pipeline source omitted: $sourcePath" }
+}
+foreach ($sourcePath in @('tests/pipeline-harness/private.log','tests/pipeline-harness/../secret.hpp')) {
+    if (Test-PortableNativeSourcePath $sourcePath) { throw "Private or unsafe pipeline source accepted: $sourcePath" }
+}
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 
 # A missing path boundary could extract attacker-controlled archive entries outside staging.

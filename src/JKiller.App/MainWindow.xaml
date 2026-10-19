@@ -1,4 +1,4 @@
-<Window x:Class="JKiller.App.MainWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:controls="clr-namespace:JKiller.App.Controls" Title="PlayKross • Native broadcaster" Icon="Assets/playkross-logo.png" Width="980" Height="820" MinWidth="750" MinHeight="600" Closing="WindowClosing">
+<Window x:Class="JKiller.App.MainWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:controls="clr-namespace:JKiller.App.Controls" Style="{StaticResource PlayKrossWindowStyle}" Title="PlayKross • Native broadcaster" Icon="Assets/playkross-logo.png" Width="980" Height="820" MinWidth="750" MinHeight="600" Closing="WindowClosing">
   <ScrollViewer VerticalScrollBarVisibility="Auto"><StackPanel Margin="24">
     <StackPanel Orientation="Horizontal" Margin="0,0,0,10"><Image Source="Assets/playkross-logo.png" Width="76" Height="76" Margin="0,0,18,0"/><StackPanel VerticalAlignment="Center"><TextBlock FontSize="30" FontWeight="Bold" Text="PlayKross"/><TextBlock FontSize="18" Text="Share a window. Watch together."/></StackPanel></StackPanel>
     <TextBlock Margin="0,8,0,18" TextWrapping="Wrap" Text="Paste your host's room link to broadcast or watch together. The room host runs separately; viewers can also use a browser."/>
@@ -17,7 +17,7 @@
       <controls:AudioOutputPicker x:Name="AudioOutput" Style="{StaticResource {x:Type ComboBox}}" IsEnabled="False"/>
       <TextBlock TextWrapping="Wrap" Text="{Binding AudioEligibility.Reason}"/>
       <TextBlock Margin="0,8,0,0" TextWrapping="Wrap" Text="Application audio captures the selected app and its child processes. System output captures mixed playback from the selected device, including Discord. In-app room sound is muted during system sharing. External browsers and other playback can still be captured; route them to a different output or choose application audio. No microphone is captured. Initialized capture and counters do not prove viewer audibility."/>
-      <CheckBox x:Name="CpuFallbackChoice" Margin="0,12,0,0" IsChecked="{Binding AllowCpuFallback}" Content="Allow CPU encoding if NVENC initialization fails (may cost game performance)" ToolTip="Choose before starting a broadcast."/>
+      <CheckBox x:Name="CpuFallbackChoice" Margin="0,12,0,0" IsChecked="{Binding AllowCpuFallback}" Content="Allow CPU encoding if hardware initialization fails (may cost game performance)" ToolTip="Choose before starting a broadcast."/>
     </StackPanel>
     <StackPanel x:Name="SettingsControls"><TextBlock Margin="0,20,0,6" FontWeight="SemiBold" Text="Requested output settings"/>
       <WrapPanel><ComboBox x:Name="Resolution" Width="130" SelectedIndex="2" SelectionChanged="PresetChanged"><ComboBoxItem Content="480p" Tag="480"/><ComboBoxItem Content="720p" Tag="720"/><ComboBoxItem Content="1080p" Tag="1080"/></ComboBox>

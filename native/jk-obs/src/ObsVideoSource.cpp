@@ -125,7 +125,7 @@ void Tick(void* data, float) {
                 if (!api.supported()) throw std::runtime_error("Windows Graphics Capture unavailable.");
                 // Like the maintained stock source, initialize on OBS's graphics thread.
                 // This thread pumps the dispatcher required by the non-free-threaded frame pool.
-                c->capture = c->window ? api.window(FALSE, reinterpret_cast<HWND>(c->handle), TRUE, TRUE) : api.monitor(FALSE, reinterpret_cast<HMONITOR>(c->handle), TRUE);
+                c->capture = c->window ? api.window(TRUE, reinterpret_cast<HWND>(c->handle), TRUE, TRUE) : api.monitor(TRUE, reinterpret_cast<HMONITOR>(c->handle), TRUE);
                 if (!c->capture) throw std::runtime_error("Original capture item could not initialize.");
             } catch (const std::exception& error) { c->error = error.what(); c->lease->Seal(); }
         }

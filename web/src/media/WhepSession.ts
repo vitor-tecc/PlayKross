@@ -59,7 +59,9 @@ export class WhepSession {
       for (const kind of ["video", "audio"] as const) {
         const transceiver = this.peer.addTransceiver(kind, { direction: "recvonly" });
         if (typeof RTCRtpReceiver !== "undefined" && typeof transceiver.setCodecPreferences === "function") {
-          const codecs = RTCRtpReceiver.getCapabilities(kind)?.codecs.filter(codec => kind === "audio" ? codec.mimeType.toLowerCase() === "audio/opus" : ["video/h264", "video/rtx", "video/red", "video/ulpfec"].includes(codec.mimeType.toLowerCase()));
+          // MediaMTX 1.21.2 adds a PCMU placeholder to video-only streams. An
+          // Opus-only offer rejects that sender and fails the entire WHEP POST.
+          const codecs = RTCRtpReceiver.getCapabilities(kind)?.codecs.filter(codec => kind === "audio" ? ["audio/opus", "audio/pcmu"].includes(codec.mimeType.toLowerCase()) : ["video/h264", "video/rtx", "video/red", "video/ulpfec"].includes(codec.mimeType.toLowerCase()));
           if (codecs?.length) transceiver.setCodecPreferences(codecs);
         }
       }

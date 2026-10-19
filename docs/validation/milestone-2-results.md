@@ -1,4 +1,12 @@
-# M2 candidate results
+# M2 results — accepted
+
+## Owner acceptance — 2026-10-18
+
+The project owner confirmed that everything in the remaining closure list was tested and works as intended. This covers audible Application/System/Off in browser and WebView, the corrected browser Application-audio selection, full System-output publication and native playback mute/restoration, source/endpoint loss and pinned-device behavior through a default-device change, and manually operated browser fullscreen Escape. **M2 is accepted; M3 may proceed.**
+
+This is human functional sign-off. The owner did not identify a package hash, exact tested revision, device/browser matrix or numerical measurements. Do not attribute it to an older candidate ZIP or convert the historical failed/partial automation below into PASS. The known deferred isolation, startup-stutter, external-characterization and capacity limits remain unchanged. No new automated or media run was performed merely to record acceptance.
+
+## Historical candidate evidence — 2026-10-17
 
 2026-10-17 follow-up: the user reports the playback/interface features working as intended, except for browser Application audio being blocked. The obsolete managed/native denial is corrected in the [browser-audio follow-up](2026-10-17-browser-audio-followup.md), which also records the cursor-capture answer and a focused M2 closure list. This feedback does not identify which of the still-pending System/device-loss/listening cases below were exercised; retain their evidence limits.
 

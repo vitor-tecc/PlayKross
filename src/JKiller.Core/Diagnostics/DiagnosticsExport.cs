@@ -12,7 +12,9 @@ public static class DiagnosticsExport
     private static readonly Dictionary<string, HashSet<string>> Metadata = new(StringComparer.Ordinal) {
         ["audioMode"] = new(["off", "application", "system-output"], StringComparer.Ordinal),
         ["codec"] = new(["h264", "H264", "opus", "video/H264", "audio/opus", "video/VP8", "video/VP9", "video/AV1"], StringComparer.Ordinal),
-        ["encoder"] = new(["obs_nvenc_h264_tex", "obs_x264"], StringComparer.Ordinal),
+        ["encoder"] = new(["obs_nvenc_h264_tex", "h264_texture_amf", "obs_x264"], StringComparer.Ordinal),
+        ["encoderFamily"] = new(["nvenc", "amf", "x264"], StringComparer.Ordinal),
+        ["encoderTransferRoute"] = new(["unverified"], StringComparer.Ordinal),
         ["captureApi"] = new(["Windows Graphics Capture", "Windows Graphics Capture / D3D11 texture", "WGC"], StringComparer.Ordinal),
         ["connectionPath"] = new(["unknown", "direct", "relayed"], StringComparer.Ordinal),
         ["hardwareInitialized"] = new(["true", "false"], StringComparer.Ordinal),
