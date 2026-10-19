@@ -26,6 +26,8 @@ The owner added the ability to start a broadcast directly from the website using
 
 See [browser publishing implementation notes](setup/publishing-and-compatibility.md#broadcasting-entirely-from-the-website). The website now contains the browser capture/WHIP flow; code-only and mocked UI checks do not establish live browser publication acceptance.
 
+Follow-up: the [video-only playback regression](validation/2026-10-18-m3-browser-playback.md) fixes WHEP POST 400 for browser publications without audio by accepting MediaMTX's PCMU placeholder in the viewer. Three real synthetic Edge protocol cases and a Firefox 158 receive check passed; actual display capture/audio and the remaining M3 live acceptance checks are still pending.
+
 ## Initial interface/cursor slice
 
 The owner approved this bounded design in chat:

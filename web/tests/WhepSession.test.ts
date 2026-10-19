@@ -1,6 +1,8 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { WhepSession, type WhepDependencies, type WhepDiagnostic } from "../src/media/WhepSession";
 import type { PlaybackGrant } from "../src/api/contracts";
+
+afterEach(() => vi.unstubAllGlobals());
 
 const grant: PlaybackGrant = { streamId: "id", path: "rooms/11111111111111111111111111111111/streams/22222222222222222222222222222222/main", whepUri: "/media/rooms/11111111111111111111111111111111/streams/22222222222222222222222222222222/main/whep", token: "media-credential", expiresAt: "2026-10-13T13:00:00Z" };
 class FakeStream {
@@ -32,6 +34,18 @@ function setup(response?: (request: RequestInfo | URL, init?: RequestInit) => Pr
   return { peer, stream, request, diagnostics, session: new WhepSession(deps, undefined, sample => diagnostics.push(sample)) };
 }
 describe("WHEP ownership", () => {
+  it("OffersOpusAndTheMediaMtxPcmuPlaceholderForVideoOnlyPublishers", async () => {
+    const context = setup();
+    const opus = { mimeType: "audio/opus", clockRate: 48000, channels: 2 };
+    const pcmu = { mimeType: "audio/PCMU", clockRate: 8000, channels: 1 };
+    vi.stubGlobal("RTCRtpReceiver", { getCapabilities: (kind: string) => ({ codecs: kind === "audio"
+      ? [opus, { mimeType: "audio/PCMA", clockRate: 8000 }, pcmu]
+      : [{ mimeType: "video/H264", clockRate: 90000 }] }) });
+    await context.session.start(grant, new AbortController().signal);
+    expect(context.peer.addTransceiver).toHaveBeenNthCalledWith(2, "audio", { direction: "recvonly" });
+    expect(context.peer.addTransceiver.mock.results[1]!.value.setCodecPreferences).toHaveBeenCalledWith([opus, pcmu]);
+    await context.session.close();
+  });
   it("SeparatesMissingMediaFromExpiredPermissionWithoutLeakingSignalingSecrets", async () => {
     const context = setup(async (_url, init) => init?.method === "POST"
       ? new Response('{"error":"no stream is available on path secret-path"}', { status: 404 })
