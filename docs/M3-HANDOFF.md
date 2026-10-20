@@ -30,6 +30,8 @@ Follow-up: the [video-only playback regression](validation/2026-10-18-m3-browser
 
 Browser quality update, 2026-10-20: capture now requests up to 1920x1080 at 60 fps and the single video sender has a 12 Mbps/60 fps ceiling. Browser/source/network adaptation still determines actual output. See the [1080p60 verification record](validation/2026-10-20-browser-1080p60.md); historical 720p30 evidence and remaining M3 live acceptance limits remain unchanged.
 
+Firefox follow-up: corrected eligible WHIP answers to advertise the pinned receiver's H.264 Level 4.2 capability instead of Level 3.1. Short synthetic Firefox 158.0.1 publication through MediaMTX 1.21.2 now encodes/decodes 1920x1080 at approximately 60 fps. The [Firefox report](validation/2026-10-20-firefox-1080p60.md) records the reproducible cause, correction and measurement limits; actual display/audio and remaining M3 acceptance are still pending. The host must be rebuilt/restarted to load the correction.
+
 ## Initial interface/cursor slice
 
 The owner approved this bounded design in chat:
