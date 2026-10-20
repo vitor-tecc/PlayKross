@@ -43,6 +43,8 @@ The earlier questions about browser publishing, clone-based self-hosting and non
 
 ## Verification and delivery
 
+Audio selection update, 2026-10-20: at the owner's request, native application audio no longer excludes any executable name or the controller/helper/playback process tree. Browser hosts, Discord and PlayKross can be explicitly selected. Audio stays opt-in, with exact process binding, selection generations and publication cleanup retained. This supersedes earlier application eligibility exclusions; historical validation retains its original revision limits. Rebuild both the managed app and native plugin (or use a fresh portable package); an old plugin still enforces its compiled restrictions.
+
 Use `./scripts/Verify.ps1 -Mode CodeOnly` for integrated correctness. It compiles the matching native plugin without installing it or starting media/capture. Inspect actual WPF resource application and responsive browser layout separately. Keep raw artifacts under ignored `.artifacts/`.
 
 The first slice passed integrated correctness and actual WPF/browser layout checks; see [the verification record](validation/2026-10-18-m3-interface.md). This is not a claim that the entire M3 milestone is complete.
