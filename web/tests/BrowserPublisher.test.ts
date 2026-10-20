@@ -23,10 +23,17 @@ it("CaptureStartsSynchronouslyAndNeverReservesBeforeChooserSuccess", async () =>
 it("AudioIsOptInAndExtraTracksAreStopped", async () => {
   const c = setup(), audio = new Track("audio"), extra = new Track("video", "extra"); c.stream.tracks.push(audio, extra);
   await c.publisher.start(false);
-  expect(c.deps.capture).toHaveBeenCalledWith({ video: true, audio: false });
+  expect(c.deps.capture).toHaveBeenCalledWith(expect.objectContaining({ audio: false }));
   expect(audio.stop).toHaveBeenCalledOnce(); expect(extra.stop).toHaveBeenCalledOnce();
   expect(c.stream.getTracks()).toHaveLength(1); expect(c.state()).toMatchObject({ phase: "live", hasAudio: false });
-  expect(c.stream.tracks[0]!.applyConstraints).toHaveBeenCalledWith({ width: { max: 1280 }, height: { max: 720 }, frameRate: { max: 30 } });
+  await c.publisher.stop();
+});
+it("Requests1080p60AtCaptureAndOnTheSelectedTrack", async () => {
+  const c = setup(); await c.publisher.start(false);
+  const constraints = { width: { ideal: 1920, max: 1920 }, height: { ideal: 1080, max: 1080 }, frameRate: { ideal: 60, max: 60 } };
+  expect(c.deps.capture).toHaveBeenCalledWith({ video: constraints, audio: false });
+  expect(c.stream.tracks[0]!.applyConstraints).toHaveBeenCalledWith(constraints);
+  expect(c.state().phase).toBe("live");
   await c.publisher.stop();
 });
 it("UnavailableAudioIsVideoOnlyAndEndedAudioDoesNotStopVideo", async () => {

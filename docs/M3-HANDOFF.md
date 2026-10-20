@@ -28,6 +28,8 @@ See [browser publishing implementation notes](setup/publishing-and-compatibility
 
 Follow-up: the [video-only playback regression](validation/2026-10-18-m3-browser-playback.md) fixes WHEP POST 400 for browser publications without audio by accepting MediaMTX's PCMU placeholder in the viewer. Three real synthetic Edge protocol cases and a Firefox 158 receive check passed; actual display capture/audio and the remaining M3 live acceptance checks are still pending.
 
+Browser quality update, 2026-10-20: capture now requests up to 1920x1080 at 60 fps and the single video sender has a 12 Mbps/60 fps ceiling. Browser/source/network adaptation still determines actual output. See the [1080p60 verification record](validation/2026-10-20-browser-1080p60.md); historical 720p30 evidence and remaining M3 live acceptance limits remain unchanged.
+
 ## Initial interface/cursor slice
 
 The owner approved this bounded design in chat:
