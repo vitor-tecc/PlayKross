@@ -23,9 +23,9 @@ export class Peer extends EventTarget {
   connectionState: RTCPeerConnectionState = "new";
   iceGatheringState: RTCIceGatheringState = "complete";
   localDescription = { type: "offer", sdp: videoSdp };
-  transceivers: { direction: string; track: MediaStreamTrack; sender: { getParameters: () => RTCRtpSendParameters; setParameters: ReturnType<typeof vi.fn> }; setCodecPreferences: ReturnType<typeof vi.fn> }[] = [];
+  transceivers: { direction: string; track: MediaStreamTrack; sendEncodings?: RTCRtpEncodingParameters[]; sender: { getParameters: () => RTCRtpSendParameters; setParameters: ReturnType<typeof vi.fn> }; setCodecPreferences: ReturnType<typeof vi.fn> }[] = [];
   addTransceiver(track: MediaStreamTrack, init: RTCRtpTransceiverInit) {
-    const t = { direction: init.direction!, track, sender: { getParameters: () => ({ encodings: [{}] } as RTCRtpSendParameters), setParameters: vi.fn(async (_p: RTCRtpSendParameters) => {}) }, setCodecPreferences: vi.fn() }; this.transceivers.push(t); return t;
+    const t = { direction: init.direction!, track, sendEncodings: init.sendEncodings, sender: { getParameters: () => ({ encodings: [{}] } as RTCRtpSendParameters), setParameters: vi.fn(async (_p: RTCRtpSendParameters) => {}) }, setCodecPreferences: vi.fn() }; this.transceivers.push(t); return t;
   }
   createOffer = vi.fn(async () => this.localDescription);
   setLocalDescription = vi.fn(async () => {});

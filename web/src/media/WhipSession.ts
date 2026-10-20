@@ -40,7 +40,7 @@ export class WhipSession implements PublicationTransport {
       peer.addEventListener("connectionstatechange", this.connectionChanged);
       let videoSender: RTCRtpSender | null = null;
       for (const track of [...video, ...audio]) {
-        const transceiver = peer.addTransceiver(track, { direction: "sendonly", streams: [stream], ...(track.kind === "video" ? { sendEncodings: [{ maxBitrate: 4_000_000, maxFramerate: 30 }] } : {}) });
+        const transceiver = peer.addTransceiver(track, { direction: "sendonly", streams: [stream], ...(track.kind === "video" ? { sendEncodings: [{ maxBitrate: 12_000_000, maxFramerate: 60 }] } : {}) });
         if (track.kind === "video") videoSender = transceiver.sender;
         if (typeof RTCRtpSender !== "undefined" && typeof transceiver.setCodecPreferences === "function") {
           const codecs = RTCRtpSender.getCapabilities(track.kind)?.codecs.filter(c => c.mimeType.toLowerCase() === (track.kind === "video" ? "video/h264" : "audio/opus"));
@@ -64,7 +64,8 @@ export class WhipSession implements PublicationTransport {
       await peer.setRemoteDescription({ type: "answer", sdp: answer }); this.check(signal);
       const parameters = videoSender!.getParameters();
       if (parameters.encodings.length !== 1) throw broadcastError();
-      parameters.encodings[0]!.maxBitrate = 4_000_000;
+      parameters.encodings[0]!.maxBitrate = 12_000_000;
+      parameters.encodings[0]!.maxFramerate = 60;
       await videoSender!.setParameters(parameters); this.check(signal);
       await this.wait(peer, "connectionstatechange", () => peer.connectionState === "connected", () => peer.connectionState === "failed" || peer.connectionState === "closed");
       this.check(signal); this.connected = true;

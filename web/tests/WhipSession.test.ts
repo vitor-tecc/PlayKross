@@ -16,7 +16,9 @@ it("UsesOneSendOnlyEncodingAndCompatibleCodecs", async () => {
   c.stream.tracks.push(new Track("audio"));
   await c.session.start(grant, c.stream.asMedia(), new AbortController().signal);
   expect(c.peer.transceivers.map(t => [t.track.kind, t.direction])).toEqual([["video", "sendonly"], ["audio", "sendonly"]]);
-  expect(c.peer.transceivers[0]!.sender.setParameters).toHaveBeenCalledWith(expect.objectContaining({ encodings: [{ maxBitrate: 4_000_000 }] }));
+  expect(c.peer.transceivers[0]!.sendEncodings).toEqual([{ maxBitrate: 12_000_000, maxFramerate: 60 }]);
+  expect(c.peer.transceivers[0]!.sender.setParameters).toHaveBeenCalledWith(expect.objectContaining({ encodings: [{ maxBitrate: 12_000_000, maxFramerate: 60 }] }));
+  expect(c.peer.transceivers[1]!.sendEncodings).toBeUndefined();
   expect(c.peer.transceivers[0]!.setCodecPreferences).toHaveBeenCalledWith([expect.objectContaining({ mimeType: "video/H264" })]);
   await c.session.close(); await c.session.close();
   expect(c.peer.close).toHaveBeenCalledTimes(1);

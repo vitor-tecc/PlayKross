@@ -52,7 +52,8 @@ public static class MediaProxy
             }
             context.Response.Headers.Location = "/media-resources/" + resource!.Id.ToString("D");
         }
-        try { await Forward(context, response); }
+        try { await Forward(context, response, mode == "whip" && response.StatusCode == HttpStatusCode.Created && request.Content is not null
+            ? await request.Content.ReadAsByteArrayAsync(context.RequestAborted) : null); }
         catch
         {
             if (resource is not null) { resources.Remove(resource.Id); using var delete = new HttpRequestMessage(HttpMethod.Delete, resource.Upstream); using var deleted = await media.SendAsync(delete, CancellationToken.None); }
@@ -99,7 +100,7 @@ public static class MediaProxy
         }
         return result.ToArray();
     }
-    private static async Task Forward(HttpContext context, HttpResponseMessage response)
+    private static async Task Forward(HttpContext context, HttpResponseMessage response, byte[]? whipOffer = null)
     {
         if (response.StatusCode is HttpStatusCode.NoContent or HttpStatusCode.NotModified || HttpMethods.IsHead(context.Request.Method))
         {
@@ -108,6 +109,7 @@ public static class MediaProxy
             return;
         }
         var body = await ReadBounded(await response.Content.ReadAsStreamAsync(context.RequestAborted), context.RequestAborted);
+        if (whipOffer is not null && response.Content.Headers.ContentType?.MediaType == "application/sdp") body = WhipH264Capabilities.Advertise1080p60(whipOffer, body);
         context.Response.StatusCode = (int)response.StatusCode;
         if (response.Content.Headers.ContentType is { } type) context.Response.ContentType = type.ToString();
         foreach (var header in responseHeaders) if (response.Headers.TryGetValues(header, out var values)) context.Response.Headers[header] = values.ToArray();

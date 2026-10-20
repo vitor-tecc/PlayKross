@@ -1,6 +1,9 @@
 import type { PublishReservation, RoomSnapshot } from "../api/contracts";
 import { RoomApiError, type roomApi } from "../api/roomApi";
 import type { PublicationTransport } from "./WhipSession";
+const videoConstraints: MediaTrackConstraints = {
+  width: { ideal: 1920, max: 1920 }, height: { ideal: 1080, max: 1080 }, frameRate: { ideal: 60, max: 60 },
+};
 export type PublisherPhase = "idle" | "choosing" | "starting" | "live" | "stopping";
 export interface PublisherSnapshot { phase: PublisherPhase; streamId: string | null; hasAudio: boolean; error: string | null }
 export type PublicationApi = Pick<typeof roomApi, "reservePublication" | "renewPublication" | "stopPublication">;
@@ -35,7 +38,7 @@ export class BrowserPublisher {
       // This callback must synchronously mute mounted room players before the
       // chooser opens; never await network or a React effect before capture.
       if (shareAudio) this.deps.setCaptureAudioBlocked(true);
-      const stream = await this.deps.capture({ video: true, audio: shareAudio });
+      const stream = await this.deps.capture({ video: videoConstraints, audio: shareAudio });
       if (!this.valid(a)) { stopTracks(stream); return; }
       a.stream = stream;
       const video = stream.getVideoTracks()[0];
@@ -50,7 +53,7 @@ export class BrowserPublisher {
       });
       this.update({ hasAudio: Boolean(audio) });
       if (!audio && shareAudio) this.deps.setCaptureAudioBlocked(false);
-      if (typeof video.applyConstraints === "function") await video.applyConstraints({ width: { max: 1280 }, height: { max: 720 }, frameRate: { max: 30 } });
+      if (typeof video.applyConstraints === "function") await video.applyConstraints(videoConstraints);
       if (!this.valid(a)) return;
       this.checkSession(); this.update({ phase: "starting" });
       const reservedAt = this.deps.now();
