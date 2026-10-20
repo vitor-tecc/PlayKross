@@ -129,14 +129,20 @@ public sealed class ObsMediaEngineTests
         Assert.Contains("header", error.Message, StringComparison.OrdinalIgnoreCase);
         Assert.False(rpc.Publishing);
     }
-    [Fact]
-    public async Task DirectEngineAudioRequestCannotBypassExcludedApplicationPolicy()
+    [Theory]
+    [InlineData("Discord.exe")]
+    [InlineData("PlayKross.exe")]
+    [InlineData("obs64.exe")]
+    [InlineData("msedge.exe")]
+    public async Task ExplicitApplicationAudioReachesNativePreparationRegardlessOfName(string image)
     {
         var helper = new FakeHelper(); var rpc = new FakeRpc();
         await using var engine = new ObsMediaEngine(helper, (_, _) => Task.FromResult<IObsRpcClient>(rpc));
-        var discord = Request.Video.Process! with { ExecutablePath = @"C:\Apps\Discord.exe" };
-        await Assert.ThrowsAsync<InvalidOperationException>(() => engine.PrepareAsync(Request with { Audio = new(AudioMode.Application, discord) }, CancellationToken.None));
-        Assert.Equal(0, helper.Starts);
+        var application = Request.Video.Process! with { ExecutablePath = @"C:\Apps\" + image };
+        await engine.PrepareAsync(Request with { Audio = new(AudioMode.Application, application) }, CancellationToken.None);
+        Assert.Equal(1, helper.Starts);
+        Assert.Equal("jk_process_audio", rpc.AudioKind);
+        Assert.Equal(application.ExecutablePath, rpc.AudioSettings.GetProperty("image_path").GetString());
     }
     [Fact]
     public async Task ApplicationSendsExactIdentity()
