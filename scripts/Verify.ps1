@@ -16,6 +16,7 @@ try {
             & (Join-Path $root 'tests/setup/SetupChecks.ps1')
             & (Join-Path $root 'tests/setup/ConcurrentProbeChecks.ps1')
             & (Join-Path $root 'tests/setup/PortablePackageChecks.ps1')
+            & (Join-Path $root 'tests/setup/ReleaseChecks.ps1')
             foreach ($project in @('LiveFlowProbe','WebViewProbe')) {
                 & (Join-Path $root '.tools/dotnet/dotnet.exe') build (Join-Path $root ('tools/acceptance/' + $project)) --nologo
                 if ($LASTEXITCODE -ne 0) { throw "$project build failed." }

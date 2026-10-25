@@ -1,5 +1,7 @@
 # PlayKross portable for Windows
 
+Download the newest suitable Windows prerelease from [GitHub Releases](https://github.com/vitor-tecc/PlayKross/releases). Each successful update to `main` produces a fresh desktop ZIP, SHA-256 checksum and manifest automatically; see [release automation](github.md#automatic-windows-releases). These builds retain the recorded pending M3 live-hardware acceptance limits. Room-server operators clone the repository instead of using this ZIP.
+
 ## Para quem recebeu o ZIP
 
 1. Extraia o ZIP inteiro para uma pasta gravavel, por exemplo `Documentos/PlayKross`. Nao execute dentro do ZIP.

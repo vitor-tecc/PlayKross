@@ -10,7 +10,9 @@ Project owner and contributor: [@vitor-tecc](https://github.com/vitor-tecc). See
 
 The [approved M2 design](docs/superpowers/specs/2026-10-16-milestone-2-design.md) uses small functional checks; no eight-viewer or large-group acceptance campaign is required. Scaling work follows observed problems.
 
-For friends who broadcast, use the [portable ZIP instructions](docs/setup/portable.md). Extract the whole package and open **PlayKross.exe**; .NET is bundled. Browser-only viewers need only the public room invitation. The room host runs separately.
+For friends who broadcast, download a Windows ZIP from [Releases](https://github.com/vitor-tecc/PlayKross/releases) and follow the [portable ZIP instructions](docs/setup/portable.md). Extract the whole package and open **PlayKross.exe**; .NET is bundled. Browser-only viewers need only the public room invitation. To run the room server, clone this repository and follow [Windows setup](docs/setup/windows.md) and [internet hosting](docs/setup/internet.md).
+
+The **Windows release** workflow builds and tests pull requests, and automatically packages/publishes a Windows desktop prerelease for each update pushed or merged to `main`. A failed build publishes no release. See [automatic releases](docs/setup/github.md#automatic-windows-releases) for downloads, manual runs and verification limits.
 
 On this already-prepared PC, run PowerShell 7 from the project folder:
 
