@@ -23,7 +23,7 @@ Missing/tampered assets must fail before uploading; failed uploads must remain d
 
 ### Task 1: Release validation and workflow
 
-**Files:** create `scripts/ReleaseTools.ps1`, `tests/setup/ReleaseChecks.ps1`, `.github/workflows/release.yml`; modify `scripts/Verify.ps1`.
+**Files:** create `scripts/ReleaseTools.ps1`, `scripts/Publish-Release.ps1`, `tests/setup/ReleaseChecks.ps1`, `.github/workflows/release.yml`; modify `scripts/Verify.ps1`.
 
 - [ ] Add failing behavioral checks for run/commit version validation and exact asset/checksum/manifest matching, including corrupt/missing files and traversal names.
 - [ ] Implement the helper and run the checks green.
