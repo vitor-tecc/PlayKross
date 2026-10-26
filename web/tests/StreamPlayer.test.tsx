@@ -25,6 +25,34 @@ beforeEach(() => {
   document.exitFullscreen = vi.fn(async () => { Object.defineProperty(document, "fullscreenElement", { configurable: true, value: null }); document.dispatchEvent(new Event("fullscreenchange")); });
 });
 afterEach(() => { cleanup(); document.head.querySelectorAll("style").forEach(style => style.remove()); vi.restoreAllMocks(); });
+it("CenterEyeStartsWatchingWithoutFocusingAndReturnsAfterStop", async () => {
+  const user = userEvent.setup(); const getPlayback = vi.fn(async () => ({ streamId: "a" }) as PlaybackGrant); const focus = vi.fn();
+  const view = render(<StreamPlayer streamId="a" nickname="Alice" getPlayback={getPlayback} onFocusStream={focus} />);
+  const watch = screen.getByRole("button", { name: "Watch stream" });
+  expect(watch.closest(".video-surface")).not.toBeNull();
+  expect(watch.classList.contains("stream-placeholder")).toBe(true);
+  expect(view.container.querySelector(".stream-controls [aria-label='Watch stream']")).toBeNull();
+  expect(view.container.querySelector(".video-focus-target")).toBeNull();
+  expect(getPlayback).not.toHaveBeenCalled();
+  await user.click(watch);
+  await waitFor(() => expect(view.container.querySelector("video")!.srcObject).toBe(mocks.media));
+  expect(getPlayback).toHaveBeenCalledOnce(); expect(focus).not.toHaveBeenCalled();
+  expect(screen.queryByRole("button", { name: "Watch stream" })).toBeNull();
+  await user.click(screen.getByRole("button", { name: "Focus Alice's stream" }));
+  expect(focus).toHaveBeenCalledOnce();
+  await user.click(screen.getByRole("button", { name: "Stop watching" }));
+  expect(screen.getByRole("button", { name: "Watch stream" }).closest(".video-surface")).not.toBeNull();
+  expect(mocks.sessions[0]!.close).toHaveBeenCalledOnce();
+});
+it.each(["{Enter}", " "])("CenterEyeSupportsKeyboardActivationWith%s", async key => {
+  const user = userEvent.setup(); const getPlayback = vi.fn(async () => ({ streamId: "a" }) as PlaybackGrant);
+  const view = render(<StreamPlayer streamId="a" nickname="Alice" getPlayback={getPlayback} />);
+  await user.tab();
+  expect(document.activeElement).toBe(view.container.querySelector("button.stream-placeholder"));
+  await user.keyboard(key);
+  await waitFor(() => expect(view.container.querySelector("video")!.srcObject).toBe(mocks.media));
+  expect(getPlayback).toHaveBeenCalledOnce();
+});
 it("BlockedPlayerCannotEnableSound", async () => {
   const user = userEvent.setup(); const getPlayback = vi.fn(async () => ({ streamId: "a" }) as PlaybackGrant);
   const view = render(<StreamPlayer streamId="a" nickname="Alice" getPlayback={getPlayback} audioBlocked />);
