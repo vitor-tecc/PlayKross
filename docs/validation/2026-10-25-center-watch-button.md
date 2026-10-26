@@ -1,0 +1,9 @@
+# Center-eye Watch button
+
+The owner requested that the large center eye start watching and the small yellow corner eye be removed. The idle eye is now a labeled native button with hover/keyboard-focus feedback. The toolbar contains Stop watching only while a subscription is active. Stopping restores the center button; focus-by-video-area is available during watching, and the top Focus button remains available before watching.
+
+Three new regressions first failed against the old UI, then passed: center-eye click starts one playback subscription without focusing, Stop restores the eye and closes the session, and Enter/Space activate the center button. The full browser suite passed **101 tests**, and the production browser build passed. Existing audio/fullscreen/retry/volume tests retain their checks.
+
+A headless Edge probe loaded the actual production assets with a mocked room and rejected playback endpoint. At 1440, 500 and 320 viewport widths it checked centered button bounds and real pointer hit-testing, absence of a corner Watch button, click/Enter playback-grant requests, no unintended focus change, Stop restoration and no horizontal overflow. The 500/320 card screenshots were visually inspected. Raw probe/screenshot outputs remain ignored under `.artifacts/center-watch-ui`. This UI check does not establish live media delivery or add hardware/audio/performance acceptance.
+
+Independent GPT-6.1 Sol review found that the initial eye's explicit stacking level could place it above open diagnostic panels. An Edge hit-test reproduced the interception at the eye/panel overlap before the correction; removing that unnecessary stacking override made the same check pass across the responsive probe. The production build, full 101-test suite and extended Edge probe passed after the correction. Open diagnostics retain their interaction priority over the eye.
