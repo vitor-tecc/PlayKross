@@ -1,5 +1,6 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import type { RoomSnapshot } from "../src/api/contracts";
 import { RoomPage } from "../src/room/RoomPage";
 import { grant, Stream, Track, deferred } from "./publisherFakes";
@@ -20,7 +21,7 @@ function sharingSetup() {
 it("NoCaptureBeforeStartGestureAndStopWorksDuringChooser", async () => {
   const c = sharingSetup(), chosen = deferred<MediaStream>(); c.capture.mockImplementation(() => chosen.promise);
   render(<RoomPage />); const start = await screen.findByRole("button", { name: "Start sharing" }); expect(c.capture).not.toHaveBeenCalled();
-  fireEvent.click(start); expect(c.capture).toHaveBeenCalledOnce();
+  await userEvent.click(start); expect(c.capture).toHaveBeenCalledOnce();
   fireEvent.click(screen.getByRole("button", { name: "Stop sharing" }));
   await act(async () => chosen.resolve(c.stream.asMedia()));
   await waitFor(() => expect(c.stream.tracks[0]!.stop).toHaveBeenCalled()); expect(api.reservePublication).not.toHaveBeenCalled();
@@ -45,7 +46,7 @@ it("AudioMuteIsSynchronousAndRestoresPreferencesWithoutClearingNativeBlock", asy
 });
 it("OwnPublicationDoesNotCreateAViewerAndViewingTabDepartureDoesNotLeave", async () => {
   sharingSetup(); let changed!: (room: RoomSnapshot) => void; api.watchRoom.mockImplementationOnce(async update => { changed = update; return async () => {}; });
-  const view = render(<RoomPage />); fireEvent.click(await screen.findByRole("button", { name: "Start sharing" })); await screen.findByText("Sharing video only");
+  const view = render(<RoomPage />); await userEvent.click(await screen.findByRole("button", { name: "Start sharing" })); await screen.findByText("Sharing video only");
   await act(async () => changed({ roomId: "room", revision: 2, participants: [], streams: [{ streamId: grant.streamId, ownerSessionId: "me", nickname: "Me", status: "live" }] }));
   const own = view.container.querySelector(`[data-stream-id="${grant.streamId}"]`)!;
   expect(own).not.toBeNull(); expect(own.querySelector("video")).toBeNull(); expect(api.playback).not.toHaveBeenCalled();
@@ -53,7 +54,7 @@ it("OwnPublicationDoesNotCreateAViewerAndViewingTabDepartureDoesNotLeave", async
 });
 it("LeavingStopsOwnedCaptureBeforeMembershipRelease", async () => {
   const c = sharingSetup(); api.leave.mockImplementation(async () => { expect(c.stream.tracks[0]!.stop).toHaveBeenCalledOnce(); expect(sender.close).toHaveBeenCalled(); return {}; });
-  render(<RoomPage />); fireEvent.click(await screen.findByRole("button", { name: "Start sharing" })); await screen.findByText("Sharing video only");
+  render(<RoomPage />); await userEvent.click(await screen.findByRole("button", { name: "Start sharing" })); await screen.findByText("Sharing video only");
   fireEvent.click(screen.getByRole("button", { name: "Leave room" })); await waitFor(() => expect(api.leave).toHaveBeenCalled());
 });
 it("ViewingTabDepartureDoesNotStopAnotherTabsPublication", async () => {

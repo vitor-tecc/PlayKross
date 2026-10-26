@@ -49,17 +49,27 @@ public sealed class MediaAuthTests
         Assert.Contains(tracker.ForPath(b.Path), x => x.Id == bId); Assert.Contains(tracker.ForPath(b.Path), x => x.Id == readId);
         Assert.Contains(rooms.Snapshot(viewer.SessionId).Streams, x => x.StreamId == b.StreamId);
     }
-    [Fact]
-    public async Task RevocationCannotPassAnAuthorizedResourceCommit()
+    [Theory]
+    [InlineData(100)]
+    [InlineData(3500)]
+    public async Task RevocationCannotPassAnAuthorizedResourceCommit(int assertionDelayMilliseconds)
     {
         var clock = new TestClock(); var sessions = new SessionStore(clock); var grants = new MediaGrantStore(clock); var rooms = new RoomStore(sessions, grants, clock);
         var owner = rooms.Join(rooms.CreateRoom().Invite, "owner"); var stream = rooms.ReservePublish(owner.SessionId);
-        using var entered = new ManualResetEventSlim(); using var release = new ManualResetEventSlim();
-        var commit = Task.Run(() => grants.CommitAuthorization(stream.Token, stream.Path, "publish", clock.Now, _ => { entered.Set(); release.Wait(TimeSpan.FromSeconds(3)); return true; }));
-        Assert.True(entered.Wait(TimeSpan.FromSeconds(2)));
-        var revoke = Task.Run(() => rooms.StopPublish(owner.SessionId, stream.StreamId));
-        try { await Task.Delay(100); Assert.False(revoke.IsCompleted); }
-        finally { release.Set(); await commit; await revoke; }
+        using var entered = new ManualResetEventSlim(); using var release = new ManualResetEventSlim(); using var revoking = new ManualResetEventSlim();
+        // Only this test releases the commit. A slow assertion must not expire the held operation.
+        // Dedicated threads keep these intentionally blocked operations off the shared worker pool.
+        var commit = Task.Factory.StartNew(() => grants.CommitAuthorization(stream.Token, stream.Path, "publish", clock.Now, _ => { entered.Set(); release.Wait(); return true; }), CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+        Task revoke = Task.CompletedTask;
+        try
+        {
+            Assert.True(entered.Wait(TimeSpan.FromSeconds(10)));
+            revoke = Task.Factory.StartNew(() => { revoking.Set(); rooms.StopPublish(owner.SessionId, stream.StreamId); }, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+            Assert.True(revoking.Wait(TimeSpan.FromSeconds(10)));
+            await Task.Delay(assertionDelayMilliseconds);
+            Assert.False(revoke.IsCompleted);
+        }
+        finally { release.Set(); await commit.WaitAsync(TimeSpan.FromSeconds(10)); await revoke.WaitAsync(TimeSpan.FromSeconds(10)); }
         Assert.False(grants.Authorize(stream.Token, stream.Path, "publish", clock.Now));
     }
     [Fact]
