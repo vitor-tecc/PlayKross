@@ -39,6 +39,7 @@ public sealed class Language : INotifyPropertyChanged
         // Messages can include a known contextual prefix and a technical detail.
         foreach (var prefix in new[] { "Broadcast stopped: ", "The original capture source is unavailable: ", "Native capture safety guard refused the selected sources. ", "Selected audio is not initialized. " })
             if (text.StartsWith(prefix, StringComparison.Ordinal)) return Text(prefix) + Text(text[prefix.Length..]);
+        if (text.Contains("; ", StringComparison.Ordinal)) return string.Join("; ", text.Split("; ").Select(Text));
         return text;
     }
     public static void Bind(DependencyObject target, DependencyProperty property, string text)
