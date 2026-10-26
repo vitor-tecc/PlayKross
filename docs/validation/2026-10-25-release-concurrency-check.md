@@ -1,0 +1,9 @@
+# Release concurrency-check stability
+
+The first automatic main release at `2bef462`, [run 40248495184](https://github.com/vitor-tecc/PlayKross/actions/runs/40248495184), stopped in `MediaAuthTests.RevocationCannotPassAnAuthorizedResourceCommit`; publication was skipped. The separate Correctness workflow passed on the same commit. Keep this failure as evidence; it was not a published release.
+
+The fixture held authorization's commit callback for at most three seconds, then released it independently of the assertion. A delayed `Task.Delay(100)` continuation could observe completed revocation after that timeout even with correct production locking. A new 3500 ms theory case reproduced the same assertion failure deterministically: the original fixture passed the 100 ms case and failed the 3500 ms case.
+
+The fixture now releases the callback only in `finally`, uses dedicated threads for the two deliberately blocked operations, signals that revocation has started, and bounds startup/cleanup waits. Both 100 ms and 3500 ms assertions remain, followed by the original invalid-grant assertion. No production source, authorization policy or workflow gate changed.
+
+Local verification using disposable `.artifacts/release-concurrency-tests` build outputs passed all **76 host tests**, including both theory cases. Normal dependency auditing initially could not reach NuGet inside the sandbox; rerunning with normal network access restored successfully without changing audit policy. A read-only independent GPT-6.1 Sol review found no actionable issue. The revocation-start signal necessarily precedes the method call, so extreme scheduling could still mask broken locking; dedicated threads and the long-delay case reduce that pre-existing test limitation. `git diff --check` passed. Raw logs remain ignored under `.artifacts`.
