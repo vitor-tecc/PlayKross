@@ -25,16 +25,16 @@ Missing/tampered assets must fail before uploading; failed uploads must remain d
 
 **Files:** create `scripts/ReleaseTools.ps1`, `scripts/Publish-Release.ps1`, `tests/setup/ReleaseChecks.ps1`, `.github/workflows/release.yml`; modify `scripts/Verify.ps1`.
 
-- [ ] Add failing behavioral checks for run/commit version validation and exact asset/checksum/manifest matching, including corrupt/missing files and traversal names.
-- [ ] Implement the helper and run the checks green.
-- [ ] Add the main/PR/manual workflow with read-only build, pinned actions, complete dependency/native setup, CodeOnly verification, packaging and exact asset transfer.
-- [ ] Add draft-first publication with the exact source commit, prerelease notes, main-only guard and published-rerun refusal to overwrite.
-- [ ] Validate workflow syntax and execute the actual package build locally or in hosted CI; inspect outcomes and correct fresh-runner issues.
+- [x] Add failing behavioral checks for run/commit version validation and exact asset/checksum/manifest matching, including corrupt/missing files and traversal names.
+- [x] Implement the helper and run the checks green.
+- [x] Add the main/PR/manual workflow with read-only build, pinned actions, complete dependency/native setup, CodeOnly verification, packaging and exact asset transfer.
+- [x] Add draft-first publication with the exact source commit, prerelease notes, main-only guard and published-rerun refusal to overwrite.
+- [x] Validate workflow syntax and execute the actual package build locally or in hosted CI; inspect outcomes and correct fresh-runner issues.
 
 ### Task 2: Documentation and delivery
 
 **Files:** modify `README.md`, `docs/setup/github.md`, `docs/setup/portable.md`, `AGENTS.md`; create a bounded validation record.
 
-- [ ] Explain automatic main releases, manual reruns, download location, cloning for hosts, review/merge activation boundary and retained hardware limits.
-- [ ] Obtain a read-only independent GPT-6.1 Sol review and fix important findings.
-- [ ] Verify changed checks, commit and push the feature branch, open a PR, attach it to this chat, inspect CI and report what is active versus awaiting merge.
+- [x] Explain automatic main releases, manual reruns, download location, cloning for hosts, review/merge activation boundary and retained hardware limits.
+- [x] Obtain a read-only independent GPT-6.1 Sol review and fix important findings.
+- [x] Verify changed checks, commit and push the feature branch, open a PR, attach it to this chat, inspect CI and report what is active versus awaiting merge.
