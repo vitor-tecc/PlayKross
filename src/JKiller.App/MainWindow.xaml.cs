@@ -1,4 +1,6 @@
 using System.ComponentModel;
+using JKiller.App.Localization;
+using AppLanguage = JKiller.App.Localization.Language;
 using System.Diagnostics;
 using System.Windows;
 using System.Windows.Controls;
@@ -20,13 +22,15 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        LanguagePicker.SelectedValue = AppLanguage.Current.Selected;
+        UpdateLanguage();
         root = Environment.CurrentDirectory;
         if (!File.Exists(Path.Combine(root, "config/dependencies.json")))
         {
             for (var directory = new DirectoryInfo(AppContext.BaseDirectory); directory is not null; directory = directory.Parent)
                 if (File.Exists(Path.Combine(directory.FullName, "config/dependencies.json"))) { root = directory.FullName; break; }
         }
-        roomClient = new(http); model = new(root, roomClient, playbackAudioGate); DataContext = model;
+        roomClient = new(http); model = new(root, roomClient, playbackAudioGate); model.Nickname = AppLanguage.Text("Player"); DataContext = model;
         model.PropertyChanged += (_, args) => Dispatcher.InvokeAsync(() =>
         {
             if (args.PropertyName == nameof(model.CaptureLive)) SetControls();
@@ -43,6 +47,21 @@ public partial class MainWindow : Window
             }
         });
     }
+    private void LanguageChanged(object sender, SelectionChangedEventArgs args)
+    {
+        if (LanguagePicker?.SelectedValue is not string selected) return;
+        AppLanguage.Current.Selected = selected;
+        UpdateLanguage();
+    }
+    private void UpdateLanguage()
+    {
+        using var stream = typeof(MainWindow).Assembly.GetManifestResourceStream("PlayKross.StaticText.json")!;
+        var texts = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, string>>(stream)!;
+        foreach (var (key, text) in texts) Resources[key] = AppLanguage.Text(text);
+        if (BitrateLabel is not null && Bitrate is not null) BitrateLabel.Text = AppLanguage.Text($"{Bitrate.Value:0.0} Mbps requested (megabits per second)");
+        System.Windows.Markup.XmlLanguage locale = System.Windows.Markup.XmlLanguage.GetLanguage(AppLanguage.Current.Selected);
+        SetValue(FrameworkElement.LanguageProperty, locale);
+    }
     private void SetControls()
     {
         ConnectionControls.IsEnabled = command is null;
@@ -58,7 +77,7 @@ public partial class MainWindow : Window
         using var cancellation = new CancellationTokenSource(); command = cancellation; SetControls();
         try { await action(cancellation.Token); }
         catch (OperationCanceledException) { }
-        catch (Exception error) { MessageBox.Show(this, error.Message, "PlayKross", MessageBoxButton.OK, MessageBoxImage.Information); }
+        catch (Exception error) { MessageBox.Show(this, AppLanguage.Text(error.Message), "PlayKross", MessageBoxButton.OK, MessageBoxImage.Information); }
         finally { command = null; SetControls(); }
     }
     private async void JoinClick(object sender, RoutedEventArgs args) => await Run(model!.JoinAsync);
@@ -68,7 +87,7 @@ public partial class MainWindow : Window
     private async void ExportClick(object sender, RoutedEventArgs args) => await Run(async token =>
     {
         var report = await model!.ExportDiagnosticsAsync(token);
-        var dialog = new Microsoft.Win32.SaveFileDialog { Filter = "JSON report|*.json", FileName = "jkiller-diagnostics.json" };
+        var dialog = new Microsoft.Win32.SaveFileDialog { Filter = AppLanguage.Text("JSON report") + "|*.json", FileName = "jkiller-diagnostics.json" };
         if (dialog.ShowDialog(this) == true) await File.WriteAllTextAsync(dialog.FileName, System.Text.Json.JsonSerializer.Serialize(report, new System.Text.Json.JsonSerializerOptions { WriteIndented = true }), token);
     });
     private async void StartClick(object sender, RoutedEventArgs args) => await Run(token => { ReadSettings(); return model!.StartAsync(token); });
@@ -77,7 +96,7 @@ public partial class MainWindow : Window
     {
         command?.Cancel();
         try { await model!.StopAsync(CancellationToken.None); }
-        catch (Exception error) { MessageBox.Show(this, error.Message, "PlayKross"); }
+        catch (Exception error) { MessageBox.Show(this, AppLanguage.Text(error.Message), "PlayKross"); }
     }
     private void ReadSettings()
     {
@@ -90,7 +109,7 @@ public partial class MainWindow : Window
         if (Bitrate is null || Resolution?.SelectedItem is not ComboBoxItem resolution || Fps?.SelectedItem is not ComboBoxItem fps) return;
         Bitrate.Value = (double)StreamSettings.DefaultFor(int.Parse(resolution.Tag.ToString()!), int.Parse(fps.Tag.ToString()!)).BitrateMbps;
     }
-    private void BitrateChanged(object sender, RoutedPropertyChangedEventArgs<double> args) { if (BitrateLabel is not null) BitrateLabel.Text = $"{args.NewValue:0.0} Mbps requested (megabits per second)"; }
+    private void BitrateChanged(object sender, RoutedPropertyChangedEventArgs<double> args) { if (BitrateLabel is not null) BitrateLabel.Text = AppLanguage.Text($"{args.NewValue:0.0} Mbps requested (megabits per second)"); }
     private void AudioModeChanged(object sender, SelectionChangedEventArgs args)
     {
         if (synchronizingAudio || model is null || AudioSource is null || AudioOutput is null) return;
@@ -111,7 +130,7 @@ public partial class MainWindow : Window
     private void ViewClick(object sender, RoutedEventArgs args)
     {
         try { RoomHttpClient.ParseLink(model!.RoomLink); Process.Start(new ProcessStartInfo(model.RoomLink) { UseShellExecute = true }); }
-        catch (Exception error) { MessageBox.Show(this, error.Message, "PlayKross"); }
+        catch (Exception error) { MessageBox.Show(this, AppLanguage.Text(error.Message), "PlayKross"); }
     }
     private async void WatchClick(object sender, RoutedEventArgs args) => await Run(async token =>
     {

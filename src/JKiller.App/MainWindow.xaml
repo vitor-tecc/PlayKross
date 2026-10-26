@@ -1,37 +1,39 @@
-<Window x:Class="JKiller.App.MainWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:controls="clr-namespace:JKiller.App.Controls" Style="{StaticResource PlayKrossWindowStyle}" Title="PlayKross • Native broadcaster" Icon="Assets/playkross-logo.png" Width="980" Height="820" MinWidth="750" MinHeight="600" Closing="WindowClosing">
+<Window x:Class="JKiller.App.MainWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:local="clr-namespace:JKiller.App.Localization" xmlns:controls="clr-namespace:JKiller.App.Controls" Style="{StaticResource PlayKrossWindowStyle}" Title="{DynamicResource Text0}" Icon="Assets/playkross-logo.png" Width="980" Height="820" MinWidth="750" MinHeight="600" Closing="WindowClosing">
+  <Window.Resources><local:TranslationConverter x:Key="Translate"/></Window.Resources>
   <ScrollViewer VerticalScrollBarVisibility="Auto"><StackPanel Margin="24">
-    <StackPanel Orientation="Horizontal" Margin="0,0,0,10"><Image Source="Assets/playkross-logo.png" Width="76" Height="76" Margin="0,0,18,0"/><StackPanel VerticalAlignment="Center"><TextBlock FontSize="30" FontWeight="Bold" Text="PlayKross"/><TextBlock FontSize="18" Text="Share a window. Watch together."/></StackPanel></StackPanel>
-    <TextBlock Margin="0,8,0,18" TextWrapping="Wrap" Text="Paste your host's room link to broadcast or watch together. The room host runs separately; viewers can also use a browser."/>
-    <StackPanel x:Name="ConnectionControls"><TextBlock Text="Room link"/><TextBox x:Name="Link" AutomationProperties.AutomationId="RoomLink" Text="{Binding RoomLink, UpdateSourceTrigger=PropertyChanged}"/>
-      <TextBlock Margin="0,10,0,0" Text="Nickname"/><TextBox Text="{Binding Nickname, UpdateSourceTrigger=PropertyChanged}"/>
-      <WrapPanel><Button x:Name="JoinButton" Content="Join room" Click="JoinClick"/><Button Content="Leave room" Click="LeaveClick" IsEnabled="{Binding IsJoined}"/><Button Content="Change nickname" Click="RenameClick"/><Button Content="Copy room link" Click="CopyClick"/><Button Content="Open browser viewer" Click="ViewClick"/><Button Content="Watch in app" Click="WatchClick"/></WrapPanel>
+    <ComboBox x:Name="LanguagePicker" Width="150" HorizontalAlignment="Right" AutomationProperties.Name="Idioma / Language" SelectedValuePath="Tag" SelectionChanged="LanguageChanged"><ComboBoxItem Content="Português (BR)" Tag="pt-BR"/><ComboBoxItem Content="English" Tag="en"/></ComboBox>
+    <StackPanel Orientation="Horizontal" Margin="0,0,0,10"><Image Source="Assets/playkross-logo.png" Width="76" Height="76" Margin="0,0,18,0"/><StackPanel VerticalAlignment="Center"><TextBlock FontSize="30" FontWeight="Bold" Text="PlayKross"/><TextBlock FontSize="18" Text="{DynamicResource Text1}"/></StackPanel></StackPanel>
+    <TextBlock Margin="0,8,0,18" TextWrapping="Wrap" Text="{DynamicResource Text2}"/>
+    <StackPanel x:Name="ConnectionControls"><TextBlock Text="{DynamicResource Text3}"/><TextBox x:Name="Link" AutomationProperties.AutomationId="RoomLink" Text="{Binding RoomLink, UpdateSourceTrigger=PropertyChanged}"/>
+      <TextBlock Margin="0,10,0,0" Text="{DynamicResource Text4}"/><TextBox Text="{Binding Nickname, UpdateSourceTrigger=PropertyChanged}"/>
+      <WrapPanel><Button x:Name="JoinButton" Content="{DynamicResource Text5}" Click="JoinClick"/><Button Content="{DynamicResource Text6}" Click="LeaveClick" IsEnabled="{Binding IsJoined}"/><Button Content="{DynamicResource Text7}" Click="RenameClick"/><Button Content="{DynamicResource Text8}" Click="CopyClick"/><Button Content="{DynamicResource Text9}" Click="ViewClick"/><Button Content="{DynamicResource Text10}" Click="WatchClick"/></WrapPanel>
     </StackPanel>
-    <StackPanel x:Name="SelectionControls"><TextBlock Margin="0,16,0,4" TextWrapping="Wrap" Text="Choose video and audio below. During a broadcast, your choices are staged; current capture continues until you apply them with a restart."/><TextBlock Margin="0,8,0,4" FontWeight="SemiBold" Text="Video source — required"/>
+    <StackPanel x:Name="SelectionControls"><TextBlock Margin="0,16,0,4" TextWrapping="Wrap" Text="{DynamicResource Text11}"/><TextBlock Margin="0,8,0,4" FontWeight="SemiBold" Text="{DynamicResource Text12}"/>
       <ComboBox x:Name="VideoSource" AutomationProperties.AutomationId="VideoSource" ItemsSource="{Binding Sources}" DisplayMemberPath="DisplayName" SelectedItem="{Binding Video}"/>
-      <Button HorizontalAlignment="Left" Content="Refresh sources" Click="RefreshClick"/>
-      <TextBlock Margin="0,10,0,4" FontWeight="SemiBold" Text="Audio — off by default"/>
-      <ComboBox x:Name="AudioModePicker" SelectedIndex="0" SelectionChanged="AudioModeChanged"><ComboBoxItem Content="Off" Tag="Off"/><ComboBoxItem Content="Application" Tag="Application"/><ComboBoxItem Content="System output (display sharing)" Tag="SystemOutput"/></ComboBox>
-      <TextBlock Text="Application audio source"/>
+      <Button HorizontalAlignment="Left" Content="{DynamicResource Text13}" Click="RefreshClick"/>
+      <TextBlock Margin="0,10,0,4" FontWeight="SemiBold" Text="{DynamicResource Text14}"/>
+      <ComboBox x:Name="AudioModePicker" SelectedIndex="0" SelectionChanged="AudioModeChanged"><ComboBoxItem Content="{DynamicResource Text15}" Tag="Off"/><ComboBoxItem Content="{DynamicResource Text16}" Tag="Application"/><ComboBoxItem Content="{DynamicResource Text17}" Tag="SystemOutput"/></ComboBox>
+      <TextBlock Text="{DynamicResource Text18}"/>
       <ComboBox x:Name="AudioSource" ItemsSource="{Binding AudioApplications}" DisplayMemberPath="DisplayName" SelectionChanged="AudioChanged" IsEnabled="False"/>
-      <TextBlock Text="System render output — fixed until you select another output"/>
+      <TextBlock Text="{DynamicResource Text19}"/>
       <controls:AudioOutputPicker x:Name="AudioOutput" Style="{StaticResource {x:Type ComboBox}}" IsEnabled="False"/>
-      <TextBlock TextWrapping="Wrap" Text="{Binding AudioEligibility.Reason}"/>
-      <TextBlock Margin="0,8,0,0" TextWrapping="Wrap" Text="Application audio captures the selected app and its child processes. System output captures mixed playback from the selected device, including Discord. In-app room sound is muted during system sharing. External browsers and other playback can still be captured; route them to a different output or choose application audio. No microphone is captured. Initialized capture and counters do not prove viewer audibility."/>
-      <CheckBox x:Name="CpuFallbackChoice" Margin="0,12,0,0" IsChecked="{Binding AllowCpuFallback}" Content="Allow CPU encoding if hardware initialization fails (may cost game performance)" ToolTip="Choose before starting a broadcast."/>
+      <TextBlock TextWrapping="Wrap"><TextBlock.Text><MultiBinding Converter="{StaticResource Translate}"><Binding Path="AudioEligibility.Reason"/><Binding Source="{x:Static local:Language.Current}" Path="Selected"/></MultiBinding></TextBlock.Text></TextBlock>
+      <TextBlock Margin="0,8,0,0" TextWrapping="Wrap" Text="{DynamicResource Text20}"/>
+      <CheckBox x:Name="CpuFallbackChoice" Margin="0,12,0,0" IsChecked="{Binding AllowCpuFallback}" Content="{DynamicResource Text21}" ToolTip="{DynamicResource Text22}"/>
     </StackPanel>
-    <StackPanel x:Name="SettingsControls"><TextBlock Margin="0,20,0,6" FontWeight="SemiBold" Text="Requested output settings"/>
+    <StackPanel x:Name="SettingsControls"><TextBlock Margin="0,20,0,6" FontWeight="SemiBold" Text="{DynamicResource Text23}"/>
       <WrapPanel><ComboBox x:Name="Resolution" Width="130" SelectedIndex="2" SelectionChanged="PresetChanged"><ComboBoxItem Content="480p" Tag="480"/><ComboBoxItem Content="720p" Tag="720"/><ComboBoxItem Content="1080p" Tag="1080"/></ComboBox>
         <ComboBox x:Name="Fps" Width="130" Margin="8,0" SelectedIndex="1" SelectionChanged="PresetChanged"><ComboBoxItem Content="30 FPS" Tag="30"/><ComboBoxItem Content="60 FPS" Tag="60"/></ComboBox></WrapPanel>
-      <TextBlock x:Name="BitrateLabel" Margin="0,10,0,0" Text="15 Mbps requested (megabits per second)"/>
+      <TextBlock x:Name="BitrateLabel" Margin="0,10,0,0" Text="{DynamicResource Text24}"/>
       <Slider x:Name="Bitrate" Minimum="1" Maximum="25" TickFrequency="0.5" IsSnapToTickEnabled="True" Value="15" ValueChanged="BitrateChanged"/>
-      <TextBlock TextWrapping="Wrap" Text="Apply briefly stops and restarts capture using your selected video, audio, and output settings with the same stream identity. Requested bitrate is a target; actual network bitrate and viewer playback can differ."/>
-      <Button Content="Apply sources and settings (restart)" HorizontalAlignment="Left" Click="ApplyClick"/>
+      <TextBlock TextWrapping="Wrap" Text="{DynamicResource Text25}"/>
+      <Button Content="{DynamicResource Text26}" HorizontalAlignment="Left" Click="ApplyClick"/>
     </StackPanel>
-    <WrapPanel Margin="0,18,0,0"><Button x:Name="StartButton" Content="Start broadcast" Click="StartClick"/><Button Content="Stop broadcast" Click="StopClick"/></WrapPanel>
-    <TextBlock Text="{Binding Status}" FontWeight="SemiBold" TextWrapping="Wrap" Margin="0,12,0,8"/>
-    <TextBlock Text="{Binding AppliedText}" TextWrapping="Wrap"/>
-    <TextBlock Text="{Binding ObservedText}" TextWrapping="Wrap" Margin="0,8,0,0"/>
-    <Button HorizontalAlignment="Left" Content="Export room diagnostics" Click="ExportClick"/>
-    <TextBlock Margin="0,12,0,0" TextWrapping="Wrap" Text="People in the room can broadcast at the same time. Each person can share one stream and choose which streams to watch."/>
+    <WrapPanel Margin="0,18,0,0"><Button x:Name="StartButton" Content="{DynamicResource Text27}" Click="StartClick"/><Button Content="{DynamicResource Text28}" Click="StopClick"/></WrapPanel>
+    <TextBlock FontWeight="SemiBold" TextWrapping="Wrap" Margin="0,12,0,8"><TextBlock.Text><MultiBinding Converter="{StaticResource Translate}"><Binding Path="Status"/><Binding Source="{x:Static local:Language.Current}" Path="Selected"/></MultiBinding></TextBlock.Text></TextBlock>
+    <TextBlock TextWrapping="Wrap"><TextBlock.Text><MultiBinding Converter="{StaticResource Translate}"><Binding Path="AppliedText"/><Binding Source="{x:Static local:Language.Current}" Path="Selected"/></MultiBinding></TextBlock.Text></TextBlock>
+    <TextBlock TextWrapping="Wrap" Margin="0,8,0,0"><TextBlock.Text><MultiBinding Converter="{StaticResource Translate}"><Binding Path="ObservedText"/><Binding Source="{x:Static local:Language.Current}" Path="Selected"/></MultiBinding></TextBlock.Text></TextBlock>
+    <Button HorizontalAlignment="Left" Content="{DynamicResource Text29}" Click="ExportClick"/>
+    <TextBlock Margin="0,12,0,0" TextWrapping="Wrap" Text="{DynamicResource Text30}"/>
   </StackPanel></ScrollViewer>
 </Window>

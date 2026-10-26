@@ -25,6 +25,7 @@ public static class RoomViewerWindow
     public static Window Create(RoomWebView viewer)
     {
         var window = new Window { Title = "PlayKross • Room viewer", Width = 1000, Height = 740, Content = viewer };
+        Localization.Language.Bind(window, Window.TitleProperty, "PlayKross • Room viewer");
         var state = new ViewerFullscreenState();
         viewer.FullscreenChanged += (_, _) =>
         {

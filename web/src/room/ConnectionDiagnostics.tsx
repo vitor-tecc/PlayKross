@@ -1,7 +1,9 @@
+import { t, useLanguage } from "../i18n";
 import type { WhepDiagnostic } from "../media/WhepSession";
 import { useState } from "react";
 
 export function ConnectionDiagnostics({ samples }: { samples: readonly WhepDiagnostic[] }) {
+  useLanguage();
   const latest = samples.at(-1);
   const [showReport, setShowReport] = useState(false);
   const embeddedViewer = "playkrossPlaybackAudioBlocked" in window;
@@ -13,25 +15,25 @@ export function ConnectionDiagnostics({ samples }: { samples: readonly WhepDiagn
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
   return <details className="connection-diagnostics diagnostics">
-    <summary aria-label="Connection diagnostics" title="Connection diagnostics">↗</summary>
+    <summary aria-label={t("Connection diagnostics")} title={t("Connection diagnostics")}>↗</summary>
     <div className="diagnostics-content">
-      <strong>Connection diagnostics</strong>
-      <p>Last four connection results for this stream, including failed attempts. Export these after a reconnect problem.</p>
+      <strong>{t("Connection diagnostics")}</strong>
+      <p>{t("Last four connection results for this stream, including failed attempts. Export these after a reconnect problem.")}</p>
       {latest ? <dl>
-        <dt>Latest result / stage</dt><dd>{latest.outcome} / {latest.stage} · {latest.failure ?? "no failure"}</dd>
-        <dt>OPTIONS / POST</dt><dd>{latest.optionsStatus ?? "not reached"} / {latest.postStatus ?? "not reached"}</dd>
-        <dt>Gathering / ICE / connection</dt><dd>{latest.gatheringState ?? "unavailable"} / {latest.iceState ?? "unavailable"} / {latest.connectionState ?? "unavailable"}</dd>
-        <dt>Local candidate types</dt><dd>host {latest.candidates.host}, srflx {latest.candidates.srflx}, prflx {latest.candidates.prflx}, relay {latest.candidates.relay}</dd>
-        <dt>Total / gathering / POST</dt><dd>{latest.elapsedMs} / {latest.timingsMs.gathering ?? "unavailable"} / {latest.timingsMs.post ?? "unavailable"} ms</dd>
-        <dt>Grant time left at POST</dt><dd>{latest.grantRemainingMs ?? "unavailable"} ms (estimated using this device’s clock)</dd>
-      </dl> : <p>No connection result yet. Start watching to collect one.</p>}
-      <ol>{samples.map((sample, index) => <li key={`${sample.at}-${index}`}>{sample.at}: {sample.outcome} · {sample.stage} · {sample.failure ?? "connected"} · {sample.elapsedMs} ms</li>)}</ol>
-      <p>A POST 404 means no playable stream at the media endpoint; a reservation can appear before the publisher is ready. Permission rejection is 401/403. Gathering and ICE failures are recorded separately.</p>
-      <p>The export includes browser version, timing, states and candidate counts. It omits room links, tokens, SDP, and network addresses.</p>
-      <p>Use Show report to select and copy the report in the in-app viewer. Browser viewers can also download it.</p>
-      <button disabled={!samples.length} onClick={() => setShowReport(value => !value)}>{showReport ? "Hide report" : "Show report"}</button>{" "}
-      {!embeddedViewer && <button disabled={!samples.length} onClick={download}>Download connection report</button>}
-      {showReport && <textarea aria-label="Connection report" readOnly value={report} rows={8} onFocus={event => event.currentTarget.select()} style={{ width: "100%", marginTop: 12 }} />}
+        <dt>{t("Latest result / stage")}</dt><dd>{t(latest.outcome)} / {t(latest.stage)} · {t(latest.failure ?? t("no failure"))}</dd>
+        <dt>OPTIONS / POST</dt><dd>{latest.optionsStatus ?? t("not reached")} / {latest.postStatus ?? t("not reached")}</dd>
+        <dt>{t("Gathering / ICE / connection")}</dt><dd>{t(latest.gatheringState ?? t("unavailable"))} / {t(latest.iceState ?? t("unavailable"))} / {t(latest.connectionState ?? t("unavailable"))}</dd>
+        <dt>{t("Local candidate types")}</dt><dd>host {latest.candidates.host}, srflx {latest.candidates.srflx}, prflx {latest.candidates.prflx}, relay {latest.candidates.relay}</dd>
+        <dt>{t("Total / gathering / POST")}</dt><dd>{latest.elapsedMs} / {latest.timingsMs.gathering ?? t("unavailable")} / {latest.timingsMs.post ?? t("unavailable")} ms</dd>
+        <dt>{t("Grant time left at POST")}</dt><dd>{latest.grantRemainingMs ?? t("unavailable")} {t("ms (estimated using this device’s clock)")}</dd>
+      </dl> : <p>{t("No connection result yet. Start watching to collect one.")}</p>}
+      <ol>{samples.map((sample, index) => <li key={`${sample.at}-${index}`}>{sample.at}: {t(sample.outcome)} · {t(sample.stage)} · {t(sample.failure ?? t("connected"))} · {sample.elapsedMs} ms</li>)}</ol>
+      <p>{t("A POST 404 means no playable stream at the media endpoint; a reservation can appear before the publisher is ready. Permission rejection is 401/403. Gathering and ICE failures are recorded separately.")}</p>
+      <p>{t("The export includes browser version, timing, states and candidate counts. It omits room links, tokens, SDP, and network addresses.")}</p>
+      <p>{t("Use Show report to select and copy the report in the in-app viewer. Browser viewers can also download it.")}</p>
+      <button disabled={!samples.length} onClick={() => setShowReport(value => !value)}>{showReport ? t("Hide report") : t("Show report")}</button>{" "}
+      {!embeddedViewer && <button disabled={!samples.length} onClick={download}>{t("Download connection report")}</button>}
+      {showReport && <textarea aria-label={t("Connection report")} readOnly value={report} rows={8} onFocus={event => event.currentTarget.select()} style={{ width: "100%", marginTop: 12 }} />}
     </div>
   </details>;
 }

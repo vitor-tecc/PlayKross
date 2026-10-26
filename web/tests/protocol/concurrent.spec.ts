@@ -1,4 +1,9 @@
 import { test, expect, type Locator } from "@playwright/test";
+
+// Existing protocol scenarios assert English interface text.
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem("playkross-language", "en"));
+});
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { checkFullscreen } from "./fullscreen";

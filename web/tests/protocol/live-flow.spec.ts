@@ -1,4 +1,9 @@
 import { test, expect } from "@playwright/test";
+
+// Existing protocol scenarios assert English interface text.
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem("playkross-language", "en"));
+});
 import { mkdirSync, writeFileSync } from "node:fs";
 import { checkFullscreen } from "./fullscreen";
 test("native broadcaster controller sends the requested live smoke preset", async ({ page, browser }) => {
