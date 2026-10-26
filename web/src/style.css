@@ -150,3 +150,7 @@ video { display: block; width: 100%; height: 100%; object-fit: contain; position
 .broadcast-controls p { margin: 10px 0 0; color: #b9c8da; font-size: .85rem; overflow-wrap: anywhere; }
 .own-broadcast { min-height: 180px; padding: 28px; display: grid; align-content: center; text-align: center; }
 .own-broadcast p { color: #b9c8da; }
+
+.room-header { position: relative; padding-top: 44px; }
+.language-selector { position: absolute; top: 0; right: 0; max-width: 100%; }
+.language-selector select { padding: 5px 8px; border: 1px solid #82a7ba; border-radius: 5px; background: #17283d; color: #e3e8ef; font: inherit; font-size: 0.85rem; }

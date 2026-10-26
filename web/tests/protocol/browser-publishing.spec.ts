@@ -1,5 +1,10 @@
 import { test, expect } from "@playwright/test";
 
+// Existing protocol scenarios assert English interface text.
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem("playkross-language", "en"));
+});
+
 test.use({ launchOptions: { args: ["--mute-audio"] } });
 
 for (const scenario of [
@@ -12,6 +17,8 @@ for (const scenario of [
     const link = new URL(process.env.JKILLER_PROBE_JOIN_LINK!);
     const publisherContext = await browser.newContext(), viewerContext = await browser.newContext();
     try {
+      await publisherContext.addInitScript(() => localStorage.setItem("playkross-language", "en"));
+      await viewerContext.addInitScript(() => localStorage.setItem("playkross-language", "en"));
       const publisher = await publisherContext.newPage(), viewer = await viewerContext.newPage();
       // Replace only the source chooser with synthetic canvas/tone tracks. The
       // production controller, WHIP/WHEP, authentication and MediaMTX stay real.

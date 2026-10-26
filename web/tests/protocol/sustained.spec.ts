@@ -1,4 +1,9 @@
 import { test, expect } from "@playwright/test";
+
+// Existing protocol scenarios assert English interface text.
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem("playkross-language", "en"));
+});
 import { mkdirSync, writeFileSync } from "node:fs";
 import { decodeTimingMarker, summarizeTimingLatency } from "../../src/media/timingMarker";
 test("measure sustained synthetic native motion and application audio", async ({ page, browser }) => {

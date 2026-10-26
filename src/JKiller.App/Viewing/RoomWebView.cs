@@ -1,3 +1,4 @@
+using AppLanguage = JKiller.App.Localization.Language;
 using JKiller.Windows.Rooms;
 using JKiller.Windows.Viewing;
 using Microsoft.Web.WebView2.Core;
@@ -30,6 +31,7 @@ public sealed class RoomWebView : Grid, IDisposable
         Grid.SetRow(playbackNotice, 0); Grid.SetRow(browserArea, 1);
         var noticeContents = new DockPanel { LastChildFill = true };
         var reload = new Button { Content = "Reload viewer", Margin = new Thickness(12, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
+        AppLanguage.Bind(reload, Button.ContentProperty, "Reload viewer");
         DockPanel.SetDock(reload, Dock.Right); noticeContents.Children.Add(reload); noticeContents.Children.Add(playbackNoticeText);
         playbackNoticeText.Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0x82, 0xA7, 0xBA));
         playbackNotice.Child = noticeContents;
@@ -150,17 +152,23 @@ public sealed class RoomWebView : Grid, IDisposable
     private void ShowPlaybackNotice()
     {
         if (disposed) return;
-        playbackNoticeText.Text = playbackBlocked
+        var message = playbackBlocked
             ? "Room sound is muted during system audio sharing. Reload the viewer to refresh sound controls, or stop system audio sharing to restore sound."
             : "Viewer sound controls could not be refreshed. Reload the viewer to restore your sound choice.";
+        AppLanguage.Bind(playbackNoticeText, TextBlock.TextProperty, message);
         playbackNotice.Visibility = Visibility.Visible;
     }
     private void ShowRecovery(string message)
     {
         if (disposed) return;
-        var panel = new StackPanel { Margin = new Thickness(24) }; panel.Children.Add(new TextBlock { Text = message + " Broadcasting controls remain separate.", TextWrapping = TextWrapping.Wrap });
+        var panel = new StackPanel { Margin = new Thickness(24) };
+        var notice = new TextBlock { TextWrapping = TextWrapping.Wrap };
+        AppLanguage.Bind(notice, TextBlock.TextProperty, message); panel.Children.Add(notice);
+        var guidance = new TextBlock { TextWrapping = TextWrapping.Wrap };
+        AppLanguage.Bind(guidance, TextBlock.TextProperty, " Broadcasting controls remain separate."); panel.Children.Add(guidance);
         var retry = new Button { Content = "Reload viewer", Margin = new Thickness(0, 12, 0, 0) };
-        retry.Click += async (_, _) => { try { if (currentRoom is not null) await OpenRoomAsync(currentRoom, CancellationToken.None); } catch (Exception error) { MessageBox.Show(error.Message, "PlayKross viewer"); } };
+        AppLanguage.Bind(retry, Button.ContentProperty, "Reload viewer");
+        retry.Click += async (_, _) => { try { if (currentRoom is not null) await OpenRoomAsync(currentRoom, CancellationToken.None); } catch (Exception error) { MessageBox.Show(AppLanguage.Text(error.Message), AppLanguage.Text("PlayKross viewer")); } };
         panel.Children.Add(retry); playbackNotice.Visibility = Visibility.Collapsed; browserArea.Children.Clear(); browserArea.Children.Add(panel);
     }
     public void Dispose() { disposed = true; playbackRegistration.Dispose(); browser?.Dispose(); browser = null; Children.Clear(); }
