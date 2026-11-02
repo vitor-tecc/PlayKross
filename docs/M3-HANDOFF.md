@@ -26,6 +26,8 @@ The owner added the ability to start a broadcast directly from the website using
 
 See [browser publishing implementation notes](setup/publishing-and-compatibility.md#broadcasting-entirely-from-the-website). The website now contains the browser capture/WHIP flow; code-only and mocked UI checks do not establish live browser publication acceptance.
 
+2026-11-02 follow-up: browser broadcasting adds desktop-matching 480p/720p/1080p × 30/60 FPS presets, a 1–25 Mbps bitrate control and local outgoing-video diagnostics. Defaults stay 720p30/4 Mbps; changes require stop/start and a new chooser gesture. Keep one encoding and all existing ownership/audio cleanup rules. See [quality control verification](validation/2026-11-02-browser-quality.md); the friend's reported Chrome 0.5 Mbps/poor image remains an unconfirmed live issue rather than a proven fixed bitrate cap.
+
 Follow-up: the [video-only playback regression](validation/2026-10-18-m3-browser-playback.md) fixes WHEP POST 400 for browser publications without audio by accepting MediaMTX's PCMU placeholder in the viewer. Three real synthetic Edge protocol cases and a Firefox 158 receive check passed; actual display capture/audio and the remaining M3 live acceptance checks are still pending.
 
 ## Initial interface/cursor slice

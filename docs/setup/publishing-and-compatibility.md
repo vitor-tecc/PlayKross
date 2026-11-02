@@ -8,7 +8,17 @@ Investigated 2026-10-18 against source `9c279a9` plus the first M3 interface/cur
 
 The joined room now offers **Start sharing**, **Stop sharing** and an initially unchecked **Share captured audio** option. Use HTTPS (or suitable localhost development) and a browser with display capture and H.264 sending support. The browser opens its own screen/window/tab chooser on each start; PlayKross does not silently choose a source or request a microphone. No desktop app or OBS helper is needed for this route; the room/media server must still be reachable.
 
-The initial target is up to 1280x720 at 30 fps and 4 Mbps with captured aspect ratio retained. Capture constraints and the single sender's bitrate limit are browser-managed, not an exact output guarantee. Browser publishing does not expose native AMF/NVENC controls or guarantee hardware acceleration or low game impact. No preview, simulcast rendition or per-viewer encode is created.
+Before **Start sharing**, choose resolution, frame rate and video bitrate. Browser presets now match the desktop app:
+
+| Resolution | 30 FPS | 60 FPS |
+| --- | --- | --- |
+| 480p (854×480) | 2 Mbps | 3 Mbps |
+| 720p (1280×720) | 4 Mbps | 6 Mbps |
+| 1080p (1920×1080) | 8 Mbps | 15 Mbps |
+
+The initial selection remains 720p30/4 Mbps. Selecting resolution or FPS resets the bitrate to that preset; then manually adjust **Video bitrate (Mbps)** from 1–25 Mbps in 0.5 Mbps steps. Stop sharing before changing settings and start again using the browser chooser. The captured aspect ratio is retained; smaller sources are not promised to upscale. Capture requests the chosen dimensions/FPS as ideals and maxima, and one video sender applies the bitrate/FPS ceilings before and after negotiation. These browser-managed limits are not exact output guarantees. Higher settings may increase game impact. Browser publishing does not expose native AMF/NVENC controls or guarantee hardware acceleration. No preview, simulcast rendition or per-viewer encode is created.
+
+While live, expand **Upload diagnostics** to see actual outgoing video bitrate, sent resolution/FPS and the browser's reported quality limitation (CPU, network bandwidth, other, none, or unavailable). Samples update every two seconds; bitrate uses outgoing video byte deltas and excludes audio and protocol overhead. The first sample needs another sample to establish bitrate. Missing statistics remain unavailable. A 4 Mbps selection is a ceiling, so a measured 0.5 Mbps does not by itself establish a configuration bug; the browser can send below it. These measurements help investigate poor image quality but do not establish the cause on a friend's machine or prove delivery to every viewer.
 
 Captured audio is opt-in and browser/OS/source-dependent. A requested track may be absent or later end; the page discloses video-only operation without substituting a microphone. This does not provide native per-process audio isolation. Room sound in the publishing tab is muted before requesting captured audio, and restored after it ends/stops without clearing a native mute block or card volume choices. Other tabs/apps may still be captured. The broadcaster's own card becomes a status tile, avoiding self-playback decoding/audio; other streams remain watchable.
 
