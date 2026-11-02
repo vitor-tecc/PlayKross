@@ -1,6 +1,8 @@
 import type { PublishReservation } from "../api/contracts";
 import { parseIceServers } from "./WhepSession";
-export interface PublicationTransport { start(grant: PublishReservation, stream: MediaStream, signal: AbortSignal): Promise<void>; close(): Promise<void> }
+import { defaultQuality, validQuality, type BroadcastQuality } from "./BroadcastQuality";
+export interface BroadcastStats { bitrateMbps: number | null; width: number | null; height: number | null; fps: number | null; limitation: "none" | "cpu" | "bandwidth" | "other" | null }
+export interface PublicationTransport { start(grant: PublishReservation, stream: MediaStream, signal: AbortSignal, quality?: BroadcastQuality): Promise<void>; readStats?(): Promise<BroadcastStats | null>; close(): Promise<void> }
 export interface WhipDependencies { origin: string; fetch: typeof fetch; createPeer: (servers: RTCIceServer[]) => RTCPeerConnection; supportsCodecs: (audio: boolean) => boolean; timeoutMs: number }
 export class WhipSession implements PublicationTransport {
   private readonly deps: WhipDependencies;
@@ -9,6 +11,7 @@ export class WhipSession implements PublicationTransport {
   private resource: { url: URL; token: string } | null = null;
   private started = false;
   private connected = false;
+  private previousStats: { id: string; timestamp: number; bytes: number } | null = null;
   private external: AbortSignal | null = null;
   private disconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly externalAbort = () => { void this.close(); };
@@ -23,11 +26,12 @@ export class WhipSession implements PublicationTransport {
     this.deps = deps ?? { origin: location.origin, fetch: globalThis.fetch.bind(globalThis), createPeer: servers => new RTCPeerConnection({ iceServers: servers }), timeoutMs: 15000,
       supportsCodecs: audio => typeof RTCRtpSender !== "undefined" && Boolean(RTCRtpSender.getCapabilities("video")?.codecs.some(c => c.mimeType.toLowerCase() === "video/h264")) && (!audio || Boolean(RTCRtpSender.getCapabilities("audio")?.codecs.some(c => c.mimeType.toLowerCase() === "audio/opus"))) };
   }
-  async start(grant: PublishReservation, stream: MediaStream, signal: AbortSignal): Promise<void> {
+  async start(grant: PublishReservation, stream: MediaStream, signal: AbortSignal, quality: BroadcastQuality = defaultQuality): Promise<void> {
     if (this.started) throw broadcastError();
     this.started = true; this.external = signal; signal.addEventListener("abort", this.externalAbort, { once: true });
     try {
       this.check(signal);
+      if (!validQuality(quality)) throw broadcastError();
       const video = stream.getVideoTracks(), audio = stream.getAudioTracks();
       if (video.length !== 1 || video[0]!.readyState !== "live" || audio.length > 1 || !this.deps.supportsCodecs(audio.length > 0)) throw broadcastError();
       const expires = Date.parse(grant.expiresAt);
@@ -40,7 +44,7 @@ export class WhipSession implements PublicationTransport {
       peer.addEventListener("connectionstatechange", this.connectionChanged);
       let videoSender: RTCRtpSender | null = null;
       for (const track of [...video, ...audio]) {
-        const transceiver = peer.addTransceiver(track, { direction: "sendonly", streams: [stream], ...(track.kind === "video" ? { sendEncodings: [{ maxBitrate: 4_000_000, maxFramerate: 30 }] } : {}) });
+        const transceiver = peer.addTransceiver(track, { direction: "sendonly", streams: [stream], ...(track.kind === "video" ? { sendEncodings: [{ maxBitrate: quality.bitrateMbps * 1_000_000, maxFramerate: quality.fps }] } : {}) });
         if (track.kind === "video") videoSender = transceiver.sender;
         if (typeof RTCRtpSender !== "undefined" && typeof transceiver.setCodecPreferences === "function") {
           const codecs = RTCRtpSender.getCapabilities(track.kind)?.codecs.filter(c => c.mimeType.toLowerCase() === (track.kind === "video" ? "video/h264" : "audio/opus"));
@@ -64,7 +68,8 @@ export class WhipSession implements PublicationTransport {
       await peer.setRemoteDescription({ type: "answer", sdp: answer }); this.check(signal);
       const parameters = videoSender!.getParameters();
       if (parameters.encodings.length !== 1) throw broadcastError();
-      parameters.encodings[0]!.maxBitrate = 4_000_000;
+      parameters.encodings[0]!.maxBitrate = quality.bitrateMbps * 1_000_000;
+      parameters.encodings[0]!.maxFramerate = quality.fps;
       await videoSender!.setParameters(parameters); this.check(signal);
       await this.wait(peer, "connectionstatechange", () => peer.connectionState === "connected", () => peer.connectionState === "failed" || peer.connectionState === "closed");
       this.check(signal); this.connected = true;
@@ -89,8 +94,26 @@ export class WhipSession implements PublicationTransport {
     });
   }
   private fail() { if (!this.connected) return; this.connected = false; void this.close().finally(() => this.onFailure?.(broadcastError())); }
+  async readStats(): Promise<BroadcastStats | null> {
+    const peer = this.peer;
+    if (!peer || !this.connected) return null;
+    const report = await peer.getStats();
+    if (this.peer !== peer || !this.connected) return null;
+    let video: RTCOutboundRtpStreamStats | undefined;
+    report.forEach(stat => { if (stat.type === "outbound-rtp" && (stat.kind ?? stat.mediaType) === "video" && !stat.isRemote) video = stat; });
+    if (!video) { this.previousStats = null; return null; }
+    const previous = this.previousStats;
+    const bytes = finiteStat(video.bytesSent), timestamp = finiteStat(video.timestamp);
+    const bitrateMbps = previous && previous.id === video.id && bytes !== null && timestamp !== null && timestamp > previous.timestamp && bytes >= previous.bytes
+      ? (bytes - previous.bytes) * 8 / (timestamp - previous.timestamp) / 1000 : null;
+    this.previousStats = bytes !== null && timestamp !== null ? { id: video.id, timestamp, bytes } : null;
+    const reason = video.qualityLimitationReason;
+    return { bitrateMbps, width: finiteStat(video.frameWidth), height: finiteStat(video.frameHeight), fps: finiteStat(video.framesPerSecond),
+      limitation: reason === "none" || reason === "cpu" || reason === "bandwidth" || reason === "other" ? reason : null };
+  }
   async close(): Promise<void> {
     this.abort.abort(); this.connected = false;
+    this.previousStats = null;
     if (this.disconnectTimer) clearTimeout(this.disconnectTimer); this.disconnectTimer = null;
     this.external?.removeEventListener("abort", this.externalAbort); this.external = null;
     const peer = this.peer; this.peer = null;
@@ -102,6 +125,7 @@ export class WhipSession implements PublicationTransport {
     }
   }
 }
+function finiteStat(value: number | undefined): number | null { return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : null; }
 function broadcastError() { return new Error("Browser broadcast failed. Check H.264/Opus support, room permission, UDP/firewall/relay settings and retry sharing."); }
 function compatibleAnswer(sdp: string, audio: boolean): boolean {
   if (!/^v=0\r?\n/.test(sdp)) return false;

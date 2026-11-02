@@ -1,8 +1,9 @@
 import type { PublishReservation, RoomSnapshot } from "../api/contracts";
 import { RoomApiError, type roomApi } from "../api/roomApi";
-import type { PublicationTransport } from "./WhipSession";
+import type { BroadcastStats, PublicationTransport } from "./WhipSession";
+import { defaultQuality, validQuality, type BroadcastQuality } from "./BroadcastQuality";
 export type PublisherPhase = "idle" | "choosing" | "starting" | "live" | "stopping";
-export interface PublisherSnapshot { phase: PublisherPhase; streamId: string | null; hasAudio: boolean; error: string | null }
+export interface PublisherSnapshot { phase: PublisherPhase; streamId: string | null; hasAudio: boolean; error: string | null; stats?: BroadcastStats | null }
 export type PublicationApi = Pick<typeof roomApi, "reservePublication" | "renewPublication" | "stopPublication">;
 export interface BrowserPublisherDependencies {
   secureContext: boolean; capture: ((options: DisplayMediaStreamOptions) => Promise<MediaStream>) | undefined; api: PublicationApi;
@@ -13,6 +14,7 @@ interface Attempt {
   abort: AbortController; stream: MediaStream | null; grant: PublishReservation | null; transport: PublicationTransport | null;
   handlers: Map<MediaStreamTrack, () => void>; renewal: ReturnType<typeof setTimeout> | null; cutoff: ReturnType<typeof setTimeout> | null;
   deadline: number; observed: boolean; observedBeforeGrant: Set<string>;
+  statsTimer?: ReturnType<typeof setTimeout>;
 }
 export class BrowserPublisher {
   private current: Attempt | null = null;
@@ -23,14 +25,18 @@ export class BrowserPublisher {
   constructor(private readonly deps: BrowserPublisherDependencies, private readonly changed: (state: PublisherSnapshot) => void) {}
   private update(value: Partial<PublisherSnapshot>) { this.snapshot = { ...this.snapshot, ...value }; this.changed({ ...this.snapshot }); }
   private valid(a: Attempt): boolean { return this.current === a && !a.abort.signal.aborted; }
-  async start(shareAudio: boolean): Promise<void> {
+  async start(shareAudio: boolean, requested: BroadcastQuality = defaultQuality): Promise<void> {
     if (this.current || this.stopping) return;
+    const quality = { ...requested };
+    if (!validQuality(quality)) {
+      this.update({ error: "Choose 480p, 720p or 1080p, 30 or 60 FPS, and 1–25 Mbps in 0.5 Mbps steps." }); return;
+    }
     const expires = Date.parse(this.deps.sessionExpiresAt);
     if (!this.deps.secureContext || !this.deps.capture || !Number.isFinite(expires) || expires <= Date.now()) {
       this.update({ phase: "idle", error: "Screen sharing requires a supported browser, HTTPS (or localhost) and an active room session." }); return;
     }
     const a: Attempt = { abort: new AbortController(), stream: null, grant: null, transport: null, handlers: new Map(), renewal: null, cutoff: null, deadline: Infinity, observed: false, observedBeforeGrant: new Set() };
-    this.current = a; this.update({ phase: "choosing", error: null, streamId: null, hasAudio: false });
+    this.current = a; this.update({ phase: "choosing", error: null, streamId: null, hasAudio: false, stats: null });
     try {
       // This callback must synchronously mute mounted room players before the
       // chooser opens; never await network or a React effect before capture.
@@ -50,7 +56,7 @@ export class BrowserPublisher {
       });
       this.update({ hasAudio: Boolean(audio) });
       if (!audio && shareAudio) this.deps.setCaptureAudioBlocked(false);
-      if (typeof video.applyConstraints === "function") await video.applyConstraints({ width: { max: 1280 }, height: { max: 720 }, frameRate: { max: 30 } });
+      if (typeof video.applyConstraints === "function") await video.applyConstraints({ width: { ideal: quality.width, max: quality.width }, height: { ideal: quality.height, max: quality.height }, frameRate: { ideal: quality.fps, max: quality.fps } });
       if (!this.valid(a)) return;
       this.checkSession(); this.update({ phase: "starting" });
       const reservedAt = this.deps.now();
@@ -68,10 +74,11 @@ export class BrowserPublisher {
       this.scheduleCutoff(a); this.scheduleRenewal(a);
       if (!this.valid(a)) return;
       a.transport = this.deps.createTransport(() => { if (this.valid(a)) void this.finish(a, "The broadcast connection ended. Start sharing again to reconnect."); });
-      await a.transport.start(grant, stream, a.abort.signal);
+      await a.transport.start(grant, stream, a.abort.signal, quality);
       if (!this.valid(a)) return;
       if (this.deps.now() >= a.deadline) { await this.finish(a, "Publication lease expired. Start sharing again."); return; }
       this.checkSession(); this.update({ phase: "live" });
+      this.scheduleStats(a);
     } catch (error) {
       if (!this.valid(a)) return;
       const message = error instanceof RoomApiError && error.status === 409 ? "This session already has a broadcast in another tab or client. Stop it there before sharing here." :
@@ -81,6 +88,17 @@ export class BrowserPublisher {
     }
   }
   private checkSession() { if (Date.parse(this.deps.sessionExpiresAt) <= Date.now()) throw new Error("session expired"); }
+  private scheduleStats(a: Attempt) {
+    if (!a.transport?.readStats || !this.valid(a)) return;
+    a.statsTimer = setTimeout(async () => {
+      a.statsTimer = undefined;
+      try {
+        const stats = await a.transport!.readStats!();
+        if (this.valid(a)) this.update({ stats });
+      } catch { if (this.valid(a)) this.update({ stats: null }); }
+      if (this.valid(a)) this.scheduleStats(a);
+    }, 2000);
+  }
   private scheduleCutoff(a: Attempt) {
     if (a.cutoff) clearTimeout(a.cutoff);
     const remaining = Math.min(a.deadline - this.deps.now(), Date.parse(this.deps.sessionExpiresAt) - Date.now());
@@ -125,6 +143,7 @@ export class BrowserPublisher {
     this.update({ phase: "stopping", error });
     a.abort.abort();
     if (a.renewal) clearTimeout(a.renewal); if (a.cutoff) clearTimeout(a.cutoff);
+    if (a.statsTimer) clearTimeout(a.statsTimer);
     for (const [track, ended] of a.handlers) track.removeEventListener("ended", ended); a.handlers.clear();
     if (a.stream) stopTracks(a.stream);
     this.deps.setCaptureAudioBlocked(false);
@@ -132,7 +151,7 @@ export class BrowserPublisher {
       Promise.resolve().then(() => a.transport?.close()),
       a.grant ? this.releaseReservation(a.grant) : Promise.resolve(),
     ]).then(() => {
-      this.stopping = null; this.update({ phase: "idle", streamId: null, hasAudio: false });
+      this.stopping = null; this.update({ phase: "idle", streamId: null, hasAudio: false, stats: null });
     });
     this.stopping = work; return work;
   }

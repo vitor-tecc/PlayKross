@@ -26,8 +26,27 @@ it("AudioIsOptInAndExtraTracksAreStopped", async () => {
   expect(c.deps.capture).toHaveBeenCalledWith({ video: true, audio: false });
   expect(audio.stop).toHaveBeenCalledOnce(); expect(extra.stop).toHaveBeenCalledOnce();
   expect(c.stream.getTracks()).toHaveLength(1); expect(c.state()).toMatchObject({ phase: "live", hasAudio: false });
-  expect(c.stream.tracks[0]!.applyConstraints).toHaveBeenCalledWith({ width: { max: 1280 }, height: { max: 720 }, frameRate: { max: 30 } });
+  expect(c.stream.tracks[0]!.applyConstraints).toHaveBeenCalledWith({ width: { ideal: 1280, max: 1280 }, height: { ideal: 720, max: 720 }, frameRate: { ideal: 30, max: 30 } });
   await c.publisher.stop();
+});
+it("SelectedQualityReachesCaptureAndTheSingleTransport", async () => {
+  const c = setup(), quality = { width: 1920, height: 1080, fps: 60, bitrateMbps: 12.5 };
+  await c.publisher.start(false, quality);
+  expect(c.stream.tracks[0]!.applyConstraints).toHaveBeenCalledWith({ width: { ideal: 1920, max: 1920 }, height: { ideal: 1080, max: 1080 }, frameRate: { ideal: 60, max: 60 } });
+  expect(c.transport.start).toHaveBeenCalledWith(grant, c.stream.asMedia(), expect.any(AbortSignal), quality);
+  await c.publisher.stop();
+});
+it.each([0.5, 25.5, NaN, Infinity, 1.25])("InvalidQualityNeverOpensCaptureOrReserves: %s", async bitrateMbps => {
+  const c = setup(); await c.publisher.start(false, { width: 1920, height: 1080, fps: 60, bitrateMbps });
+  expect(c.deps.capture).not.toHaveBeenCalled(); expect(c.api.reservePublication).not.toHaveBeenCalled(); expect(c.state().error).toBeTruthy();
+});
+it("UploadPollingStopsAndLateStatsCannotOverwriteAStoppedBroadcast", async () => {
+  vi.useFakeTimers(); const c = setup(), stats = deferred<null>();
+  const readStats = vi.fn(() => stats.promise); Object.assign(c.transport, { readStats });
+  await c.publisher.start(false); await vi.advanceTimersByTimeAsync(2000); expect(readStats).toHaveBeenCalledOnce();
+  await c.publisher.stop(); const count = c.states.length;
+  stats.resolve(null); await vi.advanceTimersByTimeAsync(10000);
+  expect(c.states).toHaveLength(count); expect(readStats).toHaveBeenCalledOnce(); expect(vi.getTimerCount()).toBe(0);
 });
 it("UnavailableAudioIsVideoOnlyAndEndedAudioDoesNotStopVideo", async () => {
   const c = setup(); await c.publisher.start(true); expect(c.state()).toMatchObject({ phase: "live", hasAudio: false }); expect(c.events.at(-1)).toBe("unmute"); await c.publisher.stop();

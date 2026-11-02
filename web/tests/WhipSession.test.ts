@@ -16,12 +16,33 @@ it("UsesOneSendOnlyEncodingAndCompatibleCodecs", async () => {
   c.stream.tracks.push(new Track("audio"));
   await c.session.start(grant, c.stream.asMedia(), new AbortController().signal);
   expect(c.peer.transceivers.map(t => [t.track.kind, t.direction])).toEqual([["video", "sendonly"], ["audio", "sendonly"]]);
-  expect(c.peer.transceivers[0]!.sender.setParameters).toHaveBeenCalledWith(expect.objectContaining({ encodings: [{ maxBitrate: 4_000_000 }] }));
+  expect(c.peer.transceivers[0]!.sender.setParameters).toHaveBeenCalledWith(expect.objectContaining({ encodings: [{ maxBitrate: 4_000_000, maxFramerate: 30 }] }));
   expect(c.peer.transceivers[0]!.setCodecPreferences).toHaveBeenCalledWith([expect.objectContaining({ mimeType: "video/H264" })]);
   await c.session.close(); await c.session.close();
   expect(c.peer.close).toHaveBeenCalledTimes(1);
   expect(c.fetch.mock.calls.filter(([, i]) => i?.method === "DELETE").map(([url]) => String(url))).toEqual([resource]);
   expect(c.stream.tracks[0]!.stop).not.toHaveBeenCalled();
+});
+it("CustomBitrateAndFpsAreAppliedBeforeAndAfterNegotiationWithoutSimulcast", async () => {
+  const c = setup(), added = vi.spyOn(c.peer, "addTransceiver");
+  await c.session.start(grant, c.stream.asMedia(), new AbortController().signal, { width: 1920, height: 1080, fps: 60, bitrateMbps: 12.5 });
+  expect(added).toHaveBeenCalledWith(c.stream.getVideoTracks()[0], expect.objectContaining({ sendEncodings: [{ maxBitrate: 12_500_000, maxFramerate: 60 }] }));
+  expect(c.peer.transceivers).toHaveLength(1);
+  expect(c.peer.transceivers[0]!.sender.setParameters).toHaveBeenCalledWith(expect.objectContaining({ encodings: [{ maxBitrate: 12_500_000, maxFramerate: 60 }] }));
+  await c.session.close();
+});
+it("UploadMeasurementsUseVideoDeltasAndReportBrowserLimitation", async () => {
+  const c = setup();
+  const report = (timestamp: number, bytesSent: number) => new Map([
+    ["video", { id: "video", type: "outbound-rtp", kind: "video", timestamp, bytesSent, frameWidth: 1280, frameHeight: 720, framesPerSecond: 24, qualityLimitationReason: "bandwidth" }],
+    ["audio", { id: "audio", type: "outbound-rtp", kind: "audio", timestamp, bytesSent: 90000000 }],
+  ]) as unknown as RTCStatsReport;
+  const getStats = vi.fn().mockResolvedValueOnce(report(1000, 100000)).mockResolvedValueOnce(report(3000, 225000));
+  Object.assign(c.peer, { getStats });
+  await c.session.start(grant, c.stream.asMedia(), new AbortController().signal);
+  expect(await c.session.readStats()).toMatchObject({ bitrateMbps: null, width: 1280, height: 720, fps: 24, limitation: "bandwidth" });
+  expect(await c.session.readStats()).toMatchObject({ bitrateMbps: 0.5 });
+  await c.session.close(); expect(await c.session.readStats()).toBeNull(); expect(getStats).toHaveBeenCalledTimes(2);
 });
 it.each(["https://foreign.test/whip", "/media/wrong/whip", grant.whipUri + "?secret=yes"])("RejectsForeignOrMalformedEndpoints: %s", async whipUri => {
   const c = setup(); await expect(c.session.start({ ...grant, whipUri }, c.stream.asMedia(), new AbortController().signal)).rejects.toThrow(); expect(c.fetch).not.toHaveBeenCalled();
