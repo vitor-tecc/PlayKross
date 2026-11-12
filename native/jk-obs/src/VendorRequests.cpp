@@ -44,7 +44,7 @@ void Arm(obs_data_t* request, obs_data_t* response, void*) {
         if ((mode == "Off") != name.empty()) throw std::runtime_error("Audio mode and selected source do not match.");
         std::optional<AudioRoute> selected;
         if (mode != "Off") {
-            if (!AudioSourceReady(name.c_str(), generation, owner.pid)) throw std::runtime_error("Selected audio is unavailable or belongs to room playback. " + AudioSourceError(name.c_str(), generation));
+            if (!AudioSourceReady(name.c_str(), generation, owner.pid)) throw std::runtime_error("Selected audio is unavailable. " + AudioSourceError(name.c_str(), generation));
             selected = SelectedAudioRoute(name.c_str(), generation, owner.pid);
             if (!selected || selected->mode != (mode == "SystemOutput" ? AudioMode::SystemOutput : AudioMode::Application)) throw std::runtime_error("Selected audio mode or identity is unavailable.");
             if (obs_data_has_user_value(request, "audioIdentity") && selected->identity_key != obs_data_get_string(request, "audioIdentity")) throw std::runtime_error("Selected audio identity does not match the prepared source.");

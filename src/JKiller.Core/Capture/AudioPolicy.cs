@@ -35,32 +35,20 @@ public static class AudioPolicy
             return new(false, "Select a running application with an exact process identity for audio; a display does not select audio.");
         return classification is ProcessClassification.Browser or ProcessClassification.SharedHost
             ? new(true, "Captures this app and its child processes, potentially including other tabs, web Discord and room playback. Individual tabs are not isolated; avoid feedback.")
-            : classification == ProcessClassification.VerifiedApplication
-            ? new(true, "Experimental: captures this app and its child processes. Future children cannot be guaranteed excluded; keep Discord and room playback outside this app's process tree.")
-            : new(false, classification switch
-            {
-                ProcessClassification.Discord => "Discord audio cannot be captured.",
-                ProcessClassification.OwnProcessTree => "Room playback cannot be captured; this prevents feedback.",
-                _ => "This application's audio isolation has not been verified. Video remains available."
-            });
+            : new(true, "Captures this app and its child processes, including any Discord or room playback they produce.");
     }
 
     public static AudioEligibility EvaluateApplication(ProcessIdentity? process, int ownerPid = 0)
     {
         var image = process?.ExecutablePath?.Replace('/', '\\') ?? "";
         var name = image[(image.LastIndexOf('\\') + 1)..].ToLowerInvariant();
-        // Match the independent native ForbiddenImage exclusions; eligibility alone does
-        // not establish liveness, owner-tree membership or child-process isolation.
+        // Classification only describes capture scope; no application is excluded.
         var classification = name switch
         {
-            _ when name.Contains("discord", StringComparison.Ordinal) => ProcessClassification.Discord,
-            _ when name.Contains("jkiller", StringComparison.Ordinal) || name.Contains("playkross", StringComparison.Ordinal) => ProcessClassification.OwnProcessTree,
-            "obs64.exe" => ProcessClassification.OwnProcessTree,
             "chrome.exe" or "msedge.exe" or "msedgewebview2.exe" or "firefox.exe" or "brave.exe" or "opera.exe" or "chromium.exe" => ProcessClassification.Browser,
             "steamwebhelper.exe" or "explorer.exe" or "rundll32.exe" or "dllhost.exe" => ProcessClassification.SharedHost,
             _ => ProcessClassification.VerifiedApplication
         };
-        if (process is not null && ownerPid > 0 && process.Pid == ownerPid) classification = ProcessClassification.OwnProcessTree;
         return Evaluate(new("audio", SourceKind.Window, 0, process, "Selected application"), classification);
     }
 

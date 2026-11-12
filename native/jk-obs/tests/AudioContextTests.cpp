@@ -75,6 +75,8 @@ static void SameNameReplacementDiagnosticsUnavailable() {
 }
 static void OriginalContextAppliesMixersThenAuditsAndDescribes() {
     Fixture f;
+    Require(jk::AudioSourceReady("Application audio", 1, 42), "Explicit application audio may select the controller itself");
+    Require(jk::AudioSourceReady("Application audio", 1, 99), "Application audio eligibility must not depend on inspecting the controller tree");
     Require(!jk::AuditScene() && f.source.mixers == 1, "Initial audit applies the original selected mixer");
     Require(jk::AuditScene(), "Second original-context audit passes after mixer application");
     obs_data_t response; jk::DescribeSelectedAudio(&response);

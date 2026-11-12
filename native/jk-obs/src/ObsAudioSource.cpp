@@ -3,7 +3,6 @@
 #include <windows.h>
 #include <map>
 #include <mutex>
-#include <tlhelp32.h>
 
 namespace jk {
 namespace {
@@ -20,31 +19,6 @@ std::string ProcessKey(const ProcessToken& identity) {
     std::string image(static_cast<std::size_t>(size), '\0');
     WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, identity.image_path.data(), static_cast<int>(identity.image_path.size()), image.data(), size, nullptr, nullptr);
     return "process:" + std::to_string(identity.pid) + ":" + std::to_string(identity.creation_filetime) + ":" + image;
-}
-bool BelongsToOwnerTree(const ProcessToken& target, std::uint32_t owner_pid) {
-    if (!owner_pid) return false;
-    const auto owner = ReadProcessToken(owner_pid);
-    if (!owner) return true; // Unverifiable controller: fail closed.
-    if (target.creation_filetime < owner->creation_filetime) return false;
-    HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-    if (snapshot == INVALID_HANDLE_VALUE) return true;
-    std::unique_ptr<void, decltype(&CloseHandle)> retained(snapshot, &CloseHandle);
-    PROCESSENTRY32W entry{}; entry.dwSize = sizeof(entry);
-    std::map<std::uint32_t, std::uint32_t> parents;
-    if (!Process32FirstW(snapshot, &entry)) return true;
-    do { parents.emplace(entry.th32ProcessID, entry.th32ParentProcessID); } while (Process32NextW(snapshot, &entry));
-    auto current = target.pid;
-    for (int depth = 0; depth < 128; ++depth) {
-        if (current == owner_pid) return true;
-        if (!current) return false;
-        const auto ancestor = ReadProcessToken(current);
-        if (!ancestor) return true;
-        if (ancestor->creation_filetime < owner->creation_filetime) return false;
-        auto parent = parents.find(current);
-        if (parent == parents.end() || parent->second == current) return true;
-        current = parent->second;
-    }
-    return true;
 }
 struct AudioSource final : AudioSink {
     obs_source_t* source;
@@ -76,7 +50,6 @@ struct AudioSource final : AudioSink {
 };
 std::optional<AudioRoute> Route(obs_source_t* source, const AudioSource& context, std::uint64_t generation, std::uint32_t owner_pid) {
     if (!context.binding || !context.Running() || !context.binding->CanEmit() || context.generation != generation || context.identity_key.empty() ||
-        (context.mode == AudioMode::Application && BelongsToOwnerTree(context.binding->Identity(), owner_pid)) ||
         (context.mode == AudioMode::SystemOutput && owner_pid && context.binding->Identity().pid != owner_pid) || obs_source_get_monitoring_type(source) != OBS_MONITORING_TYPE_NONE) return std::nullopt;
     return AudioRoute{context.mode == AudioMode::SystemOutput ? "jk_system_audio" : "jk_process_audio", obs_source_get_name(source), context.generation, false, context.mode, context.identity_key};
 }
@@ -107,15 +80,13 @@ void* CreateForMode(obs_data_t* settings, obs_source_t* source, AudioMode mode) 
             if (!AllowsCreateInput("jk_process_audio"))
                 throw std::runtime_error("Application audio input is disabled.");
             const long long pid = obs_data_get_int(settings, "pid");
-            if (pid <= 0 || pid > UINT32_MAX || static_cast<std::uint32_t>(pid) == GetCurrentProcessId()) throw std::runtime_error("Select an eligible application; OBS itself cannot be captured.");
+            if (pid <= 0 || pid > UINT32_MAX) throw std::runtime_error("Select a running application.");
             const std::string creation = obs_data_get_string(settings, "creation_filetime");
             std::size_t used = 0;
             const auto created = std::stoull(creation, &used);
             if (used != creation.size()) throw std::runtime_error("Invalid application creation identity.");
             ProcessToken token{static_cast<std::uint32_t>(pid), created, Wide(obs_data_get_string(settings, "image_path"))};
-            if (!AllowsApplicationAudioImage(token.image_path)) throw std::runtime_error("The Discord desktop app and the broadcaster's own playback cannot be audio sources.");
-            const auto controller = ControllerIdentity();
-            if (!controller || BelongsToOwnerTree(token, controller->pid)) throw std::runtime_error("Room playback and the controller's process tree cannot be captured.");
+            if (!AllowsApplicationAudioImage(token.image_path)) throw std::runtime_error("Selected application image identity is unavailable.");
             auto result = ProcessBinding::Open(token);
             if (!result.binding) throw std::runtime_error(result.error);
             context->binding = std::move(result.binding);

@@ -11,10 +11,10 @@ public sealed class AudioPolicyTests
     [InlineData(ProcessClassification.Discord)]
     [InlineData(ProcessClassification.OwnProcessTree)]
     [InlineData(ProcessClassification.Unknown)]
-    public void DiscordOwnPlaybackAndUnknownSourcesRemainIneligible(ProcessClassification classification)
+    public void ExplicitSourcesAreEligibleRegardlessOfClassification(ProcessClassification classification)
     {
         var result = AudioPolicy.Evaluate(Window, classification);
-        Assert.False(result.Allowed);
+        Assert.True(result.Allowed);
         Assert.NotEmpty(result.Reason);
     }
     [Theory]
@@ -40,9 +40,9 @@ public sealed class AudioPolicyTests
     [Theory]
     [InlineData("C:/Steam/steamapps/common/Geometry Dash/GeometryDash.exe", true)]
     [InlineData("C:/Other/GeometryDash.exe", true)]
-    [InlineData("C:/Discord.exe", false)]
+    [InlineData("C:/Discord.exe", true)]
     [InlineData("C:/msedgewebview2.exe", true)]
-    [InlineData("C:/PlayKross.exe", false)]
+    [InlineData("C:/PlayKross.exe", true)]
     [InlineData("C:/Game.exe", true)]
     public void SupportedAudioProfileIsIndependentOfUi(string image, bool allowed) =>
         Assert.Equal(allowed, AudioPolicy.EvaluateApplication(Original with { ExecutablePath = image }).Allowed);
@@ -101,8 +101,8 @@ public sealed class AudioPolicyTests
     [InlineData("C:/Apps/PlayKross.exe")]
     [InlineData("C:/Apps/JKiller.App.exe")]
     [InlineData("C:/Apps/obs64.exe")]
-    public void DiscordAndOwnPlaybackRemainIneligible(string image) =>
-        Assert.False(AudioPolicy.EvaluateSelection(new(AudioMode.Application, Original with { ExecutablePath = image }), SourceKind.Window).Allowed);
+    public void DiscordAndOwnPlaybackCanBeExplicitlySelected(string image) =>
+        Assert.True(AudioPolicy.EvaluateSelection(new(AudioMode.Application, Original with { ExecutablePath = image }), SourceKind.Window).Allowed);
 
     [Theory]
     [InlineData("C:/Apps/chrome.exe")]
@@ -120,8 +120,8 @@ public sealed class AudioPolicyTests
         Assert.True(AudioPolicy.EvaluateSelection(new(AudioMode.Application, Original with { ExecutablePath = image }), SourceKind.Window).Allowed);
 
     [Fact]
-    public void OwnerCannotSelectItselfUnderAnUnrecognizedImageName() =>
-        Assert.False(AudioPolicy.EvaluateSelection(new(AudioMode.Application, Original), SourceKind.Window, Original.Pid).Allowed);
+    public void OwnerCanExplicitlySelectItself() =>
+        Assert.True(AudioPolicy.EvaluateSelection(new(AudioMode.Application, Original), SourceKind.Window, Original.Pid).Allowed);
 
     [Fact]
     public void ExplicitModesDoNotImplicitlySelectSystemAudio()
