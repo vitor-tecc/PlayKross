@@ -8,11 +8,11 @@ import { writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { checkFullscreen } from "./fullscreen";
 test("real native H264 and process-only Opus reach one Edge viewer", async ({ page, browser }, info) => {
-  const link = new URL(process.env.JKILLER_PROBE_JOIN_LINK ?? "");
+  const link = new URL(process.env.PLAYKROSS_PROBE_JOIN_LINK ?? "");
   const invite = decodeURIComponent(link.hash.slice("#invite=".length));
   await page.addInitScript(invitation => {
-    sessionStorage.setItem("jk-invite", invitation);
-    const peers: RTCPeerConnection[] = []; (window as unknown as { jkTestPeers: RTCPeerConnection[] }).jkTestPeers = peers;
+    sessionStorage.setItem("playkross-invite", invitation);
+    const peers: RTCPeerConnection[] = []; (window as unknown as { playkrossTestPeers: RTCPeerConnection[] }).playkrossTestPeers = peers;
     const Original = window.RTCPeerConnection;
     window.RTCPeerConnection = class extends Original { constructor(configuration?: RTCConfiguration) { super(configuration); peers.push(this); } };
   }, invite);
@@ -24,7 +24,7 @@ test("real native H264 and process-only Opus reach one Edge viewer", async ({ pa
   await page.getByRole("button", { name: "Enable sound" }).click();
   await expect.poll(() => video.evaluate(element => (element as HTMLVideoElement).getVideoPlaybackQuality().totalVideoFrames), { timeout: 10000 }).toBeGreaterThan(30);
   const metrics = await page.evaluate(async () => {
-    const peers = (window as unknown as { jkTestPeers: RTCPeerConnection[] }).jkTestPeers;
+    const peers = (window as unknown as { playkrossTestPeers: RTCPeerConnection[] }).playkrossTestPeers;
     const peer = peers.filter(value => value.connectionState === "connected").at(-1); if (!peer) throw new Error("No connected actual WebRTC receiver.");
     const all = await peer.getStats();
     const inbound = [...all.values()].filter(value => value.type === "inbound-rtp");
@@ -43,6 +43,6 @@ test("real native H264 and process-only Opus reach one Edge viewer", async ({ pa
   await expect.poll(() => video.evaluate(element => (element as HTMLVideoElement).videoWidth)).toBe(1280);
   await writeFile(resolve("../.artifacts/protocol/revoke-publication"), "revoke");
   await expect(video).toHaveCount(0, { timeout: 10000 });
-  await expect.poll(() => page.evaluate(() => (window as unknown as { jkTestPeers: RTCPeerConnection[] }).jkTestPeers.every(peer => peer.connectionState === "closed")), { timeout: 10000 }).toBe(true);
+  await expect.poll(() => page.evaluate(() => (window as unknown as { playkrossTestPeers: RTCPeerConnection[] }).playkrossTestPeers.every(peer => peer.connectionState === "closed")), { timeout: 10000 }).toBe(true);
   console.log("PASS: real fullscreen return preserves playback; ownership revocation removes the player and closes its receiver.");
 });

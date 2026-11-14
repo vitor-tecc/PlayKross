@@ -7,12 +7,12 @@ test.beforeEach(async ({ page }) => {
 import { mkdirSync, writeFileSync } from "node:fs";
 import { checkFullscreen } from "./fullscreen";
 test("native broadcaster controller sends the requested live smoke preset", async ({ page, browser }) => {
-  test.skip(!process.env.JKILLER_LIVE_FLOW, "Run with the native live-flow harness.");
-  const link = new URL(process.env.JKILLER_PROBE_JOIN_LINK ?? "");
-  const height = Number(process.env.JKILLER_SMOKE_HEIGHT);
+  test.skip(!process.env.PLAYKROSS_LIVE_FLOW, "Run with the native live-flow harness.");
+  const link = new URL(process.env.PLAYKROSS_PROBE_JOIN_LINK ?? "");
+  const height = Number(process.env.PLAYKROSS_SMOKE_HEIGHT);
   await page.addInitScript(invitation => {
-    sessionStorage.setItem("jk-invite", invitation);
-    const peers: RTCPeerConnection[] = []; (window as unknown as { jkTestPeers: RTCPeerConnection[] }).jkTestPeers = peers;
+    sessionStorage.setItem("playkross-invite", invitation);
+    const peers: RTCPeerConnection[] = []; (window as unknown as { playkrossTestPeers: RTCPeerConnection[] }).playkrossTestPeers = peers;
     const Original = window.RTCPeerConnection;
     window.RTCPeerConnection = class extends Original { constructor(configuration?: RTCConfiguration) { super(configuration); peers.push(this); } };
   }, decodeURIComponent(link.hash.slice(8)));
@@ -38,7 +38,7 @@ test("native broadcaster controller sends the requested live smoke preset", asyn
   mkdirSync("../.artifacts/diagnostics", { recursive: true });
   writeFileSync(`../.artifacts/diagnostics/live-room-${height}.json`, JSON.stringify(report, null, 2));
   const metrics = await page.evaluate(async () => {
-    const peer = (window as unknown as { jkTestPeers: RTCPeerConnection[] }).jkTestPeers.find(value => value.connectionState === "connected");
+    const peer = (window as unknown as { playkrossTestPeers: RTCPeerConnection[] }).playkrossTestPeers.find(value => value.connectionState === "connected");
     if (!peer) throw new Error("Actual receiver not connected.");
     const stats = await peer.getStats(); const inbound = [...stats.values()].filter(value => value.type === "inbound-rtp");
     const video = inbound.find(value => value.kind === "video"), audio = inbound.find(value => value.kind === "audio");
@@ -53,7 +53,7 @@ test("native broadcaster controller sends the requested live smoke preset", asyn
   });
   expect(metrics.codec.toLowerCase()).toBe("video/h264"); expect(metrics.audioCodec.toLowerCase()).toBe("audio/opus"); expect(metrics.audioPackets).toBeGreaterThan(0);
   expect(metrics.pixelLumaVariance, "Actual received video must contain varied pixels, rather than a blank decoded frame").toBeGreaterThan(1);
-  console.log(JSON.stringify({ browser: browser.version(), topology: link.protocol === "https:" ? "same-PC viewer via HTTPS origin; not external-network evidence" : "loopback", check: "short-live-smoke-only", captureMode: process.env.JKILLER_PROBE_CAPTURE_MODE ?? "application", audioValidation: process.env.JKILLER_PROBE_CAPTURE_MODE === "video-only" ? "pending; application audio disabled" : "short delivery only; Discord and sync pending", ...metrics }));
+  console.log(JSON.stringify({ browser: browser.version(), topology: link.protocol === "https:" ? "same-PC viewer via HTTPS origin; not external-network evidence" : "loopback", check: "short-live-smoke-only", captureMode: process.env.PLAYKROSS_PROBE_CAPTURE_MODE ?? "application", audioValidation: process.env.PLAYKROSS_PROBE_CAPTURE_MODE === "video-only" ? "pending; application audio disabled" : "short delivery only; Discord and sync pending", ...metrics }));
   await checkFullscreen(page, page.locator(".stream-card"));
   await page.close();
 });

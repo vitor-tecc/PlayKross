@@ -11,7 +11,7 @@ try {
     $fixture = Start-Process -FilePath (Join-Path $root '.artifacts/native/Debug/CaptureFixture.exe') -WindowStyle Hidden -PassThru
     Start-Sleep -Milliseconds 500
     $probe = Join-Path $root 'tools/acceptance/OwnedEngineProbe/bin/Debug/net10.0-windows10.0.26100.0/OwnedEngineProbe.dll'
-    $environment = @{ JKILLER_PROBE_JOIN_LINK=$services.JoinLink; JKILLER_FIXTURE_PID=$fixture.Id.ToString(); DOTNET_CLI_HOME=(Join-Path $root '.tools/dotnet-home') }
+    $environment = @{ PLAYKROSS_PROBE_JOIN_LINK=$services.JoinLink; PLAYKROSS_FIXTURE_PID=$fixture.Id.ToString(); DOTNET_CLI_HOME=(Join-Path $root '.tools/dotnet-home') }
     $publisher = Start-Process -FilePath (Join-Path $root '.tools/dotnet/dotnet.exe') -ArgumentList @(('"' + $probe + '"'), 'publish') -Environment $environment -WorkingDirectory $root -WindowStyle Hidden -RedirectStandardOutput (Join-Path $directory 'controller-exit.log') -RedirectStandardError (Join-Path $directory 'controller-exit-errors.log') -PassThru
     $expected = Join-Path $root '.runtime/obs/bin/64bit/obs64.exe'
     $deadline = [DateTime]::UtcNow.AddSeconds(30)

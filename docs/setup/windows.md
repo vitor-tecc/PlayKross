@@ -20,7 +20,7 @@ npm --prefix web ci --cache .tools/npm-cache
 npm --prefix web run build
 ./scripts/Build-Native.ps1 -Plugin -Test
 ./scripts/Build-InstrumentedObs.ps1
-./.tools/dotnet/dotnet.exe build JKiller.sln
+./.tools/dotnet/dotnet.exe build PlayKross.sln
 ./.tools/dotnet/dotnet.exe build tools/acceptance/LiveFlowProbe
 ./.tools/dotnet/dotnet.exe build tools/acceptance/OwnedEngineProbe
 ./scripts/Verify.ps1 -Mode Automated

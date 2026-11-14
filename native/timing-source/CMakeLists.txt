@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.25)
-project(JKTimingSource LANGUAGES CXX)
+project(PlayKrossTimingSource LANGUAGES CXX)
 add_executable(CaptureFixture WIN32 TimingSource.cpp)
 target_compile_features(CaptureFixture PRIVATE cxx_std_20)
 target_compile_definitions(CaptureFixture PRIVATE UNICODE _UNICODE NOMINMAX)

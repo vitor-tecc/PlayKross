@@ -1,7 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using JKiller.Windows.Obs;
-namespace JKiller.Acceptance.Probes;
+using PlayKross.Windows.Obs;
+namespace PlayKross.Acceptance.Probes;
 // Test-only capability injection; encoder preparation/output still use real OBS.
 public sealed class CpuFallbackProbeRpc(IObsRpcClient inner) : IObsRpcClient, IAsyncDisposable
 {

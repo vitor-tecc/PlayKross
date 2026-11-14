@@ -1,6 +1,7 @@
 import { t, useLanguage } from "../i18n";
 import type { WhepDiagnostic } from "../media/WhepSession";
 import { useState } from "react";
+import { downloadBlob } from "./download";
 
 export function ConnectionDiagnostics({ samples }: { samples: readonly WhepDiagnostic[] }) {
   useLanguage();
@@ -8,12 +9,7 @@ export function ConnectionDiagnostics({ samples }: { samples: readonly WhepDiagn
   const [showReport, setShowReport] = useState(false);
   const embeddedViewer = "playkrossPlaybackAudioBlocked" in window;
   const report = JSON.stringify({ version: 1, browser: navigator.userAgent, samples }, null, 2);
-  const download = () => {
-    const blob = new Blob([report], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a"); link.href = url; link.download = "playkross-connection-diagnostics.json"; link.click();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
-  };
+  const download = () => downloadBlob(new Blob([report], { type: "application/json" }), "playkross-connection-diagnostics.json");
   return <details className="connection-diagnostics diagnostics">
     <summary aria-label={t("Connection diagnostics")} title={t("Connection diagnostics")}>↗</summary>
     <div className="diagnostics-content">

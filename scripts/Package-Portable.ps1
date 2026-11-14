@@ -39,7 +39,7 @@ $obsArchive = Join-Path $root ('.tools/downloads/obs-' + $pins.obs.version + '.z
 $sourceArchive = Join-Path $root '.tools/downloads/OBS-Studio-32.2.2-Sources.tar.gz'
 $jsonHeader = Join-Path $root '.tools/json/include/nlohmann/json.hpp'
 $dotnet = Join-Path $root '.tools/dotnet/dotnet.exe'
-$plugin = Join-Path $root '.artifacts/native/Release/jk-obs.dll'
+$plugin = Join-Path $root '.artifacts/native/Release/playkross-obs.dll'
 $capture = Join-Path $root '.artifacts/instrumented-obs/Release/libobs-winrt.dll'
 $provenancePath = Join-Path $root '.artifacts/instrumented-obs/provenance.json'
 $patch = Join-Path $root 'patches/obs-32.2.2-capture-trace.patch'
@@ -65,7 +65,7 @@ try {
     $env:DOTNET_CLI_HOME = Join-Path $root '.tools/dotnet-home'
     $env:NUGET_PACKAGES = Join-Path $root '.tools/nuget'
     $env:DOTNET_CLI_TELEMETRY_OPTOUT = '1'
-    & $dotnet publish (Join-Path $root 'src/JKiller.App/JKiller.App.csproj') -c Release -r win-x64 --self-contained true -p:PortableBuild=true -p:RestoreLockedMode=true -p:PublishSingleFile=false -p:PublishTrimmed=false -p:DebugType=None -p:DebugSymbols=false -o $publish --verbosity minimal *>&1 | Tee-Object -FilePath (Join-Path $stage 'publish.log') | Write-Host
+    & $dotnet publish (Join-Path $root 'src/PlayKross.App/PlayKross.App.csproj') -c Release -r win-x64 --self-contained true -p:PortableBuild=true -p:RestoreLockedMode=true -p:PublishSingleFile=false -p:PublishTrimmed=false -p:DebugType=None -p:DebugSymbols=false -o $publish --verbosity minimal *>&1 | Tee-Object -FilePath (Join-Path $stage 'publish.log') | Write-Host
     if ($LASTEXITCODE -ne 0) { throw 'Portable application publish failed; no release ZIP was produced.' }
     if (-not (Test-Path -LiteralPath (Join-Path $publish 'PlayKross.exe'))) { throw 'Publish omitted PlayKross.exe.' }
     if (-not (Test-Path -LiteralPath (Join-Path $publish 'coreclr.dll'))) { throw 'Publish omitted the self-contained .NET runtime.' }
@@ -86,7 +86,7 @@ try {
         [void]$allowed.Add([IO.Path]::GetRelativePath($payload, $file.FullName).Replace('\','/'))
     }
     $overrides = @{
-        '.runtime/obs/obs-plugins/64bit/jk-obs.dll' = $plugin
+        '.runtime/obs/obs-plugins/64bit/playkross-obs.dll' = $plugin
         '.runtime/obs/bin/64bit/libobs-winrt.dll' = $capture
     }
     foreach ($relative in $overrides.Keys) {
@@ -99,12 +99,12 @@ try {
     foreach ($file in Get-ChildItem -LiteralPath (Join-Path $obsDestination 'obs-plugins/64bit') -Filter '*.dll' -File) {
         if ($file.Name -notin $plugins) { throw "OBS plugin outside the owned allowlist: $($file.Name)" }
     }
-    foreach ($relative in @('dependencies.json','obs/allowed-plugins.txt','obs/global.ini','obs/user.ini','obs/basic/profiles/JKiller/basic.ini','obs/basic/scenes/JKiller.json','obs/plugin_config/obs-websocket/config.json')) {
+    foreach ($relative in @('dependencies.json','obs/allowed-plugins.txt','obs/global.ini','obs/user.ini','obs/basic/profiles/PlayKross/basic.ini','obs/basic/scenes/PlayKross.json','obs/plugin_config/obs-websocket/config.json')) {
         Copy-PayloadFile (Join-Path $root ('config/' + $relative)) ('config/' + $relative)
     }
     Copy-PayloadFile (Join-Path $root 'docs/setup/portable.md') 'README.md'
     foreach ($pair in @(
-        @('native/jk-obs/LICENSE', 'Licenses/jk-obs-GPL-2.0.txt'),
+        @('native/playkross-obs/LICENSE', 'Licenses/playkross-obs-GPL-2.0.txt'),
         @('native/instrumented-obs/LICENSE', 'Licenses/OBS-GPL-2.0.txt'),
         @('native/instrumented-obs/NOTICE.md', 'Licenses/capture-NOTICE.md'),
         @('.tools/dotnet/LICENSE.txt', 'Licenses/dotnet-LICENSE.txt'),
@@ -114,7 +114,7 @@ try {
     )) { Copy-PayloadFile (Join-Path $root $pair[0]) $pair[1] }
 
     # Corresponding modified native source accompanies these uncommitted binaries.
-    foreach ($component in @('jk-obs','instrumented-obs')) {
+    foreach ($component in @('playkross-obs','instrumented-obs')) {
         $sourceRoot = Join-Path $root ('native/' + $component)
         foreach ($file in Get-ChildItem -LiteralPath $sourceRoot -Recurse -File -Force) {
             $relative = [IO.Path]::GetRelativePath($sourceRoot, $file.FullName).Replace('\','/')

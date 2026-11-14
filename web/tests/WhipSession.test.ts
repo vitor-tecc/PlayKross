@@ -16,7 +16,7 @@ it("UsesOneSendOnlyEncodingAndCompatibleCodecs", async () => {
   c.stream.tracks.push(new Track("audio"));
   await c.session.start(grant, c.stream.asMedia(), new AbortController().signal);
   expect(c.peer.transceivers.map(t => [t.track.kind, t.direction])).toEqual([["video", "sendonly"], ["audio", "sendonly"]]);
-  expect(c.peer.transceivers[0]!.sender.setParameters).toHaveBeenCalledWith(expect.objectContaining({ encodings: [{ maxBitrate: 4_000_000, maxFramerate: 30 }] }));
+  expect(c.peer.transceivers[0]!.sender.setParameters).toHaveBeenCalledWith(expect.objectContaining({ encodings: [{ maxBitrate: 4_000_000, maxFramerate: 30, scaleResolutionDownBy: 1.5 }] }));
   expect(c.peer.transceivers[0]!.setCodecPreferences).toHaveBeenCalledWith([expect.objectContaining({ mimeType: "video/H264" })]);
   await c.session.close(); await c.session.close();
   expect(c.peer.close).toHaveBeenCalledTimes(1);
@@ -90,4 +90,18 @@ it("VideoOnlyNeedsNoOpusAndLiveFailureNotifiesOnce", async () => {
   await c.session.start(grant, c.stream.asMedia(), new AbortController().signal);
   c.peer.connectionState = "failed"; c.peer.dispatchEvent(new Event("connectionstatechange"));
   await vi.waitFor(() => expect(c.failed).toHaveBeenCalledOnce()); expect(c.peer.close).toHaveBeenCalledOnce();
+});
+it("ScalesALargerCaptureDownToTheRequestedSizeInTheEncoder", async () => {
+  const c = setup(), added = vi.spyOn(c.peer, "addTransceiver");
+  c.stream.tracks[0]!.getSettings = () => ({ width: 2560, height: 1440, frameRate: 60 });
+  await c.session.start(grant, c.stream.asMedia(), new AbortController().signal, { width: 854, height: 480, fps: 30, bitrateMbps: 2 });
+  expect(added).toHaveBeenCalledWith(c.stream.getVideoTracks()[0], expect.objectContaining({ sendEncodings: [{ maxBitrate: 2_000_000, maxFramerate: 30, scaleResolutionDownBy: 3 }] }));
+  await c.session.close();
+});
+it("ExplainsMissingH264AndFailedMediaConnections", async () => {
+  const noCodec = setup(); noCodec.deps.supportsCodecs = () => false;
+  await expect(new WhipSession(noCodec.deps).start(grant, noCodec.stream.asMedia(), new AbortController().signal)).rejects.toThrow(/OpenH264/);
+  const c = setup();
+  c.peer.setRemoteDescription = vi.fn(async () => { c.peer.connectionState = "failed"; c.peer.dispatchEvent(new Event("connectionstatechange")); });
+  await expect(c.session.start(grant, c.stream.asMedia(), new AbortController().signal)).rejects.toThrow(/-MediaInterface/);
 });

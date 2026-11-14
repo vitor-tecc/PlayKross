@@ -4,7 +4,7 @@
 		root .runtime/caddy
 	}
 }
-https://{$JKILLER_PUBLIC_HOST} {
+https://{$PLAYKROSS_PUBLIC_HOST} {
 	tls {
 		issuer acme {
 			dir https://acme-v02.api.letsencrypt.org/directory

@@ -6,22 +6,9 @@ import { observePlayer, type ViewerDiagnostics } from "../media/playerDiagnostic
 import { DiagnosticsPanel } from "./DiagnosticsPanel";
 import { useFullscreenChrome } from "./useFullscreenChrome";
 import { ConnectionDiagnostics } from "./ConnectionDiagnostics";
+import { Icon } from "./Icon";
+import { createViewerReporter } from "../media/diagnosticsReporter";
 export interface StreamPlayerProps { streamId: string; nickname: string; getPlayback: (id: string, signal: AbortSignal) => Promise<PlaybackGrant>; audioBlocked?: boolean; audioBlockedReason?: string; focused?: boolean; onFocusStream?: () => void }
-type IconName = "eye" | "stop" | "play" | "sound" | "mute" | "fullscreen" | "focus" | "grid" | "retry";
-function Icon({ name }: { name: IconName }) {
-  const paths: Record<IconName, React.ReactNode> = {
-    eye: <><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z" /><circle cx="12" cy="12" r="3" /></>,
-    stop: <rect x="6" y="6" width="12" height="12" rx="1" />,
-    play: <path d="m8 5 11 7-11 7V5Z" />,
-    sound: <><path d="M11 4 5 9H2v6h3l6 5V4Z" /><path d="M15 8a6 6 0 0 1 0 8m3-11a10 10 0 0 1 0 14" /></>,
-    mute: <><path d="M11 4 5 9H2v6h3l6 5V4Z" /><path d="m16 9 6 6m0-6-6 6" /></>,
-    fullscreen: <path d="M9 3H3v6m12-6h6v6M3 15v6h6m6 0h6v-6" />,
-    focus: <><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M16 4v16M16 12h5" /></>,
-    grid: <><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /></>,
-    retry: <><path d="M20 7v5h-5M4 17v-5h5" /><path d="M6 7a7 7 0 0 1 12-1l2 6M4 12l2 6a7 7 0 0 0 12-1" /></>,
-  };
-  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{paths[name]}</svg>;
-}
 export function StreamPlayer({ streamId, nickname, getPlayback, audioBlocked = false, audioBlockedReason, focused = false, onFocusStream }: StreamPlayerProps) {
   useLanguage();
   const panel = useRef<HTMLDivElement>(null); const video = useRef<HTMLVideoElement>(null);
@@ -42,7 +29,7 @@ export function StreamPlayer({ streamId, nickname, getPlayback, audioBlocked = f
     const abort = new AbortController(); const element = video.current;
     let current: WhepSession | null = null; let timer: ReturnType<typeof setTimeout> | null = null;
     let stopDiagnostics: (() => void) | null = null;
-    let reporting = false;
+    const report = createViewerReporter(streamId, abort.signal);
     const detach = () => { stopDiagnostics?.(); stopDiagnostics = null; setDiagnostics(null); if (element) { element.pause(); element.srcObject = null; } };
     const schedule = (reason: Error, attempt: number) => {
       if (abort.signal.aborted) return;
@@ -62,16 +49,7 @@ export function StreamPlayer({ streamId, nickname, getPlayback, audioBlocked = f
         if (abort.signal.aborted || !element || current !== session) { await session.close(); return; }
         element.srcObject = stream;
         const peer = session.getPeer();
-        if (peer) stopDiagnostics = observePlayer(peer, element, sample => {
-          setDiagnostics(sample);
-          const { codec, connectionPath, ...metrics } = sample;
-          const { receivedMbps, ...remaining } = metrics;
-          if (!reporting) {
-            reporting = true;
-            void fetch("/api/diagnostics", { method: "POST", credentials: "same-origin", signal: AbortSignal.any([abort.signal, AbortSignal.timeout(3000)]), headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ streamId, role: "viewer", metrics: { ...remaining, receiveMbps: receivedMbps }, metadata: { codec: codec ?? "", connectionPath, provenance: "browser-rolling-5s" } }) }).catch(() => { }).finally(() => { reporting = false; });
-          }
-        });
+        if (peer) stopDiagnostics = observePlayer(peer, element, sample => { setDiagnostics(sample); report(sample); });
         setStatus("Connected; waiting for frames");
         try { await element.play(); } catch { setStatus("Connected. Press Play to begin playback."); }
       } catch (reason) {
@@ -82,10 +60,18 @@ export function StreamPlayer({ streamId, nickname, getPlayback, audioBlocked = f
     void open(0);
     return () => { abort.abort(); if (timer) clearTimeout(timer); detach(); if (current) void current.close(); };
   }, [streamId, getPlayback, watch, retry]);
-  const play = async (enableSound = false) => {
+  const play = async () => {
     if (!video.current) return;
-    if (enableSound && !audioBlocked) { setSound(!sound); video.current.muted = sound; }
     try { await video.current.play(); } catch { setStatus("Playback was blocked. Press Play again to allow it."); }
+  };
+  const toggleSound = async () => {
+    if (!audioBlocked) {
+      const enabled = !sound;
+      setSound(enabled);
+      // Apply synchronously so the browser treats play() as part of this gesture.
+      if (video.current) video.current.muted = !enabled;
+    }
+    await play();
   };
   const toggleFullscreen = async () => {
     try { if (document.fullscreenElement === panel.current) await document.exitFullscreen(); else await panel.current?.requestFullscreen(); }
@@ -103,7 +89,7 @@ export function StreamPlayer({ streamId, nickname, getPlayback, audioBlocked = f
     {audioBlocked && <div className="stream-status needs-attention" role="status">{t(audioBlockedReason ?? "Room sound is muted to prevent recapture. Stop system audio sharing to restore sound, or use application audio.")}</div>}
     <div className="stream-controls">
       {watch && <button className="icon-button watch-control" aria-label={t("Stop watching")} title={t("Stop watching")} onClick={() => setWatch(false)}><Icon name="stop" /></button>}
-      {watch && <><button className="icon-button" aria-label={t("Play")} title={t("Play")} onClick={() => { void play(); }}><Icon name="play" /></button><button className="icon-button" disabled={audioBlocked} aria-label={t(sound && !audioBlocked ? "Mute" : "Enable sound")} title={t(audioBlocked ? (audioBlockedReason ?? "Stop system audio sharing to restore room sound.") : sound ? "Mute" : "Enable sound")} onClick={() => { void play(true); }}><Icon name={sound && !audioBlocked ? "sound" : "mute"} /></button></>}
+      {watch && <><button className="icon-button" aria-label={t("Play")} title={t("Play")} onClick={() => { void play(); }}><Icon name="play" /></button><button className="icon-button" disabled={audioBlocked} aria-label={t(sound && !audioBlocked ? "Mute" : "Enable sound")} title={t(audioBlocked ? (audioBlockedReason ?? "Stop system audio sharing to restore room sound.") : sound ? "Mute" : "Enable sound")} onClick={() => { void toggleSound(); }}><Icon name={sound && !audioBlocked ? "sound" : "mute"} /></button></>}
       <label className="volume-control" title={t("Volume: {0}%", volume)}><span className="sr-only">{t("{0}'s volume", nickname)}</span><input type="range" min="0" max="100" step="1" value={volume} onChange={event => setVolume(Number(event.target.value))} aria-valuetext={`${volume}%`} /><output aria-hidden="true">{volume}%</output></label>
       {error && <button className="icon-button" aria-label={t("Retry")} title={t("Retry")} onClick={() => setRetry(value => value + 1)}><Icon name="retry" /></button>}
       <DiagnosticsPanel sample={diagnostics} />

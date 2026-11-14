@@ -1,5 +1,5 @@
-using JKiller.Contracts;
-namespace JKiller.Acceptance.Probes;
+using PlayKross.Contracts;
+namespace PlayKross.Acceptance.Probes;
 public static class ProbeCaptureMode
 {
     public static AudioSelection SelectAudio(string? mode, SourceDescriptor selected, string? renderEndpointId = null) => mode switch

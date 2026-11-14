@@ -9,7 +9,7 @@ internal static class Program
     {
         var root = Environment.CurrentDirectory;
         var launch = new ProcessStartInfo(Path.Combine(root, ".tools/dotnet/dotnet.exe")) { UseShellExecute = false, WorkingDirectory = root, WindowStyle = ProcessWindowStyle.Hidden };
-        launch.ArgumentList.Add(Path.Combine(root, "src/JKiller.App/bin/Debug/net10.0-windows10.0.26100.0/JKiller.App.dll"));
+        launch.ArgumentList.Add(Path.Combine(root, "src/PlayKross.App/bin/Debug/net10.0-windows10.0.26100.0/PlayKross.App.dll"));
         using var application = Process.Start(launch) ?? throw new Exception("WPF launch failed.");
         AutomationElement? window = null;
         try
@@ -17,12 +17,12 @@ internal static class Program
             Wait(() => { application.Refresh(); if (application.HasExited) throw new Exception("WPF exited before showing its window."); return application.MainWindowHandle != 0; });
             window = AutomationElement.FromHandle(application.MainWindowHandle);
             var link = window.FindFirst(TreeScope.Descendants, new PropertyCondition(AutomationElement.AutomationIdProperty, "RoomLink"));
-            ((ValuePattern)link.GetCurrentPattern(ValuePattern.Pattern)).SetValue(Environment.GetEnvironmentVariable("JKILLER_UI_JOIN_LINK") ?? throw new Exception("Invitation missing."));
+            ((ValuePattern)link.GetCurrentPattern(ValuePattern.Pattern)).SetValue(Environment.GetEnvironmentVariable("PLAYKROSS_UI_JOIN_LINK") ?? throw new Exception("Invitation missing."));
             var join = window.FindFirst(TreeScope.Descendants, new PropertyCondition(AutomationElement.NameProperty, "Join room"));
             ((InvokePattern)join.GetCurrentPattern(InvokePattern.Pattern)).Invoke();
             Wait(() => window.FindFirst(TreeScope.Descendants, new PropertyCondition(AutomationElement.NameProperty, "Joined. Select video and optional application audio, then Start.")) is not null);
             Console.WriteLine("PASS: actual WPF window initialized, joined its room, and exposed the native capture controls.");
-            if (Environment.GetEnvironmentVariable("JKILLER_UI_GEOMETRY_DASH") == "1")
+            if (Environment.GetEnvironmentVariable("PLAYKROSS_UI_GEOMETRY_DASH") == "1")
             {
                 var combo = window.FindFirst(TreeScope.Descendants, new PropertyCondition(AutomationElement.AutomationIdProperty, "VideoSource"));
                 ((ExpandCollapsePattern)combo.GetCurrentPattern(ExpandCollapsePattern.Pattern)).Expand();

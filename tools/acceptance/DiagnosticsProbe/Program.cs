@@ -1,22 +1,22 @@
 using System.Diagnostics;
 using System.Text.Json;
 using System.Runtime.InteropServices;
-using JKiller.Contracts;
-using JKiller.Windows.Capture;
-using JKiller.Windows.Obs;
-using JKiller.Windows.Presentation;
-using JKiller.Windows.Rooms;
-using JKiller.Core.Diagnostics;
-using JKiller.Core.Settings;
+using PlayKross.Contracts;
+using PlayKross.Windows.Capture;
+using PlayKross.Windows.Obs;
+using PlayKross.Windows.Presentation;
+using PlayKross.Windows.Rooms;
+using PlayKross.Core.Diagnostics;
+using PlayKross.Core.Settings;
 var root = Environment.CurrentDirectory;
-var fixtureId = int.Parse(Environment.GetEnvironmentVariable("JKILLER_FIXTURE_PID") ?? throw new Exception("Synthetic fixture required."));
+var fixtureId = int.Parse(Environment.GetEnvironmentVariable("PLAYKROSS_FIXTURE_PID") ?? throw new Exception("Synthetic fixture required."));
 using var fixture = Process.GetProcessById(fixtureId); fixture.Refresh();
 var identity = ProcessIdentityReader.Read(fixtureId) ?? throw new Exception("Original fixture unavailable.");
 if (!string.Equals(Path.GetFullPath(identity.ExecutablePath), Path.GetFullPath(Path.Combine(root, ".artifacts/native/Debug/CaptureFixture.exe")), StringComparison.OrdinalIgnoreCase)) throw new Exception("This diagnostic benchmark accepts only the synthetic fixture.");
 using var http = new HttpClient(new HttpClientHandler { UseCookies = false, AllowAutoRedirect = false });
 IObsRpcClient? control = null; OwnedEngineHandle? handle = null;
 await using var model = new BroadcasterModel(fallback => new ObsMediaEngine(new OwnedObsProcess(root), async (owned, token) => { handle = owned; return control = await ObsRpcClient.ConnectAsync(owned.PipeName, owned.Identity, token); }, fallback), new RoomHttpClient(http), new WindowsSourceCatalog());
-model.RoomLink = Environment.GetEnvironmentVariable("JKILLER_PROBE_JOIN_LINK") ?? throw new Exception("Invitation required."); model.Nickname = "Diagnostic calibration";
+model.RoomLink = Environment.GetEnvironmentVariable("PLAYKROSS_PROBE_JOIN_LINK") ?? throw new Exception("Invitation required."); model.Nickname = "Diagnostic calibration";
 await model.JoinAsync(CancellationToken.None);
 model.Video = model.Sources.Single(value => value.NativeHandle == unchecked((ulong)(long)fixture.MainWindowHandle) && value.Kind == SourceKind.Window); model.SelectApplicationAudio(model.Video);
 model.Settings = StreamSettings.DefaultFor(1080, 60);
@@ -24,20 +24,20 @@ using var deadline = new CancellationTokenSource(TimeSpan.FromMinutes(2));
 await model.StartAsync(deadline.Token);
 try
 {
-    if (Native.GetPropW(fixture.MainWindowHandle, "JKFixturePaintCount") == 0) throw new Exception("Actual fixture paint counter is unavailable; timer requests are not measured capture FPS.");
-    var staticFixture = Environment.GetEnvironmentVariable("JKILLER_FIXTURE_STATIC") == "1";
+    if (Native.GetPropW(fixture.MainWindowHandle, "PlayKrossFixturePaintCount") == 0) throw new Exception("Actual fixture paint counter is unavailable; timer requests are not measured capture FPS.");
+    var staticFixture = Environment.GetEnvironmentVariable("PLAYKROSS_FIXTURE_STATIC") == "1";
     if (staticFixture) Native.SendMessageW(fixture.MainWindowHandle, 0x8003, 0, 0);
     await Task.Delay(5000, deadline.Token);
     var measurements = new List<object>(); var gpu = new List<string>();
     using var publisher = Process.GetProcessById(handle!.Identity.Pid); var cpuStart = publisher.TotalProcessorTime;
     var started = Stopwatch.GetTimestamp(); var previousTime = started; var previous = await Diagnostics();
     if (staticFixture && (!previous.TraceEnabled || !previous.AcquisitionHookAvailable || previous.CaptureFrames is not > 0)) throw new Exception("Static acquisition validation requires the real capture hook.");
-    var previousPaint = (long)Native.GetPropW(fixture.MainWindowHandle, "JKFixturePaintCount");
+    var previousPaint = (long)Native.GetPropW(fixture.MainWindowHandle, "PlayKrossFixturePaintCount");
     for (var second = 0; second < (staticFixture ? 5 : 20); second++)
     {
         await Task.Delay(1000, deadline.Token);
         var current = await Diagnostics(); var now = Stopwatch.GetTimestamp(); var interval = Stopwatch.GetElapsedTime(previousTime, now);
-        var paints = (long)Native.GetPropW(fixture.MainWindowHandle, "JKFixturePaintCount");
+        var paints = (long)Native.GetPropW(fixture.MainWindowHandle, "PlayKrossFixturePaintCount");
         if (staticFixture && (paints != previousPaint || current.CaptureFrames != previous.CaptureFrames || current.ActualEncodedFrames <= previous.ActualEncodedFrames)) throw new Exception($"Static observation: paints delta={paints-previousPaint}, WGC acquisitions delta={current.CaptureFrames-previous.CaptureFrames}, encoded delta={current.ActualEncodedFrames-previous.ActualEncodedFrames}; acquisition is not output FPS.");
         measurements.Add(new { seconds = Stopwatch.GetElapsedTime(started, now).TotalSeconds,
             fixturePaintFps = CounterRates.Calculate(previousPaint, paints, interval),
@@ -65,7 +65,7 @@ finally { await model.StopAsync(CancellationToken.None); }
 async Task<MediaDiagnostics> Diagnostics()
 {
     if (!model.CaptureLive) throw new Exception("Native publication stopped during calibration.");
-    var response = await control!.RequestAsync("CallVendorRequest", JsonSerializer.SerializeToElement(new { vendorName = "jkiller", requestType = "GetDiagnostics", requestData = new { } }), deadline.Token);
+    var response = await control!.RequestAsync("CallVendorRequest", JsonSerializer.SerializeToElement(new { vendorName = "playkross", requestType = "GetDiagnostics", requestData = new { } }), deadline.Token);
     return response.GetProperty("responseData").Deserialize<MediaDiagnostics>(new JsonSerializerOptions(JsonSerializerDefaults.Web)) ?? throw new Exception("Invalid diagnostics response.");
 }
 async Task<string> Gpu()

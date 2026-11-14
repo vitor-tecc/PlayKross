@@ -7,15 +7,15 @@ test.beforeEach(async ({ page }) => {
 import { mkdirSync, writeFileSync } from "node:fs";
 import { decodeTimingMarker, summarizeTimingLatency } from "../../src/media/timingMarker";
 test("measure sustained synthetic native motion and application audio", async ({ page, browser }) => {
-  test.skip(!process.env.JKILLER_SUSTAINED_SECONDS, "Run with Test-Sustained.ps1.");
-  const seconds = Number(process.env.JKILLER_SUSTAINED_SECONDS); test.setTimeout((seconds + 60) * 1000);
-  const videoOnly = process.env.JKILLER_PROBE_CAPTURE_MODE === "video-only";
+  test.skip(!process.env.PLAYKROSS_SUSTAINED_SECONDS, "Run with Test-Sustained.ps1.");
+  const seconds = Number(process.env.PLAYKROSS_SUSTAINED_SECONDS); test.setTimeout((seconds + 60) * 1000);
+  const videoOnly = process.env.PLAYKROSS_PROBE_CAPTURE_MODE === "video-only";
   await page.addInitScript(() => {
-    const peers: RTCPeerConnection[] = []; (window as unknown as { jkTestPeers: RTCPeerConnection[] }).jkTestPeers = peers;
+    const peers: RTCPeerConnection[] = []; (window as unknown as { playkrossTestPeers: RTCPeerConnection[] }).playkrossTestPeers = peers;
     const Original = window.RTCPeerConnection;
     window.RTCPeerConnection = class extends Original { constructor(configuration?: RTCConfiguration) { super(configuration); peers.push(this); } };
   });
-  const link = new URL(process.env.JKILLER_PROBE_JOIN_LINK!); await page.goto(link.href);
+  const link = new URL(process.env.PLAYKROSS_PROBE_JOIN_LINK!); await page.goto(link.href);
   await page.getByLabel("Nickname", { exact: true }).fill("Sustained synthetic viewer"); await page.getByRole("button", { name: "Join room" }).click();
   await page.getByRole("button", { name: "Watch stream" }).click();
   await expect.poll(() => page.locator("video").evaluate(v => (v as HTMLVideoElement).videoHeight), { timeout: 30000 }).toBe(1080);
@@ -23,7 +23,7 @@ test("measure sustained synthetic native motion and application audio", async ({
   await page.waitForTimeout(5000);
   const measured = await page.evaluate(async ({ seconds, decoderSource, videoOnly }) => {
     const video = document.querySelector("video")!;
-    const peer = (window as unknown as { jkTestPeers: RTCPeerConnection[] }).jkTestPeers.find(value => value.connectionState === "connected");
+    const peer = (window as unknown as { playkrossTestPeers: RTCPeerConnection[] }).playkrossTestPeers.find(value => value.connectionState === "connected");
     if (!peer) throw new Error("No actual decoder connection.");
     const decodedSample = async () => {
       const stats = await peer.getStats();

@@ -24,7 +24,7 @@ try {
 foreach ($port in @(5000,5001,8889,9997,9998)) {
     $listener = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback, $port)
     try { $listener.Start() }
-    catch { throw "Port $port is occupied. Stop the application using it or run scripts/Stop-Local.ps1 for an existing JKiller host." }
+    catch { throw "Port $port is occupied. Stop the application using it or run scripts/Stop-Local.ps1 for an existing PlayKross host." }
     finally { $listener.Stop() }
 }
 if(-not $HolePunching){
@@ -37,7 +37,7 @@ if (Test-Path -LiteralPath $state) {
     $previous = Get-Content -Raw -LiteralPath $state | ConvertFrom-Json
     foreach ($entry in $previous) {
         $active = Get-Process -Id $entry.Pid -ErrorAction SilentlyContinue
-        if ($active -and $active.StartTime.ToFileTimeUtc().ToString() -eq $entry.CreationFileTime) { throw 'An owned JKiller service is already running. Run scripts/Stop-Local.ps1 first.' }
+        if ($active -and $active.StartTime.ToFileTimeUtc().ToString() -eq $entry.CreationFileTime) { throw 'An owned PlayKross service is already running. Run scripts/Stop-Local.ps1 first.' }
     }
 }
 $dotnet = Join-Path $root '.tools/dotnet/dotnet.exe'
@@ -46,13 +46,13 @@ if (-not (Test-Path -LiteralPath $dotnet) -or -not (Test-Path -LiteralPath $medi
 New-Item -ItemType Directory -Force -Path $logs | Out-Null
 $devEnvironment = @{ DOTNET_CLI_HOME=(Join-Path $root '.tools/dotnet-home'); NUGET_PACKAGES=(Join-Path $root '.tools/nuget'); DOTNET_CLI_TELEMETRY_OPTOUT='1' }
 if (-not $NoBuild) {
-    $build = Start-Process -FilePath $dotnet -ArgumentList @('build', 'src/JKiller.Host/JKiller.Host.csproj') -WorkingDirectory $root -WindowStyle Hidden -Environment $devEnvironment -RedirectStandardOutput (Join-Path $logs 'build.log') -RedirectStandardError (Join-Path $logs 'build-errors.log') -PassThru
+    $build = Start-Process -FilePath $dotnet -ArgumentList @('build', 'src/PlayKross.Host/PlayKross.Host.csproj') -WorkingDirectory $root -WindowStyle Hidden -Environment $devEnvironment -RedirectStandardOutput (Join-Path $logs 'build.log') -RedirectStandardError (Join-Path $logs 'build-errors.log') -PassThru
     # Start-Process -Wait waits for descendants, including persistent SDK workers.
     # The host can start once its actual build process has exited successfully.
     if (-not $build.WaitForExit(120000)) { if (-not $build.HasExited) { $build.Kill(); $build.WaitForExit() }; throw 'Host build did not exit within two minutes; inspect .artifacts/local/build.log.' }
     if ($build.ExitCode -ne 0) { throw 'Host build failed; inspect .artifacts/local/build.log.' }
 }
-$hostDll = Join-Path $root 'src/JKiller.Host/bin/Debug/net10.0/JKiller.Host.dll'
+$hostDll = Join-Path $root 'src/PlayKross.Host/bin/Debug/net10.0/PlayKross.Host.dll'
 if (-not (Test-Path -LiteralPath $hostDll)) { throw 'Host output is missing. Run Start-Local.ps1 without -NoBuild.' }
 function New-PrivateSecret { return [Convert]::ToBase64String([Security.Cryptography.RandomNumberGenerator]::GetBytes(32)).TrimEnd('=').Replace('+','-').Replace('/','_') }
 $bootstrap = New-PrivateSecret
@@ -66,8 +66,8 @@ function Track-Process($process, $role, $path) {
 }
 try {
     $hostEnvironment = $devEnvironment.Clone()
-    $hostEnvironment['JKILLER_BOOTSTRAP_SECRET'] = $bootstrap
-    $hostEnvironment['JKILLER_ADMIN_SECRET'] = $admin
+    $hostEnvironment['PLAYKROSS_BOOTSTRAP_SECRET'] = $bootstrap
+    $hostEnvironment['PLAYKROSS_ADMIN_SECRET'] = $admin
     $hostEnvironment['PublicOrigin'] = $origin.GetLeftPart([UriPartial]::Authority)
     $hostProcess = Start-Process -FilePath $dotnet -ArgumentList ('"' + $hostDll + '"') -WorkingDirectory $root -WindowStyle Hidden -Environment $hostEnvironment -RedirectStandardOutput (Join-Path $logs 'host.log') -RedirectStandardError (Join-Path $logs 'host-errors.log') -PassThru
     Track-Process $hostProcess 'host' $dotnet
@@ -96,7 +96,7 @@ try {
     }
     $mediaProcess = Start-Process -FilePath $media -ArgumentList ('"' + $configuration + '"') -WorkingDirectory $root -WindowStyle Hidden -RedirectStandardOutput (Join-Path $logs 'media.log') -RedirectStandardError (Join-Path $logs 'media-errors.log') -PassThru
     Track-Process $mediaProcess 'media' $media
-    $adminHeaders = @{ Authorization='Basic ' + [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes('jk-admin:' + $admin)) }
+    $adminHeaders = @{ Authorization='Basic ' + [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes('playkross-admin:' + $admin)) }
     $deadline = [DateTime]::UtcNow.AddSeconds(15)
     do {
         if ($mediaProcess.HasExited) { throw 'MediaMTX rejected startup; inspect .artifacts/local/media-errors.log and media.log.' }

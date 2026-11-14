@@ -36,7 +36,7 @@ try {
     # Different regular previous profiles/locks are allowed and must remain untouched.
     $priorState=@{}
     foreach($instance in @($a,$b)) {
-        foreach($relative in @('.runtime/obs/config/obs-studio/basic/profiles/JKiller/previous.txt','.runtime/webview/origin/Default/Preferences','.runtime/concurrent-probe.lock','.runtime/obs/jkiller-owner.lock')){
+        foreach($relative in @('.runtime/obs/config/obs-studio/basic/profiles/PlayKross/previous.txt','.runtime/webview/origin/Default/Preferences','.runtime/concurrent-probe.lock','.runtime/obs/playkross-owner.lock')){
             $state=Join-Path $instance $relative;New-Item -ItemType Directory (Split-Path $state) -Force | Out-Null;Set-Content -LiteralPath $state -Value $instance;$priorState[$state]=$instance
         }
     }
@@ -45,13 +45,13 @@ try {
     $aliasFailures=@();$fileMetadataFallbacks=0
     $aliasCases=@(
         @{Name='OBS config A-to-B';Path='.runtime/obs/config';Directory=$true;IntoB=$true},
-        @{Name='nested OBS profile';Path='.runtime/obs/config/obs-studio/basic/profiles/JKiller';Directory=$true},
+        @{Name='nested OBS profile';Path='.runtime/obs/config/obs-studio/basic/profiles/PlayKross';Directory=$true},
         @{Name='WebView subtree';Path='.runtime/webview';Directory=$true},
         @{Name='nested WebView profile';Path='.runtime/webview/origin/Default/cache';Directory=$true},
         @{Name='runner lock symlink';Path='.runtime/concurrent-probe.lock';Directory=$false},
-        @{Name='OBS owner lock symlink';Path='.runtime/obs/jkiller-owner.lock';Directory=$false},
+        @{Name='OBS owner lock symlink';Path='.runtime/obs/playkross-owner.lock';Directory=$false},
         @{Name='dangling runner lock';Path='.runtime/concurrent-probe.lock';Directory=$false;Dangling=$true},
-        @{Name='dangling OBS lock';Path='.runtime/obs/jkiller-owner.lock';Directory=$false;Dangling=$true}
+        @{Name='dangling OBS lock';Path='.runtime/obs/playkross-owner.lock';Directory=$false;Dangling=$true}
     )
     foreach($case in $aliasCases){
         $caseRoot=Join-Path $fixture ([guid]::NewGuid().ToString('N'));$caseA=Join-Path $caseRoot 'a';$caseB=Join-Path $caseRoot 'b'
@@ -90,9 +90,9 @@ try {
     Reject { Resolve-ConcurrentMode -SystemEndpointId default -MonitorSourceId monitor }
     Reject { Resolve-ConcurrentMode -SystemEndpointId ' ' -MonitorSourceId monitor }
     if((Resolve-ConcurrentMode) -ne 'application' -or (Resolve-ConcurrentMode -VideoOnly) -ne 'video-only' -or (Resolve-ConcurrentMode -SystemEndpointId endpoint -MonitorSourceId monitor) -ne 'system-output'){throw 'Wrong explicit capture mode.'}
-    $old=$env:JKILLER_CONCURRENT_CHECK; $env:JKILLER_CONCURRENT_CHECK='prior'
+    $old=$env:PLAYKROSS_CONCURRENT_CHECK; $env:PLAYKROSS_CONCURRENT_CHECK='prior'
     $script:observedScoped=$false
-    try { Reject { Invoke-ConcurrentEnvironment @{JKILLER_CONCURRENT_CHECK='temporary'} { $script:observedScoped=$env:JKILLER_CONCURRENT_CHECK -eq 'temporary'; throw 'synthetic failure' } }; if(-not $script:observedScoped -or $env:JKILLER_CONCURRENT_CHECK -ne 'prior'){throw 'Environment not applied/restored.'} } finally { $env:JKILLER_CONCURRENT_CHECK=$old }
+    try { Reject { Invoke-ConcurrentEnvironment @{PLAYKROSS_CONCURRENT_CHECK='temporary'} { $script:observedScoped=$env:PLAYKROSS_CONCURRENT_CHECK -eq 'temporary'; throw 'synthetic failure' } }; if(-not $script:observedScoped -or $env:PLAYKROSS_CONCURRENT_CHECK -ne 'prior'){throw 'Environment not applied/restored.'} } finally { $env:PLAYKROSS_CONCURRENT_CHECK=$old }
     $script:stopped=@(); $process=[pscustomobject]@{Id=7;Creation='100';Path='owned.exe'}
     Stop-ConcurrentOwnedProcess @{Id=7;Creation='100';Path='owned.exe'} -Find {param($id) $process} -Stop {param($p) $script:stopped += $p.Id}
     Reject { Stop-ConcurrentOwnedProcess @{Id=7;Creation='99';Path='owned.exe'} -Find {param($id) $process} -Stop {throw 'Must not stop reused PID'} }

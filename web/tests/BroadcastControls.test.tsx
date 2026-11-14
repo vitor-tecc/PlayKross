@@ -49,3 +49,23 @@ it("UnsupportedCaptureIsExplainedAndUnavailableAudioIsDisclosed", () => {
   view.rerender(<BroadcastControls {...props} unavailableReason={null} state={{ phase: "live", streamId: "owned", hasAudio: false, error: null }} />);
   expect(screen.getByText(/Video only.*unavailable|Video only.*ended/)).toBeDefined();
 });
+it("RemembersTheLastStartedQualityButNeverCapturedAudio", () => {
+  const start = vi.fn(), idle = { phase: "idle" as const, streamId: null, hasAudio: false, error: null };
+  const first = render(<BroadcastControls unavailableReason={null} onStart={start} onStop={vi.fn()} state={idle} />);
+  fireEvent.change(screen.getByLabelText("Resolution"), { target: { value: "1080" } });
+  fireEvent.change(screen.getByLabelText("Video bitrate (Mbps)"), { target: { value: "9.5" } });
+  fireEvent.click(screen.getByLabelText("Share captured audio"));
+  fireEvent.click(screen.getByRole("button", { name: "Start sharing" }));
+  first.unmount();
+  render(<BroadcastControls unavailableReason={null} onStart={start} onStop={vi.fn()} state={idle} />);
+  expect((screen.getByLabelText("Resolution") as HTMLSelectElement).value).toBe("1080");
+  expect((screen.getByLabelText("Video bitrate (Mbps)") as HTMLInputElement).value).toBe("9.5");
+  expect((screen.getByLabelText("Share captured audio") as HTMLInputElement).checked).toBe(false);
+});
+it("IgnoresInvalidRememberedQuality", () => {
+  localStorage.setItem("playkross-broadcast-quality", JSON.stringify({ width: 4000, height: 2160, fps: 120, bitrateMbps: 80 }));
+  const start = vi.fn();
+  render(<BroadcastControls unavailableReason={null} onStart={start} onStop={vi.fn()} state={{ phase: "idle", streamId: null, hasAudio: false, error: null }} />);
+  fireEvent.click(screen.getByRole("button", { name: "Start sharing" }));
+  expect(start).toHaveBeenCalledWith(false, { width: 1280, height: 720, fps: 30, bitrateMbps: 4 });
+});

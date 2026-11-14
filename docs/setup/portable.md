@@ -47,16 +47,16 @@ The command builds the owned plugin in Release without installing it into the ac
 - `PlayKross-win-x64-milestone-2-candidate-UNIQUE.sha256`
 - `PlayKross-win-x64-milestone-2-candidate-UNIQUE.manifest.json`, containing the archive size/hash and every included file's relative path, size and SHA-256.
 
-Use a new `-Version` for another package; existing releases are never overwritten. `-SkipNativeBuild` reuses `.artifacts/native/Release/jk-obs.dll` only when you have already built the current sources. `-KeepStaging` keeps successful staging for inspection. Failed builds retain logs and staging and do not produce a verified release ZIP. Packaging may restore missing .NET runtime packs through the configured NuGet source.
+Use a new `-Version` for another package; existing releases are never overwritten. `-SkipNativeBuild` reuses `.artifacts/native/Release/playkross-obs.dll` only when you have already built the current sources. `-KeepStaging` keeps successful staging for inspection. Failed builds retain logs and staging and do not produce a verified release ZIP. Packaging may restore missing .NET runtime packs through the configured NuGet source.
 
 Portable publishing sets `PortableBuild=true` and uses locked restore with the checked-in `packages.portable.lock.json` beside each application/library project. These files contain the `win-x64` restore targets. Regular development and solution restores continue using `packages.lock.json` without runtime-specific targets, so packaging does not rewrite the default dependency locks. To verify both configurations without publishing or launching anything:
 
 ```powershell
-./.tools/dotnet/dotnet.exe restore JKiller.sln --locked-mode --artifacts-path .artifacts/locked-package-restore
-./.tools/dotnet/dotnet.exe restore src/JKiller.App -r win-x64 -p:PortableBuild=true --locked-mode
+./.tools/dotnet/dotnet.exe restore PlayKross.sln --locked-mode --artifacts-path .artifacts/locked-package-restore
+./.tools/dotnet/dotnet.exe restore src/PlayKross.App -r win-x64 -p:PortableBuild=true --locked-mode
 ```
 
-The package uses the hash-verified OBS 32.2.2 Windows archive, excluding debug symbols. Only the owned `jk-obs.dll` and instrumented `libobs-winrt.dll` replace/add binaries. Configuration comes from the small checked-in OBS template allowlist. Active `.runtime/obs/config`, sessions, caches, logs, invitations, Git, development tools and build caches are never copied. Clean OBS data and bundled third-party notices are preserved. Archive entries, source reparse points, the file allowlist and every compressed file hash are checked before release.
+The package uses the hash-verified OBS 32.2.2 Windows archive, excluding debug symbols. Only the owned `playkross-obs.dll` and instrumented `libobs-winrt.dll` replace/add binaries. Configuration comes from the small checked-in OBS template allowlist. Active `.runtime/obs/config`, sessions, caches, logs, invitations, Git, development tools and build caches are never copied. Clean OBS data and bundled third-party notices are preserved. Archive entries, source reparse points, the file allowlist and every compressed file hash are checked before release.
 
 Optional isolated packaging-boundary checks (no applications or media):
 

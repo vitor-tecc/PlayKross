@@ -1,6 +1,6 @@
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot '../../scripts/DependencyTools.ps1')
-$testRoot = Join-Path ([System.IO.Path]::GetTempPath()) ('jkiller-setup-' + [guid]::NewGuid().ToString('N'))
+$testRoot = Join-Path ([System.IO.Path]::GetTempPath()) ('playkross-setup-' + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $testRoot | Out-Null
 try {
     $corrupt = Join-Path $testRoot 'corrupt.zip'

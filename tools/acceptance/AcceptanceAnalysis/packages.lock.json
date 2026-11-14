@@ -2,13 +2,13 @@
   "version": 1,
   "dependencies": {
     "net10.0": {
-      "jkiller.contracts": {
+      "playkross.contracts": {
         "type": "Project"
       },
-      "jkiller.core": {
+      "playkross.core": {
         "type": "Project",
         "dependencies": {
-          "JKiller.Contracts": "[1.0.0, )"
+          "PlayKross.Contracts": "[1.0.0, )"
         }
       }
     }

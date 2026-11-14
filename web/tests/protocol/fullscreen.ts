@@ -3,7 +3,7 @@ import { expect, type Locator, type Page } from "@playwright/test";
 export async function checkFullscreen(page: Page, card: Locator) {
   const before = await card.evaluate(element => {
     const video = element.querySelector("video")!;
-    (window as any).jkFullscreenIdentity = { video, media: video.srcObject, peers: (window as any).jkTestPeers.filter((p: RTCPeerConnection) => p.connectionState === "connected") };
+    (window as any).playkrossFullscreenIdentity = { video, media: video.srcObject, peers: (window as any).playkrossTestPeers.filter((p: RTCPeerConnection) => p.connectionState === "connected") };
     return video.getVideoPlaybackQuality().totalVideoFrames;
   });
   await card.getByRole("button", { name: "Fullscreen", exact: true }).click();
@@ -23,7 +23,7 @@ export async function checkFullscreen(page: Page, card: Locator) {
   await expect(card).not.toHaveClass(/fullscreen-chrome-hidden/);
   await expect.poll(() => card.locator("video").evaluate(v => (v as HTMLVideoElement).getVideoPlaybackQuality().totalVideoFrames)).toBeGreaterThan(before);
   expect(await card.evaluate(e => {
-    const prior=(window as any).jkFullscreenIdentity;
-    return e.querySelector("video")===prior.video && prior.video.srcObject===prior.media && prior.peers.every((p:RTCPeerConnection)=>p.connectionState === "connected" && (window as any).jkTestPeers.includes(p));
+    const prior=(window as any).playkrossFullscreenIdentity;
+    return e.querySelector("video")===prior.video && prior.video.srcObject===prior.media && prior.peers.every((p:RTCPeerConnection)=>p.connectionState === "connected" && (window as any).playkrossTestPeers.includes(p));
   })).toBe(true);
 }

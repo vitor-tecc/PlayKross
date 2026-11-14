@@ -20,9 +20,9 @@ jobs:
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
         with:
           dotnet-version: '10.0.401'
-      - run: dotnet restore JKiller.sln --locked-mode
-      - run: dotnet test JKiller.sln --no-restore --nologo
-      - run: dotnet build src/JKiller.App/JKiller.App.csproj --no-restore --nologo
+      - run: dotnet restore PlayKross.sln --locked-mode
+      - run: dotnet test PlayKross.sln --no-restore --nologo
+      - run: dotnet build src/PlayKross.App/PlayKross.App.csproj --no-restore --nologo
       - shell: pwsh
         run: |
           ./tests/setup/SetupChecks.ps1

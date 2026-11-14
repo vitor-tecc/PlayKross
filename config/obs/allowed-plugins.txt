@@ -7,7 +7,7 @@ decklink-output-ui.dll
 decklink.dll
 frontend-tools.dll
 image-source.dll
-jk-obs.dll
+playkross-obs.dll
 libcef.dll
 libEGL.dll
 libGLESv2.dll

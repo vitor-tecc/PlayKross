@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "dependencies": {
+    "net10.0-windows10.0.26100": {
+      "playkross.contracts": {
+        "type": "Project"
+      },
+      "playkross.core": {
+        "type": "Project",
+        "dependencies": {
+          "PlayKross.Contracts": "[1.0.0, )"
+        }
+      }
+    }
+  }
+}

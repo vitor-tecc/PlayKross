@@ -1,9 +1,9 @@
 #requires -Version 7.4
 $ErrorActionPreference='Stop'
 $root=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
-$old=$env:JKILLER_PUBLIC_HOST; $services=$null; $publicMedia=$null
+$old=$env:PLAYKROSS_PUBLIC_HOST; $services=$null; $publicMedia=$null
 try {
-    $env:JKILLER_PUBLIC_HOST='203.0.113.10'
+    $env:PLAYKROSS_PUBLIC_HOST='203.0.113.10'
     $adapted=& (Join-Path $root '.tools/caddy/caddy.exe') adapt --config (Join-Path $root 'config/Caddyfile.example') --adapter caddyfile
     if ($LASTEXITCODE -ne 0) { throw 'Caddy public example failed parsing.' }
     $json=$adapted | ConvertFrom-Json
@@ -28,7 +28,7 @@ try {
     if (-not $udp -or @($udp | Where-Object LocalAddress -ne '127.0.0.1').Count -gt 0) { throw 'Configuration validation must not expose public UDP.' }
     Write-Output 'PASS: actual MediaMTX parsed public YAML, retained authenticated private API, and used loopback-only UDP override for this test.'
 } finally {
-    $env:JKILLER_PUBLIC_HOST=$old
+    $env:PLAYKROSS_PUBLIC_HOST=$old
     if ($publicMedia -and -not $publicMedia.HasExited) { $publicMedia.Kill(); $publicMedia.WaitForExit(5000) | Out-Null }
     if ($services) { & (Join-Path $root 'scripts/Stop-Local.ps1') }
 }
