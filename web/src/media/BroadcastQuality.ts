@@ -32,3 +32,30 @@ export function saveQualityPreference(quality: BroadcastQuality, storage: Pick<S
   if (!validQuality(quality)) return;
   try { storage?.setItem(preferenceKey, JSON.stringify(quality)); } catch { /* Storage may be disabled. */ }
 }
+
+/**
+ * Asks the browser to capture at no more than the requested size and rate.
+ * Browsers differ (Firefox rejects some combinations with OverconstrainedError),
+ * so this tries progressively looser forms and never fails the broadcast:
+ * the sender still enforces the limits through its encoding parameters.
+ */
+export async function constrainCapture(track: MediaStreamTrack, quality: BroadcastQuality): Promise<void> {
+  if (typeof track.applyConstraints !== "function") return;
+  const attempts: MediaTrackConstraints[] = [
+    { width: { ideal: quality.width, max: quality.width }, height: { ideal: quality.height, max: quality.height }, frameRate: { ideal: quality.fps, max: quality.fps } },
+    { width: { max: quality.width }, height: { max: quality.height }, frameRate: { max: quality.fps } },
+    { frameRate: { max: quality.fps } },
+  ];
+  for (const constraints of attempts) {
+    try { await track.applyConstraints(constraints); return; }
+    catch { /* Try a looser form; the encoder limits below still apply. */ }
+  }
+}
+
+/** Encoder downscale factor that keeps the sent video within the requested size (1 = unchanged). */
+export function resolutionScale(track: MediaStreamTrack, quality: BroadcastQuality): number {
+  const { width, height } = typeof track.getSettings === "function" ? track.getSettings() : {};
+  if (!width || !height) return 1;
+  const scale = Math.max(width / quality.width, height / quality.height);
+  return Number.isFinite(scale) && scale > 1 ? Math.round(scale * 1000) / 1000 : 1;
+}

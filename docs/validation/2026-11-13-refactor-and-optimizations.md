@@ -49,3 +49,13 @@ The website keeps its brand palette (navy `#0E182A`, yellow `#FFDE5A`, blue `#6A
 - Mobile layout puts the header actions on their own row and makes the sharing button full width.
 
 Checked with Edge screenshots of mocked join, room, focused, empty and 390 px mobile states. Web tests (132) and the production build pass. The WPF window and the WebView layout probes were not rerun.
+
+## Firefox browser broadcasting fix — 2026-11-14
+
+The owner reported website broadcasting failing in Firefox on Windows 11. Reproduced with real headless Firefox 160 (geckodriver, synthetic canvas track replacing the display chooser, local server):
+
+1. **Root cause:** Firefox rejected the page's capture constraints (`applyConstraints` with `ideal`+`max` width/height/frameRate) with `OverconstrainedError`, and that aborted every Firefox broadcast before any network request. Constraints are now best-effort (three progressively looser attempts, never fatal), and the WHIP sender enforces the requested size with `scaleResolutionDownBy` derived from the track settings, alongside the existing `maxBitrate`/`maxFramerate`.
+2. With default `Start-Local.ps1` (loopback-only media), Firefox on the host PC then reaches WHIP 201 but ICE fails, which is the documented Firefox host limitation. This now shows a specific message pointing to `-MediaInterface` instead of the generic failure.
+3. With `-MediaInterface Ethernet` and Firefox's OpenH264 plugin present: **live**, 1280×720 at ~30 encoded FPS, ~0.8 Mbps synthetic content, lease renewed, sustained for 25 s. Without OpenH264 (fresh automation profile), Firefox negotiates H.264 but encodes nothing and MediaMTX drops the session after its 10 s read timeout; a connection that never carried video now explains that the OpenH264 plugin is required.
+
+Unit coverage: rejected constraints still go live; encoder downscale; codec/connection messages; never-sent-video detection. Web: 137 tests and production build pass. Actual display/window/tab capture and captured audio in Firefox still need a manual check (the automation replaces the chooser).

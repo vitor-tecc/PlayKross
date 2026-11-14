@@ -117,3 +117,29 @@ it.each(["insecure", "unsupported", "expired", "missing-video"])("UnavailableCap
   if (reason === "expired") c.deps.sessionExpiresAt = "2000-01-01T00:00:00Z"; if (reason === "missing-video") c.stream.tracks = [];
   await c.publisher.start(false); expect(c.state().phase).toBe("idle"); expect(c.api.reservePublication).not.toHaveBeenCalled();
 });
+it("RejectedCaptureConstraintsDoNotStopTheBroadcast", async () => {
+  const c = setup();
+  const rejected = Object.assign(new Error("Constraints could not be satisfied."), { name: "OverconstrainedError" });
+  c.stream.tracks[0]!.applyConstraints.mockRejectedValueOnce(rejected).mockRejectedValueOnce(rejected);
+  await c.publisher.start(false);
+  expect(c.stream.tracks[0]!.applyConstraints).toHaveBeenCalledTimes(3);
+  expect(c.stream.tracks[0]!.applyConstraints).toHaveBeenLastCalledWith({ frameRate: { max: 30 } });
+  expect(c.states.at(-1)).toMatchObject({ phase: "live", error: null });
+  await c.publisher.stop();
+});
+it("AConnectionThatNeverSentVideoPointsAtTheH264Encoder", async () => {
+  vi.useFakeTimers();
+  const c = setup();
+  Object.assign(c.transport, { readStats: vi.fn(async () => ({ bitrateMbps: null, width: null, height: null, fps: null, limitation: null })) });
+  await c.publisher.start(false); await vi.advanceTimersByTimeAsync(4100);
+  c.failures[0]!(new Error("dropped")); await vi.advanceTimersByTimeAsync(0);
+  expect(c.states.some(s => s.error?.includes("OpenH264"))).toBe(true);
+});
+it("AConnectionThatSentVideoReportsAnEndedConnection", async () => {
+  vi.useFakeTimers();
+  const c = setup();
+  Object.assign(c.transport, { readStats: vi.fn(async () => ({ bitrateMbps: 3.9, width: 1280, height: 720, fps: 30, limitation: "none" as const })) });
+  await c.publisher.start(false); await vi.advanceTimersByTimeAsync(4100);
+  c.failures[0]!(new Error("dropped")); await vi.advanceTimersByTimeAsync(0);
+  expect(c.states.some(s => s.error === "The broadcast connection ended. Start sharing again to reconnect.")).toBe(true);
+});

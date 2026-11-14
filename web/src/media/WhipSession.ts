@@ -1,6 +1,7 @@
 import type { PublishReservation } from "../api/contracts";
 import { deleteResource, hasCandidate, isMediaResource, isSignalingEndpoint, parseIceServers, signalingRequest, superviseConnection, supportsCodec, waitForPeer, type OwnedResource } from "./signaling";
-import { defaultQuality, validQuality, type BroadcastQuality } from "./BroadcastQuality";
+import { BroadcastFailure, codecFailureMessage, connectionFailureMessage } from "./broadcastFailure";
+import { defaultQuality, resolutionScale, validQuality, type BroadcastQuality } from "./BroadcastQuality";
 export interface BroadcastStats { bitrateMbps: number | null; width: number | null; height: number | null; fps: number | null; limitation: "none" | "cpu" | "bandwidth" | "other" | null }
 export interface PublicationTransport { start(grant: PublishReservation, stream: MediaStream, signal: AbortSignal, quality?: BroadcastQuality): Promise<void>; readStats?(): Promise<BroadcastStats | null>; close(): Promise<void> }
 export interface WhipDependencies { origin: string; fetch: typeof fetch; createPeer: (servers: RTCIceServer[]) => RTCPeerConnection; supportsCodecs: (audio: boolean) => boolean; timeoutMs: number }
@@ -31,7 +32,8 @@ export class WhipSession implements PublicationTransport {
       this.check(signal);
       if (!validQuality(quality)) throw broadcastError();
       const video = stream.getVideoTracks(), audio = stream.getAudioTracks();
-      if (video.length !== 1 || video[0]!.readyState !== "live" || audio.length > 1 || !this.deps.supportsCodecs(audio.length > 0)) throw broadcastError();
+      if (video.length !== 1 || video[0]!.readyState !== "live" || audio.length > 1) throw broadcastError();
+      if (!this.deps.supportsCodecs(audio.length > 0)) throw new BroadcastFailure("codec", codecFailureMessage);
       const expires = Date.parse(grant.expiresAt);
       const endpoint = new URL(grant.whipUri, this.deps.origin);
       if (!Number.isFinite(expires) || expires <= Date.now() || !publishPath.test(grant.path) || !isSignalingEndpoint(endpoint, this.deps.origin, grant.path, "whip")) throw broadcastError();
@@ -39,7 +41,9 @@ export class WhipSession implements PublicationTransport {
       this.check(signal); if (!options.ok) throw broadcastError();
       const peer = this.deps.createPeer(parseIceServers(options.headers.get("Link"))); this.peer = peer;
       this.unsupervise = superviseConnection(peer, () => this.connected && !this.abort.signal.aborted, () => this.fail());
-      const encoding = { maxBitrate: quality.bitrateMbps * 1_000_000, maxFramerate: quality.fps };
+      // Capture constraints are best-effort, so the encoder also enforces the requested size.
+      const scale = resolutionScale(video[0]!, quality);
+      const encoding: RTCRtpEncodingParameters = { maxBitrate: quality.bitrateMbps * 1_000_000, maxFramerate: quality.fps, ...(scale > 1 ? { scaleResolutionDownBy: scale } : {}) };
       let videoSender: RTCRtpSender | null = null;
       for (const track of [...video, ...audio]) {
         const transceiver = peer.addTransceiver(track, { direction: "sendonly", streams: [stream], ...(track.kind === "video" ? { sendEncodings: [{ ...encoding }] } : {}) });
@@ -69,19 +73,19 @@ export class WhipSession implements PublicationTransport {
       if (parameters.encodings.length !== 1) throw broadcastError();
       Object.assign(parameters.encodings[0]!, encoding);
       await videoSender!.setParameters(parameters); this.check(signal);
-      await this.wait(peer, "connectionstatechange", () => peer.connectionState === "connected", () => peer.connectionState === "failed" || peer.connectionState === "closed");
+      await this.wait(peer, "connectionstatechange", () => peer.connectionState === "connected", () => peer.connectionState === "failed" || peer.connectionState === "closed", undefined, connectionFailure);
       this.check(signal); this.connected = true;
-    } catch {
+    } catch (error) {
       await this.close();
-      throw signal.aborted ? canceled() : broadcastError();
+      throw signal.aborted ? canceled() : error instanceof BroadcastFailure ? error : broadcastError();
     }
   }
   private check(signal: AbortSignal) { if (signal.aborted || this.abort.signal.aborted) throw canceled(); }
   private request(url: URL, init: RequestInit): Promise<Response> {
     return signalingRequest(this.deps.fetch, url, init, this.abort.signal, this.deps.timeoutMs);
   }
-  private wait(peer: RTCPeerConnection, event: string, ready: () => boolean, failed?: () => boolean, acceptAtDeadline?: () => boolean): Promise<void> {
-    return waitForPeer(peer, { event, ready, failed, acceptAtDeadline, timeoutMs: this.deps.timeoutMs, signal: this.abort.signal, failure: broadcastError, aborted: broadcastError });
+  private wait(peer: RTCPeerConnection, event: string, ready: () => boolean, failed?: () => boolean, acceptAtDeadline?: () => boolean, failure: () => Error = broadcastError): Promise<void> {
+    return waitForPeer(peer, { event, ready, failed, acceptAtDeadline, timeoutMs: this.deps.timeoutMs, signal: this.abort.signal, failure, aborted: broadcastError });
   }
   private fail() { if (!this.connected) return; this.connected = false; void this.close().finally(() => this.onFailure?.(broadcastError())); }
   async readStats(): Promise<BroadcastStats | null> {
@@ -113,6 +117,7 @@ export class WhipSession implements PublicationTransport {
   }
 }
 function finiteStat(value: number | undefined): number | null { return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : null; }
+function connectionFailure() { return new BroadcastFailure("connection", connectionFailureMessage); }
 function broadcastError() { return new Error("Browser broadcast failed. Check H.264/Opus support, room permission, UDP/firewall/relay settings and retry sharing."); }
 function compatibleAnswer(sdp: string, audio: boolean): boolean {
   if (!/^v=0\r?\n/.test(sdp)) return false;

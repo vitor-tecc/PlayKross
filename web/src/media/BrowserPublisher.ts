@@ -1,7 +1,8 @@
 import type { PublishReservation, RoomSnapshot } from "../api/contracts";
 import { RoomApiError, type roomApi } from "../api/roomApi";
 import type { BroadcastStats, PublicationTransport } from "./WhipSession";
-import { defaultQuality, validQuality, type BroadcastQuality } from "./BroadcastQuality";
+import { BroadcastFailure, codecFailureMessage } from "./broadcastFailure";
+import { constrainCapture, defaultQuality, validQuality, type BroadcastQuality } from "./BroadcastQuality";
 export type PublisherPhase = "idle" | "choosing" | "starting" | "live" | "stopping";
 export interface PublisherSnapshot { phase: PublisherPhase; streamId: string | null; hasAudio: boolean; error: string | null; stats?: BroadcastStats | null }
 export type PublicationApi = Pick<typeof roomApi, "reservePublication" | "renewPublication" | "stopPublication">;
@@ -15,6 +16,9 @@ interface Attempt {
   handlers: Map<MediaStreamTrack, () => void>; renewal: ReturnType<typeof setTimeout> | null; cutoff: ReturnType<typeof setTimeout> | null;
   deadline: number; observed: boolean; observedBeforeGrant: Set<string>;
   statsTimer?: ReturnType<typeof setTimeout>;
+  /** True once stats showed encoded video leaving the browser. */
+  sentVideo?: boolean;
+  statsSamples?: number;
 }
 export class BrowserPublisher {
   private current: Attempt | null = null;
@@ -56,7 +60,7 @@ export class BrowserPublisher {
       });
       this.update({ hasAudio: Boolean(audio) });
       if (!audio && shareAudio) this.deps.setCaptureAudioBlocked(false);
-      if (typeof video.applyConstraints === "function") await video.applyConstraints({ width: { ideal: quality.width, max: quality.width }, height: { ideal: quality.height, max: quality.height }, frameRate: { ideal: quality.fps, max: quality.fps } });
+      await constrainCapture(video, quality);
       if (!this.valid(a)) return;
       this.checkSession(); this.update({ phase: "starting" });
       const reservedAt = this.deps.now();
@@ -73,7 +77,9 @@ export class BrowserPublisher {
       }
       this.scheduleCutoff(a); this.scheduleRenewal(a);
       if (!this.valid(a)) return;
-      a.transport = this.deps.createTransport(() => { if (this.valid(a)) void this.finish(a, "The broadcast connection ended. Start sharing again to reconnect."); });
+      // A connection that never carried video usually means the browser has no
+      // working H.264 encoder (e.g. Firefox without OpenH264); the server then drops it.
+      a.transport = this.deps.createTransport(() => { if (this.valid(a)) void this.finish(a, (a.statsSamples ?? 0) >= 2 && !a.sentVideo ? codecFailureMessage : "The broadcast connection ended. Start sharing again to reconnect."); });
       await a.transport.start(grant, stream, a.abort.signal, quality);
       if (!this.valid(a)) return;
       if (this.deps.now() >= a.deadline) { await this.finish(a, "Publication lease expired. Start sharing again."); return; }
@@ -81,7 +87,7 @@ export class BrowserPublisher {
       this.scheduleStats(a);
     } catch (error) {
       if (!this.valid(a)) return;
-      const message = error instanceof RoomApiError && error.status === 409 ? "This session already has a broadcast in another tab or client. Stop it there before sharing here." :
+      const message = error instanceof BroadcastFailure ? error.message : error instanceof RoomApiError && error.status === 409 ? "This session already has a broadcast in another tab or client. Stop it there before sharing here." :
         error instanceof DOMException && error.name === "NotAllowedError" ? "Screen sharing was canceled or permission was denied. Start sharing to try again." :
         "Screen sharing could not start. Check capture permission, browser H.264/Opus support and the room connection, then retry.";
       await this.finish(a, message);
@@ -94,7 +100,7 @@ export class BrowserPublisher {
       a.statsTimer = undefined;
       try {
         const stats = await a.transport!.readStats!();
-        if (this.valid(a)) this.update({ stats });
+        if (this.valid(a)) { a.statsSamples = (a.statsSamples ?? 0) + 1; if (stats?.bitrateMbps) a.sentVideo = true; this.update({ stats }); }
       } catch { if (this.valid(a)) this.update({ stats: null }); }
       if (this.valid(a)) this.scheduleStats(a);
     }, 2000);
