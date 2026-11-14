@@ -36,3 +36,16 @@ Branch `codex/refactor-optimizations`, based on `main` at `7697eed`. Code-only v
 | `npm run build` (typecheck + Vite) | passed |
 
 New tests cover signaling helpers, room resubscription/backoff/cancel-on-leave, stale-snapshot rejection, quality preference persistence (and that audio is never remembered), host revision de-duplication and publisher observation math. Native (`jk-obs`) code was not changed.
+
+## Visual refresh — 2026-11-14
+
+The website keeps its brand palette (navy `#0E182A`, yellow `#FFDE5A`, blue `#6A94C5`), logo, copy and controls, with a more polished layout:
+
+- Colors are shared CSS tokens. The page has a soft brand-tinted glow instead of a flat fill.
+- The header holds the room count (with a presence dot) and language selector together instead of a separate floating row.
+- **Start sharing** is the primary yellow action; **Stop sharing** is red-tinted. The sharing panel shows a status dot (grey idle, yellow while connecting, red when live) and groups its quality fields and help notes.
+- Participants appear as chips with initials; your own chip is highlighted.
+- Stream cards have a framed watch button, a red **Live** badge with a dot, and refined borders and shadows. Your own broadcast card and the empty room have dedicated styling.
+- Mobile layout puts the header actions on their own row and makes the sharing button full width.
+
+Checked with Edge screenshots of mocked join, room, focused, empty and 390 px mobile states. Web tests (132) and the production build pass. The WPF window and the WebView layout probes were not rerun.
