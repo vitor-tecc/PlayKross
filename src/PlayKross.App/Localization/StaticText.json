@@ -29,5 +29,12 @@
   "Text27": "Start broadcast",
   "Text28": "Stop broadcast",
   "Text29": "Export room diagnostics",
-  "Text30": "People in the room can broadcast at the same time. Each person can share one stream and choose which streams to watch."
+  "Text30": "People in the room can broadcast at the same time. Each person can share one stream and choose which streams to watch.",
+  "Text31": "Room",
+  "Text33": "What to share",
+  "Text34": "Quality",
+  "Text35": "Broadcast details",
+  "Text36": "Live",
+  "Text37": "In the room",
+  "Text38": "Not in a room"
 }

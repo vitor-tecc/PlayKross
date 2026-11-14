@@ -70,3 +70,12 @@ The former internal name JKiller is replaced throughout source, scripts, configu
 - **Intentionally unchanged:** the hash-pinned OBS capture patch and the prebuilt instrumented component it describes (`JKILLER_WGC_INTERVAL_MS`, `jk_*` trace fields), plus historical records in `docs/superpowers/` and `docs/validation/`, which describe their original revisions.
 
 Upgrading an existing checkout: stop the broadcaster and local services, pull, run `./scripts/Build-Native.ps1 -Plugin` once, then start as usual. Existing browser/app room sessions and the in-app viewer profile start fresh (new cookie/profile names). Rename the checkout folder itself only while nothing is running; scripts resolve paths relative to the repository.
+
+## Full redesign of the app and website — 2026-11-14
+
+Requested by the owner: redesign both interfaces, keeping the logo, the PlayKross name and the navy `#0E182A` / yellow `#FFDE5A` / blue `#6A94C5` palette.
+
+- **Website:** sticky translucent top bar; join page with a brand hero (large logo, PlayKross wordmark, three feature points) next to the join card; room layout with streams as the main stage and a sidebar holding your profile (avatar, nickname, copy link, leave), browser sharing (status dot, captured-audio toggle, full-width Start, two-column quality grid, collapsible "About quality and audio" notes) and the people list. Streams come first on tablets and phones. Stream cards, player controls and fullscreen behaviour keep their tested markup.
+- **Windows app:** rebuilt theme (rounded cards, primary yellow / danger / quiet buttons, custom text boxes, drop-downs, check boxes, slider and thin scroll bars) and a new layout: header with logo and a Not in a room / In the room / Live status pill; Room card (link, nickname, Join, Watch in app, room actions); Broadcast details card; What to share and Quality cards; fixed bottom bar with Start/Stop and the live status. The title bar uses the navy palette on Windows 11. All named controls, automation IDs (`RoomLink`, `VideoSource`) and handlers are unchanged.
+
+Checked with Edge screenshots (join, room, focused, empty, 900 px and 390 px) and window captures of the app at 1180×840 and 920×640 in both languages. `Verify.ps1 -Mode CodeOnly` passed, including the WPF layout probes. Not checked: a live broadcast in the new app layout.

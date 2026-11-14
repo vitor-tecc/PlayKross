@@ -29,11 +29,11 @@ export function BroadcastControls({ state, unavailableReason, onStart, onStop }:
       </select></label>
       <label>{t("Video bitrate (Mbps)")}<input type="number" min="1" max="25" step="0.5" disabled={active} value={bitrate} onChange={event => setBitrate(event.target.value)} /></label>
     </div>
-    <div className="broadcast-notes">
+    <details className="broadcast-notes"><summary>{t("About quality and audio")}</summary>
       <p>{t("Resolution and FPS select a preset bitrate. Adjust 1–25 Mbps in 0.5 Mbps steps. Stop sharing to change quality.")}</p>
       <p>{t("These are requested limits. Actual quality depends on the source, browser, computer and network; higher settings may affect your game.")}</p>
       <p>{t("Your browser chooses the source and encoder. Audio depends on the browser and selected source; no microphone is requested.")}</p>
-    </div>
+    </details>
     {state.phase === "live" && <details className="broadcast-upload"><summary>{t("Upload diagnostics")}</summary>
       <dl>
         <div><dt>{t("Actual video bitrate")}</dt><dd>{stats?.bitrateMbps == null ? t("Measuring…") : `${stats.bitrateMbps.toFixed(2)} Mbps`}</dd></div>

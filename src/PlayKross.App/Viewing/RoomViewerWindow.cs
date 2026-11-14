@@ -26,6 +26,7 @@ public static class RoomViewerWindow
     {
         var window = new Window { Title = "PlayKross • Room viewer", Width = 1000, Height = 740, Content = viewer };
         Localization.Language.Bind(window, Window.TitleProperty, "PlayKross • Room viewer");
+        Theme.WindowFrame.Apply(window);
         var state = new ViewerFullscreenState();
         viewer.FullscreenChanged += (_, _) =>
         {

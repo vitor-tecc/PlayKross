@@ -22,6 +22,7 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        Theme.WindowFrame.Apply(this);
         LanguagePicker.SelectedValue = AppLanguage.Current.Selected;
         UpdateLanguage();
         root = Environment.CurrentDirectory;

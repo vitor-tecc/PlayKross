@@ -139,18 +139,45 @@ export function RoomPage() {
     catch { setMessage("Clipboard unavailable. Copy the original invitation link from the host."); }
   };
 
-  return <main className="room-shell">
-    <header className="room-header"><div className="brand-lockup"><img className="brand-logo" src="/playkross-logo.png" alt="" /><div><div className="brand">PlayKross</div><p>{t("Share a screen. Stay in the room.")}</p></div></div><div className="header-actions">{session && <span className="room-count">{session.room.participants.length}{t(" in the room")}</span>}<LanguageSelector /></div></header>
-    {message && <div className="notice" role="status">{t(message)}</div>}
-    {session && roomLink !== "connected" && <div className="notice" role="status">{t("Room updates were interrupted. Reconnecting…")}</div>}
-    {loading ? <p>{t("Restoring your room session…")}</p> : !session ? <section className="join-card"><h1>{t("Join your friends")}</h1><p>{t("Choose a nickname. No account needed.")}</p><form onSubmit={event => { event.preventDefault(); void join(); }}><label htmlFor="nickname">{t("Nickname")}</label><input id="nickname" value={nickname} onChange={event => setNickname(event.target.value)} maxLength={1024} autoComplete="nickname" required autoFocus /><button disabled={busy} type="submit">{t(busy ? "Joining…" : "Join room")}</button></form></section> : <>
-      <section className="room-toolbar"><form onSubmit={event => { event.preventDefault(); void rename(); }}><label htmlFor="rename">{t("Your nickname")}</label><input id="rename" value={nickname} onChange={event => setNickname(event.target.value)} maxLength={1024} required /><button disabled={busy}>{t("Save")}</button></form>{invite && <button onClick={() => { void copyLink(); }}>{t("Copy room link")}</button>}<button className="button-quiet" disabled={busy} onClick={() => { void leave(); }}>{t("Leave room")}</button></section>
-      <BroadcastControls state={publisherState} unavailableReason={unavailableReason()} onStart={(audio, quality) => { void publisher.current?.start(audio, quality); }} onStop={() => { void publisher.current?.stop(); }} />
-      <footer className="room-footer"><span>{t("In the room")}</span>{session.room.participants.map(participant => <span className={`participant${participant.sessionId === session.sessionId ? " is-you" : ""}`} data-initial={Array.from(participant.nickname.trim())[0]?.toUpperCase() ?? "?"} key={participant.sessionId}>{participant.nickname}{participant.sessionId === session.sessionId ? t(" · you") : ""}</span>)}</footer>
-      <div className="streams-toolbar"><h1>{t("Streams")} <span className="count-pill">{streams.length}</span></h1>{activeFocus && <button onClick={() => setFocusedStream(null)}>{t("Grid view")}</button>}</div>
-      <section className={`room-grid${activeFocus ? " room-grid-focused" : ""}`} style={{ "--focus-rows": Math.max(1, streams.length - 1) } as CSSProperties} aria-label={t("Room streams")}>{streams.map(stream => stream.streamId === publisherState.streamId ?
-        <div key={stream.streamId} className="stream-card own-broadcast" data-stream-id={stream.streamId} data-focused="false"><strong>{t("Your screen is being shared")}</strong><p>{t("Your viewers receive this broadcast. Stop sharing using the controls above.")}</p></div> :
-        <StreamPlayer key={stream.streamId} streamId={stream.streamId} nickname={stream.nickname} getPlayback={getPlayback} audioBlocked={audioBlocked} audioBlockedReason={audioBlockedReason} focused={activeFocus === stream.streamId} onFocusStream={() => setFocusedStream(current => current === stream.streamId ? null : stream.streamId)} />)}{streams.length === 0 && <div className="empty-room"><h1>{t("The room is ready")}</h1><p>{t("Start sharing here or broadcast from the Windows app.")}</p></div>}</section>
-    </>}
+  const you = session?.room.participants.find(participant => participant.sessionId === session.sessionId);
+  return <main className="app-shell">
+    <header className="topbar">
+      <div className="brand-lockup"><img className="brand-logo" src="/playkross-logo.png" alt="" /><div><div className="brand">PlayKross</div><p>{t("Share a screen. Stay in the room.")}</p></div></div>
+      <div className="header-actions">{session && <span className="room-count">{session.room.participants.length}{t(" in the room")}</span>}<LanguageSelector /></div>
+    </header>
+    <div className="notices">
+      {message && <div className="notice" role="status">{t(message)}</div>}
+      {session && roomLink !== "connected" && <div className="notice notice-warning" role="status">{t("Room updates were interrupted. Reconnecting…")}</div>}
+    </div>
+    {loading ? <p className="loading"><span className="spinner" aria-hidden="true" />{t("Restoring your room session…")}</p> : !session ? <section className="join-view">
+      <div className="join-hero">
+        <img className="join-logo" src="/playkross-logo.png" alt="" />
+        <h1 className="join-title">Play<span>Kross</span></h1>
+        <p className="join-lead">{t("Share a screen. Stay in the room.")}</p>
+        <ul className="join-features">
+          <li>{t("Several friends can broadcast at the same time.")}</li>
+          <li>{t("Watch any stream, focus one, or go fullscreen.")}</li>
+          <li>{t("Share from the browser or the Windows app.")}</li>
+        </ul>
+      </div>
+      <section className="join-card"><h2>{t("Join your friends")}</h2><p>{t("Choose a nickname. No account needed.")}</p><form onSubmit={event => { event.preventDefault(); void join(); }}><label htmlFor="nickname">{t("Nickname")}</label><input id="nickname" value={nickname} onChange={event => setNickname(event.target.value)} maxLength={1024} autoComplete="nickname" required autoFocus /><button disabled={busy} type="submit">{t(busy ? "Joining…" : "Join room")}</button></form></section>
+    </section> : <div className="room-layout">
+      <section className="stage" aria-label={t("Room streams")}>
+        <div className="streams-toolbar"><h1>{t("Streams")} <span className="count-pill">{streams.length}</span></h1>{activeFocus && <button onClick={() => setFocusedStream(null)}>{t("Grid view")}</button>}</div>
+        <div className={`room-grid${activeFocus ? " room-grid-focused" : ""}`} style={{ "--focus-rows": Math.max(1, streams.length - 1) } as CSSProperties}>{streams.map(stream => stream.streamId === publisherState.streamId ?
+          <div key={stream.streamId} className="stream-card own-broadcast" data-stream-id={stream.streamId} data-focused="false"><strong>{t("Your screen is being shared")}</strong><p>{t("Your viewers receive this broadcast. Use Stop sharing to end it.")}</p></div> :
+          <StreamPlayer key={stream.streamId} streamId={stream.streamId} nickname={stream.nickname} getPlayback={getPlayback} audioBlocked={audioBlocked} audioBlockedReason={audioBlockedReason} focused={activeFocus === stream.streamId} onFocusStream={() => setFocusedStream(current => current === stream.streamId ? null : stream.streamId)} />)}{streams.length === 0 && <div className="empty-room"><img src="/playkross-logo.png" alt="" /><h2>{t("The room is ready")}</h2><p>{t("Start sharing here or broadcast from the Windows app.")}</p></div>}</div>
+      </section>
+      <aside className="sidebar">
+        <section className="panel profile-panel">
+          <div className="profile-head"><span className="avatar" aria-hidden="true">{Array.from((you?.nickname ?? nickname).trim())[0]?.toUpperCase() ?? "?"}</span><form className="room-toolbar" onSubmit={event => { event.preventDefault(); void rename(); }}><label htmlFor="rename">{t("Your nickname")}</label><div className="inline-field"><input id="rename" value={nickname} onChange={event => setNickname(event.target.value)} maxLength={1024} required /><button disabled={busy}>{t("Save")}</button></div></form></div>
+          <div className="profile-actions">{invite && <button onClick={() => { void copyLink(); }}>{t("Copy room link")}</button>}<button className="button-quiet" disabled={busy} onClick={() => { void leave(); }}>{t("Leave room")}</button></div>
+        </section>
+        <BroadcastControls state={publisherState} unavailableReason={unavailableReason()} onStart={(audio, quality) => { void publisher.current?.start(audio, quality); }} onStop={() => { void publisher.current?.stop(); }} />
+        <section className="panel people-panel"><h2>{t("In the room")} <span className="count-pill">{session.room.participants.length}</span></h2>
+          <ul className="people">{session.room.participants.map(participant => <li className={`participant${participant.sessionId === session.sessionId ? " is-you" : ""}`} data-initial={Array.from(participant.nickname.trim())[0]?.toUpperCase() ?? "?"} key={participant.sessionId}>{participant.nickname}{participant.sessionId === session.sessionId ? t(" · you") : ""}</li>)}</ul>
+        </section>
+      </aside>
+    </div>}
   </main>;
 }
