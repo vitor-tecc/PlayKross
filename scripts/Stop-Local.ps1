@@ -2,7 +2,7 @@
 $ErrorActionPreference = 'Stop'
 $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $state = Join-Path $root '.runtime/local-services.local.json'
-if (-not (Test-Path -LiteralPath $state)) { Write-Output 'No tracked local JKiller services.'; return }
+if (-not (Test-Path -LiteralPath $state)) { Write-Output 'No tracked local PlayKross services.'; return }
 $owned = @(Get-Content -Raw -LiteralPath $state | ConvertFrom-Json)
 if ($owned.Count -gt 2) { throw 'Unexpected local process inventory; refusing to stop arbitrary processes.' }
 foreach ($entry in $owned) {

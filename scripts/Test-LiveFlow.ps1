@@ -18,9 +18,9 @@ try {
         $targetId = $fixture.Id; Start-Sleep -Milliseconds 500
     }
     $probe = Join-Path $root 'tools/acceptance/LiveFlowProbe/bin/Debug/net10.0-windows10.0.26100.0/LiveFlowProbe.dll'
-    $environment = @{ JKILLER_PROBE_JOIN_LINK=$services.JoinLink; JKILLER_TARGET_PID=$targetId.ToString(); DOTNET_CLI_HOME=(Join-Path $root '.tools/dotnet-home'); NUGET_PACKAGES=(Join-Path $root '.tools/nuget') }
-    $environment['JKILLER_PROBE_CAPTURE_MODE']=if($VideoOnly){'video-only'}else{'application'}
-    if($CpuFallback){$environment['JKILLER_PROBE_CPU_FALLBACK']='1'}
+    $environment = @{ PLAYKROSS_PROBE_JOIN_LINK=$services.JoinLink; PLAYKROSS_TARGET_PID=$targetId.ToString(); DOTNET_CLI_HOME=(Join-Path $root '.tools/dotnet-home'); NUGET_PACKAGES=(Join-Path $root '.tools/nuget') }
+    $environment['PLAYKROSS_PROBE_CAPTURE_MODE']=if($VideoOnly){'video-only'}else{'application'}
+    if($CpuFallback){$environment['PLAYKROSS_PROBE_CPU_FALLBACK']='1'}
     $publisher = Start-Process -FilePath (Join-Path $root '.tools/dotnet/dotnet.exe') -ArgumentList @(('"' + $probe + '"')) -Environment $environment -WorkingDirectory $root -WindowStyle Hidden -RedirectStandardOutput (Join-Path $directory 'publisher.log') -RedirectStandardError (Join-Path $directory 'publisher-errors.log') -PassThru
     foreach ($height in @(720,1080)) {
         $deadline = [DateTime]::UtcNow.AddSeconds(40)
@@ -29,11 +29,11 @@ try {
             if ([DateTime]::UtcNow -ge $deadline) { throw "Native $height preset did not become ready." }
             Start-Sleep -Milliseconds 150
         }
-        $previous = @{}; foreach ($name in @('JKILLER_PROBE_JOIN_LINK','JKILLER_SMOKE_HEIGHT','JKILLER_LIVE_FLOW','JKILLER_PROBE_CAPTURE_MODE')) { $previous[$name] = [Environment]::GetEnvironmentVariable($name, 'Process') }
+        $previous = @{}; foreach ($name in @('PLAYKROSS_PROBE_JOIN_LINK','PLAYKROSS_SMOKE_HEIGHT','PLAYKROSS_LIVE_FLOW','PLAYKROSS_PROBE_CAPTURE_MODE')) { $previous[$name] = [Environment]::GetEnvironmentVariable($name, 'Process') }
         try {
             $actual=Get-Content -Raw -LiteralPath (Join-Path $directory 'ready.json') | ConvertFrom-Json
-            $env:JKILLER_PROBE_JOIN_LINK=$services.JoinLink; $env:JKILLER_SMOKE_HEIGHT=$actual.height.ToString(); $env:JKILLER_LIVE_FLOW='1'
-            $env:JKILLER_PROBE_CAPTURE_MODE=$environment['JKILLER_PROBE_CAPTURE_MODE']
+            $env:PLAYKROSS_PROBE_JOIN_LINK=$services.JoinLink; $env:PLAYKROSS_SMOKE_HEIGHT=$actual.height.ToString(); $env:PLAYKROSS_LIVE_FLOW='1'
+            $env:PLAYKROSS_PROBE_CAPTURE_MODE=$environment['PLAYKROSS_PROBE_CAPTURE_MODE']
             Push-Location (Join-Path $root 'web')
             try { npm exec -- playwright test --config playwright.protocol.config.ts live-flow.spec.ts; if ($LASTEXITCODE -ne 0) { throw "Actual $height browser smoke failed." } }
             finally { Pop-Location }

@@ -7,8 +7,8 @@ Push-Location $root
 try {
     switch ($Mode) {
         { $_ -in 'Automated','CodeOnly' } {
-            & (Join-Path $root '.tools/dotnet/dotnet.exe') test JKiller.sln --nologo; if ($LASTEXITCODE -ne 0) { throw '.NET correctness tests failed.' }
-            & (Join-Path $root '.tools/dotnet/dotnet.exe') build src/JKiller.App/JKiller.App.csproj --nologo; if ($LASTEXITCODE -ne 0) { throw 'Native UI build failed.' }
+            & (Join-Path $root '.tools/dotnet/dotnet.exe') test PlayKross.sln --nologo; if ($LASTEXITCODE -ne 0) { throw '.NET correctness tests failed.' }
+            & (Join-Path $root '.tools/dotnet/dotnet.exe') build src/PlayKross.App/PlayKross.App.csproj --nologo; if ($LASTEXITCODE -ne 0) { throw 'Native UI build failed.' }
             npm --prefix web test -- --run; if ($LASTEXITCODE -ne 0) { throw 'Browser correctness tests failed.' }
             npm --prefix web run build; if ($LASTEXITCODE -ne 0) { throw 'Browser production build failed.' }
             if ($Mode -eq 'CodeOnly') { & (Join-Path $PSScriptRoot 'Build-Native.ps1') -Plugin -Test -NonInteractive -NoInstall }

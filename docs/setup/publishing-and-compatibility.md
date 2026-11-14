@@ -65,4 +65,4 @@ Real AMD validation remains pending for actual output/audio, browser/WebView dec
 
 Keep H.264/Opus for this compatibility work; changing to AV1/HEVC introduces a separate receiving-browser compatibility question. Prioritize the AMD hardware path, preserve NVIDIA and the existing explicit CPU fallback, and avoid extra encodes or expensive analysis that unnecessarily competes with games. Browser publishing provides another implemented route, with browser-controlled encoding and the unvalidated live capture/audio limitations above.
 
-Source: [OBS hardware encoding](https://obsproject.com/kb/hardware-encoding). Current code: `src/JKiller.Windows/Obs/ObsMediaEngine.cs` and `native/jk-obs/src/ObsPipeline.cpp`.
+Source: [OBS hardware encoding](https://obsproject.com/kb/hardware-encoding). Current code: `src/PlayKross.Windows/Obs/ObsMediaEngine.cs` and `native/playkross-obs/src/ObsPipeline.cpp`.

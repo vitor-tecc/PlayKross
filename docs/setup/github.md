@@ -28,4 +28,4 @@ Repository changes still follow verification, commit, feature-branch push and PR
 
 Automated prereleases do not close the pending M3 hardware/media acceptance. Release notes retain that limit. The ZIP is the desktop broadcaster/viewer with its clean OBS runtime; .NET is bundled, while WebView2 Evergreen/Visual C++ runtime may be needed. Real AMD/NVIDIA capture, audible audio, external networks and game impact require separate live checks. The workflow neither captures the maintainer's screen nor starts their services.
 
-For a fresh clone, follow [Windows setup](windows.md). Source still uses the existing `JKiller` project/assembly names to avoid unnecessary protocol, profile and build-path changes; the product name is PlayKross.
+For a fresh clone, follow [Windows setup](windows.md). Projects, namespaces, scripts, environment variables (`PLAYKROSS_*`) and the native plugin (`playkross-obs.dll`) all use the PlayKross name. The former internal name JKiller survives only in historical records under `docs/superpowers/` and `docs/validation/`, and in the hash-pinned OBS capture patch (`JKILLER_WGC_INTERVAL_MS` and its `jk_*` trace fields).

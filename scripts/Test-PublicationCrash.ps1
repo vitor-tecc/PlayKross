@@ -13,7 +13,7 @@ try{
     foreach($name in @('ready.json','next-preset','stop')){Remove-Item -LiteralPath (Join-Path $directory $name) -ErrorAction SilentlyContinue}
     $fixture=Start-Process -FilePath (Join-Path $root '.artifacts/native/Debug/CaptureFixture.exe') -WindowStyle Hidden -PassThru
     Start-Sleep -Milliseconds 500
-    $environment=@{JKILLER_PROBE_JOIN_LINK=$services.JoinLink;JKILLER_TARGET_PID=$fixture.Id.ToString();JKILLER_PROBE_CAPTURE_MODE='video-only';DOTNET_CLI_HOME=(Join-Path $root '.tools/dotnet-home');NUGET_PACKAGES=(Join-Path $root '.tools/nuget')}
+    $environment=@{PLAYKROSS_PROBE_JOIN_LINK=$services.JoinLink;PLAYKROSS_TARGET_PID=$fixture.Id.ToString();PLAYKROSS_PROBE_CAPTURE_MODE='video-only';DOTNET_CLI_HOME=(Join-Path $root '.tools/dotnet-home');NUGET_PACKAGES=(Join-Path $root '.tools/nuget')}
     $probe=Join-Path $root 'tools/acceptance/LiveFlowProbe/bin/Debug/net10.0-windows10.0.26100.0/LiveFlowProbe.dll'
     $publisher=Start-Process -FilePath (Join-Path $root '.tools/dotnet/dotnet.exe') -ArgumentList ('"'+$probe+'"') -WorkingDirectory $root -Environment $environment -WindowStyle Hidden -RedirectStandardOutput (Join-Path $directory 'crash-publisher.log') -RedirectStandardError (Join-Path $directory 'crash-errors.log') -PassThru
     $deadline=[DateTime]::UtcNow.AddSeconds(40)

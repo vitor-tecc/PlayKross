@@ -10,7 +10,7 @@ try {
     $fixture = Start-Process -FilePath (Join-Path $root '.artifacts/native/Debug/CaptureFixture.exe') -WindowStyle Hidden -PassThru
     Start-Sleep -Milliseconds 500
     $probe = Join-Path $root 'tools/acceptance/OwnedEngineProbe/bin/Debug/net10.0-windows10.0.26100.0/OwnedEngineProbe.dll'
-    $environment = @{ JKILLER_PROBE_JOIN_LINK=$services.JoinLink; JKILLER_FIXTURE_PID=$fixture.Id.ToString(); DOTNET_CLI_HOME=(Join-Path $root '.tools/dotnet-home'); NUGET_PACKAGES=(Join-Path $root '.tools/nuget') }
+    $environment = @{ PLAYKROSS_PROBE_JOIN_LINK=$services.JoinLink; PLAYKROSS_FIXTURE_PID=$fixture.Id.ToString(); DOTNET_CLI_HOME=(Join-Path $root '.tools/dotnet-home'); NUGET_PACKAGES=(Join-Path $root '.tools/nuget') }
     $publisher = Start-Process -FilePath (Join-Path $root '.tools/dotnet/dotnet.exe') -ArgumentList @(('"' + $probe + '"'), 'publish') -Environment $environment -WorkingDirectory $root -WindowStyle Hidden -RedirectStandardOutput (Join-Path $directory 'publisher.log') -RedirectStandardError (Join-Path $directory 'publisher-errors.log') -PassThru
     $deadline = [DateTime]::UtcNow.AddSeconds(30)
     while (-not (Test-Path -LiteralPath (Join-Path $directory 'publisher-ready.local.json'))) {
@@ -18,14 +18,14 @@ try {
         if ([DateTime]::UtcNow -ge $deadline) { throw 'Native publication did not prepare within 30 seconds.' }
         Start-Sleep -Milliseconds 150
     }
-    $previous = $env:JKILLER_PROBE_JOIN_LINK
-    $env:JKILLER_PROBE_JOIN_LINK = $services.JoinLink
+    $previous = $env:PLAYKROSS_PROBE_JOIN_LINK
+    $env:PLAYKROSS_PROBE_JOIN_LINK = $services.JoinLink
     try {
         Push-Location $root
         try { npm --prefix web run test:protocol; if ($LASTEXITCODE -ne 0) { throw 'Actual browser protocol integration failed.' } }
         finally { Pop-Location }
     }
-    finally { $env:JKILLER_PROBE_JOIN_LINK = $previous }
+    finally { $env:PLAYKROSS_PROBE_JOIN_LINK = $previous }
 }
 finally {
     Set-Content -LiteralPath (Join-Path $directory 'stop-publisher') -Value 'stop'

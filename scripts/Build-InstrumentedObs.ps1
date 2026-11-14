@@ -35,7 +35,7 @@ $cmake=Join-Path $installation 'Common7/IDE/CommonExtensions/Microsoft/CMake/CMa
 $major=(& $vswhere -latest -products '*' -property installationVersion).Split('.')[0]
 $generator=if ($major -eq '18') { 'Visual Studio 18 2026' } else { 'Visual Studio 17 2022' }
 $build=Join-Path $root '.artifacts/instrumented-obs'
-& $cmake -S (Join-Path $root 'native/instrumented-obs') -B $build -G $generator -A x64 ("-DJK_PATCHED_SOURCE=$component") ("-DJK_OBS_SOURCE=$source") ("-DJK_OBS_IMPORT="+(Join-Path $root '.artifacts/native/imports')) ("-DJK_GENERATED_HEADERS="+(Join-Path $root '.artifacts/native/generated'))
+& $cmake -S (Join-Path $root 'native/instrumented-obs') -B $build -G $generator -A x64 ("-DPLAYKROSS_PATCHED_SOURCE=$component") ("-DPLAYKROSS_OBS_SOURCE=$source") ("-DPLAYKROSS_OBS_IMPORT="+(Join-Path $root '.artifacts/native/imports')) ("-DPLAYKROSS_GENERATED_HEADERS="+(Join-Path $root '.artifacts/native/generated'))
 if ($LASTEXITCODE -ne 0) { throw 'Instrumented capture configuration failed.' }
 & $cmake --build $build --config Release --parallel
 if ($LASTEXITCODE -ne 0) { throw 'Instrumented capture build failed.' }

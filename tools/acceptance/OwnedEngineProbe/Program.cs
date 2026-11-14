@@ -1,7 +1,7 @@
 using System.Text.Json;
-using JKiller.Windows.Obs;
-using JKiller.Windows.Capture;
-using JKiller.Contracts;
+using PlayKross.Windows.Obs;
+using PlayKross.Windows.Capture;
+using PlayKross.Contracts;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Net.Http.Json;
@@ -14,10 +14,10 @@ try
     await using var rpc = await ObsRpcClient.ConnectAsync(handle.PipeName, handle.Identity, CancellationToken.None);
     var version = await rpc.RequestAsync("GetVersion", JsonSerializer.SerializeToElement(new { }));
     Console.WriteLine("Actual isolated OBS: " + version.GetProperty("obsVersion").GetString());
-    async Task<JsonElement> Vendor(string type, object data) => (await rpc.RequestAsync("CallVendorRequest", JsonSerializer.SerializeToElement(new { vendorName = "jkiller", requestType = type, requestData = data }))).GetProperty("responseData").Clone();
+    async Task<JsonElement> Vendor(string type, object data) => (await rpc.RequestAsync("CallVendorRequest", JsonSerializer.SerializeToElement(new { vendorName = "playkross", requestType = type, requestData = data }))).GetProperty("responseData").Clone();
     var caps = await Vendor("GetCapabilities", new { });
     Console.WriteLine("Actual H264 encoders: " + string.Join(",", caps.GetProperty("encoders").EnumerateArray().Where(x => x.GetProperty("codec").GetString() == "h264").Select(x => x.GetProperty("id").GetString())));
-    if (!caps.GetProperty("sources").EnumerateArray().Any(x => x.GetProperty("id").GetString() == "jk_bound_capture")) throw new Exception("Exact-bound native source absent.");
+    if (!caps.GetProperty("sources").EnumerateArray().Any(x => x.GetProperty("id").GetString() == "playkross_bound_capture")) throw new Exception("Exact-bound native source absent.");
     var applied = await Vendor("PreparePipeline", new { encoder = "obs_nvenc_h264_tex", bitrateKbps = 15000, generation = 1 });
     Console.WriteLine("Actual pipeline initialization: " + applied);
     if (!applied.GetProperty("success").GetBoolean() || !applied.GetProperty("hardwareInitialized").GetBoolean()) throw new Exception("NVENC did not initialize.");
@@ -25,7 +25,7 @@ try
     if (args.Length > 0 && args[0] == "publish")
     {
         await rpc.DisposeAsync(); await helper.StopAsync(CancellationToken.None);
-        var link = new Uri(Environment.GetEnvironmentVariable("JKILLER_PROBE_JOIN_LINK") ?? throw new Exception("Probe invitation missing."));
+        var link = new Uri(Environment.GetEnvironmentVariable("PLAYKROSS_PROBE_JOIN_LINK") ?? throw new Exception("Probe invitation missing."));
         var invitation = Uri.UnescapeDataString(link.Fragment["#invite=".Length..]);
         using var http = new HttpClient(new HttpClientHandler { UseCookies = false }) { BaseAddress = new Uri(link.GetLeftPart(UriPartial.Authority)) };
         var joinResponse = await http.PostAsJsonAsync("/api/join", new { invite = invitation, nickname = "Synthetic publisher", desktop = true }); joinResponse.EnsureSuccessStatusCode();
@@ -33,7 +33,7 @@ try
         http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", joined.SessionToken);
         var reservedResponse = await http.PostAsync("/api/streams", null); reservedResponse.EnsureSuccessStatusCode();
         var reservation = (await reservedResponse.Content.ReadFromJsonAsync<PublishReservation>())!;
-        var fixtureId = int.Parse(Environment.GetEnvironmentVariable("JKILLER_FIXTURE_PID")!);
+        var fixtureId = int.Parse(Environment.GetEnvironmentVariable("PLAYKROSS_FIXTURE_PID")!);
         using var fixture = Process.GetProcessById(fixtureId); fixture.Refresh();
         var identity = ProcessIdentityReader.Read(fixtureId)!;
         if (!string.Equals(Path.GetFullPath(identity.ExecutablePath), Path.GetFullPath(Path.Combine(Environment.CurrentDirectory, ".artifacts/native/Debug/CaptureFixture.exe")), StringComparison.OrdinalIgnoreCase)) throw new Exception("Protocol probe accepts only the synthetic fixture.");
@@ -57,7 +57,7 @@ try
             {
                 if (!revoked && File.Exists(Path.Combine(directory, "revoke-publication")))
                 {
-                    async Task<JsonElement> PipelineState() => (await publisherControl!.RequestAsync("CallVendorRequest", JsonSerializer.SerializeToElement(new { vendorName = "jkiller", requestType = "GetPipelineState", requestData = new { } }), CancellationToken.None)).GetProperty("responseData").Clone();
+                    async Task<JsonElement> PipelineState() => (await publisherControl!.RequestAsync("CallVendorRequest", JsonSerializer.SerializeToElement(new { vendorName = "playkross", requestType = "GetPipelineState", requestData = new { } }), CancellationToken.None)).GetProperty("responseData").Clone();
                     if (!(await PipelineState()).GetProperty("outputActive").GetBoolean()) throw new Exception("Native output was not active before the revocation check.");
                     using var originalHelper = Process.GetProcessById(publisherHandle!.Identity.Pid);
                     var stopped = await http.DeleteAsync($"/api/streams/{reservation.StreamId}"); stopped.EnsureSuccessStatusCode();

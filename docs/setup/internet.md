@@ -15,9 +15,9 @@ Stop local services and prepare the optional reverse proxy:
 ```powershell
 ./scripts/Stop-Local.ps1
 ./scripts/Setup-Dev.ps1 -Dependencies caddy
-$env:JKILLER_PUBLIC_HOST = 'YOUR_PUBLIC_IP_OR_HOSTNAME'
+$env:PLAYKROSS_PUBLIC_HOST = 'YOUR_PUBLIC_IP_OR_HOSTNAME'
 ./.tools/caddy/caddy.exe adapt --config config/Caddyfile.example --adapter caddyfile
-./scripts/Start-Local.ps1 -PublicOrigin "https://$env:JKILLER_PUBLIC_HOST"
+./scripts/Start-Local.ps1 -PublicOrigin "https://$env:PLAYKROSS_PUBLIC_HOST"
 ./.tools/caddy/caddy.exe run --config config/Caddyfile.example --adapter caddyfile
 ```
 

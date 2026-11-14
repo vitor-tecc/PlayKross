@@ -24,9 +24,9 @@ int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,PWSTR,int) {
     HWND window{}; HWAVEOUT audio{}; WAVEHDR buffer{}; HANDLE timer{};
     std::vector<short> pcm(96000);
     try {
-        WNDCLASSW type{}; type.lpfnWndProc=Procedure; type.hInstance=instance; type.lpszClassName=L"JKGpuTimingFixture"; RegisterClassW(&type);
+        WNDCLASSW type{}; type.lpfnWndProc=Procedure; type.hInstance=instance; type.lpszClassName=L"PlayKrossGpuTimingFixture"; RegisterClassW(&type);
         // Actual 1920x1080 client pixels, with no title-bar crop or upscale.
-        window=CreateWindowW(type.lpszClassName,L"JKiller GPU timing fixture",WS_POPUP,40,40,1920,1080,nullptr,nullptr,instance,nullptr);
+        window=CreateWindowW(type.lpszClassName,L"PlayKross GPU timing fixture",WS_POPUP,40,40,1920,1080,nullptr,nullptr,instance,nullptr);
         if (!window) throw std::runtime_error("Native timing window unavailable.");
         ComPtr<ID3D11Device> device; ComPtr<ID3D11DeviceContext> context;
         Check(D3D11CreateDevice(nullptr,D3D_DRIVER_TYPE_HARDWARE,nullptr,D3D11_CREATE_DEVICE_BGRA_SUPPORT,nullptr,0,D3D11_SDK_VERSION,&device,nullptr,&context));
@@ -62,12 +62,12 @@ int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,PWSTR,int) {
             for(int bit=0;bit<32;++bit) rectangle({48+bit*16,64,64+bit*16,96},clock&(1u<<bit)?white:black);
             MMTIME position{}; position.wType=TIME_SAMPLES; const bool flash=audio && waveOutGetPosition(audio,&position,sizeof(position))==MMSYSERR_NOERROR && position.wType==TIME_SAMPLES && position.u.sample%48000<2400;
             rectangle({620,64,680,124},flash?white:black);
-            Check(chain->Present(0,0)); ++frames; SetPropW(window,L"JKFixturePaintCount",reinterpret_cast<HANDLE>(static_cast<ULONG_PTR>(frames))); ++tick;
+            Check(chain->Present(0,0)); ++frames; SetPropW(window,L"PlayKrossFixturePaintCount",reinterpret_cast<HANDLE>(static_cast<ULONG_PTR>(frames))); ++tick;
             QueryPerformanceCounter(&now); const auto elapsed=static_cast<double>(now.QuadPart-began.QuadPart)/frequency.QuadPart; if(elapsed>static_cast<double>(tick)/60) tick=static_cast<std::uint64_t>(elapsed*60)+1;
         }
         if(frame_ready) CloseHandle(frame_ready);
     } catch(const std::exception& error) { OutputDebugStringA(error.what()); running=false; }
     if(audio) { waveOutReset(audio); waveOutUnprepareHeader(audio,&buffer,sizeof(buffer)); waveOutClose(audio); }
-    if(timer) CloseHandle(timer); if(window) { RemovePropW(window,L"JKFixturePaintCount"); DestroyWindow(window); }
+    if(timer) CloseHandle(timer); if(window) { RemovePropW(window,L"PlayKrossFixturePaintCount"); DestroyWindow(window); }
     return 0;
 }

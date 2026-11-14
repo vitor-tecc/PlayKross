@@ -11,7 +11,7 @@ $ctest = Join-Path $cmakeDirectory 'ctest.exe'
 $major = (& $vswhere -latest -products '*' -property installationVersion).Split('.')[0]
 $generator = if ($major -eq '18') { 'Visual Studio 18 2026' } else { 'Visual Studio 17 2022' }
 $buildRoot = Join-Path $projectRoot '.artifacts/native'
-$extra = @('-DJK_BUILD_OBS_PLUGIN=OFF')
+$extra = @('-DPLAYKROSS_BUILD_OBS_PLUGIN=OFF')
 if ($Plugin) {
     . (Join-Path $PSScriptRoot 'DependencyTools.ps1')
     $sourceArchive = Join-Path $projectRoot '.tools/downloads/OBS-Studio-32.2.2-Sources.tar.gz'
@@ -45,14 +45,17 @@ if ($Plugin) {
         & (Join-Path $compilerTools 'lib.exe') /nologo ("/DEF:" + $definition) ("/OUT:" + (Join-Path $imports ($library + '.lib'))) /MACHINE:X64
         if ($LASTEXITCODE -ne 0) { throw 'OBS import library generation failed.' }
     }
-    $extra = @('-DJK_BUILD_OBS_PLUGIN=ON',('-DJK_OBS_SOURCE_ROOT=' + $sourceRoot),('-DJK_OBS_IMPORT_ROOT=' + $imports),('-DJK_JSON_INCLUDE_ROOT=' + (Join-Path $projectRoot '.tools/json/include')))
+    $extra = @('-DPLAYKROSS_BUILD_OBS_PLUGIN=ON',('-DPLAYKROSS_OBS_SOURCE_ROOT=' + $sourceRoot),('-DPLAYKROSS_OBS_IMPORT_ROOT=' + $imports),('-DPLAYKROSS_JSON_INCLUDE_ROOT=' + (Join-Path $projectRoot '.tools/json/include')))
 }
-& $cmake -S (Join-Path $projectRoot 'native/jk-obs') -B $buildRoot -G $generator -A x64 @extra
+& $cmake -S (Join-Path $projectRoot 'native/playkross-obs') -B $buildRoot -G $generator -A x64 @extra
 if ($LASTEXITCODE -ne 0) { throw 'Native configuration failed.' }
 & $cmake --build $buildRoot --config $Configuration --parallel
 if ($LASTEXITCODE -ne 0) { throw 'Native build failed.' }
 if ($Plugin -and -not $NoInstall) {
-    Copy-Item -LiteralPath (Join-Path $buildRoot ($Configuration + '/jk-obs.dll')) -Destination (Join-Path $projectRoot '.runtime/obs/obs-plugins/64bit/jk-obs.dll')
+    $pluginDirectory = Join-Path $projectRoot '.runtime/obs/obs-plugins/64bit'
+    Copy-Item -LiteralPath (Join-Path $buildRoot ($Configuration + '/playkross-obs.dll')) -Destination (Join-Path $pluginDirectory 'playkross-obs.dll')
+    # The runtime refuses unlisted plugins; remove the pre-rename build if present.
+    Remove-Item -LiteralPath (Join-Path $pluginDirectory 'jk-obs.dll') -ErrorAction SilentlyContinue
 }
 if ($Test) {
     # These three tests start an audio tone or a child-process fixture. Never

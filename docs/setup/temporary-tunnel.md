@@ -20,7 +20,7 @@ For the synthetic video-only acceptance fixture, build the existing host/native 
 
 ```powershell
 ./scripts/Build-TimingSource.ps1
-./.tools/dotnet/dotnet.exe build src/JKiller.Host/JKiller.Host.csproj
+./.tools/dotnet/dotnet.exe build src/PlayKross.Host/PlayKross.Host.csproj
 ./.tools/dotnet/dotnet.exe build tools/acceptance/LiveFlowProbe/LiveFlowProbe.csproj
 ./scripts/Test-TemporaryVideo.ps1 -Seconds 1800 -MediaInterface Ethernet
 ```

@@ -1,7 +1,7 @@
 # Pure boundaries shared by the local functional runner and CodeOnly checks.
 . (Join-Path $PSScriptRoot 'PortablePackageTools.ps1')
 . (Join-Path $PSScriptRoot 'ConcurrentMonitorFixture.ps1')
-function Get-ConcurrentComponentPaths { @('BUILD-INFO.json','PlayKross.exe','PlayKross.dll','JKiller.Windows.dll','JKiller.Core.dll','JKiller.Contracts.dll','.runtime/obs/bin/64bit/obs64.exe','.runtime/obs/bin/64bit/libobs-winrt.dll','.runtime/obs/obs-plugins/64bit/jk-obs.dll','config/dependencies.json','config/obs/allowed-plugins.txt','config/obs/global.ini','config/obs/user.ini','config/obs/basic/profiles/JKiller/basic.ini','config/obs/basic/scenes/JKiller.json','config/obs/plugin_config/obs-websocket/config.json') }
+function Get-ConcurrentComponentPaths { @('BUILD-INFO.json','PlayKross.exe','PlayKross.dll','PlayKross.Windows.dll','PlayKross.Core.dll','PlayKross.Contracts.dll','.runtime/obs/bin/64bit/obs64.exe','.runtime/obs/bin/64bit/libobs-winrt.dll','.runtime/obs/obs-plugins/64bit/playkross-obs.dll','config/dependencies.json','config/obs/allowed-plugins.txt','config/obs/global.ini','config/obs/user.ini','config/obs/basic/profiles/PlayKross/basic.ini','config/obs/basic/scenes/PlayKross.json','config/obs/plugin_config/obs-websocket/config.json') }
 function Get-ConcurrentRuntimePaths([string]$Root) {
     $paths=@(Get-ConcurrentComponentPaths)
     foreach($file in Get-ChildItem -LiteralPath $Root -File | Where-Object Extension -in '.dll','.exe'){$paths += $file.Name}
@@ -12,7 +12,7 @@ function Get-ConcurrentRuntimePaths([string]$Root) {
     @($paths | Sort-Object -Unique)
 }
 function Assert-ConcurrentMutableState([string]$Root) {
-    foreach($relative in @('.runtime/obs/config','.runtime/webview','.runtime/concurrent-probe.lock','.runtime/obs/jkiller-owner.lock')) {
+    foreach($relative in @('.runtime/obs/config','.runtime/webview','.runtime/concurrent-probe.lock','.runtime/obs/playkross-owner.lock')) {
         $path=Join-Path $Root $relative
         Assert-PortableDirectory $path $Root
         try{$entry=Get-Item -LiteralPath $path -Force -ErrorAction Stop}catch [Management.Automation.ItemNotFoundException]{

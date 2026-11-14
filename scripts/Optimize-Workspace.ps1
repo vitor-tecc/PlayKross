@@ -3,7 +3,7 @@ param([switch]$Apply,[string]$Root=(Join-Path $PSScriptRoot '..'))
 $ErrorActionPreference='Stop'
 $rootPath=[IO.Path]::GetFullPath($Root).TrimEnd('\','/')
 $prefix=$rootPath+[IO.Path]::DirectorySeparatorChar
-foreach($marker in @('JKiller.sln','config/dependencies.json','.git')) { if(-not(Test-Path -LiteralPath (Join-Path $rootPath $marker))) { throw 'Expected PlayKross workspace markers are missing.' } }
+foreach($marker in @('PlayKross.sln','config/dependencies.json','.git')) { if(-not(Test-Path -LiteralPath (Join-Path $rootPath $marker))) { throw 'Expected PlayKross workspace markers are missing.' } }
 function Assert-SafePath([string]$Path) {
     $resolved=[IO.Path]::GetFullPath($Path)
     if(-not $resolved.StartsWith($prefix,[StringComparison]::OrdinalIgnoreCase)) { throw 'Cleanup target leaves the workspace.' }

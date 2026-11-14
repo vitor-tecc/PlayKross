@@ -1,16 +1,16 @@
-using JKiller.App.Viewing;
-using JKiller.Windows.Presentation;
-using JKiller.Windows.Rooms;
-using JKiller.Windows.Capture;
-using JKiller.Windows.Obs;
-using JKiller.Contracts;
+using PlayKross.App.Viewing;
+using PlayKross.Windows.Presentation;
+using PlayKross.Windows.Rooms;
+using PlayKross.Windows.Capture;
+using PlayKross.Windows.Obs;
+using PlayKross.Contracts;
 using System.Diagnostics;
 using System.Text.Json;
 using System.Windows;
 using System.IO;
 using System.Net.Http;
-using JKiller.Acceptance.Probes;
-using JKiller.Windows.Viewing;
+using PlayKross.Acceptance.Probes;
+using PlayKross.Windows.Viewing;
 using System.Windows.Controls;
 using Microsoft.Web.WebView2.Wpf;
 internal static class Program
@@ -52,7 +52,7 @@ internal static class Program
         model.Video = new("monitor", SourceKind.Monitor, 1, null, "Display");
         model.RefreshAsync(CancellationToken.None).GetAwaiter().GetResult();
         model.Audio = new(AudioMode.SystemOutput);
-        var picker = new JKiller.App.Controls.AudioOutputPicker { DataContext = model };
+        var picker = new PlayKross.App.Controls.AudioOutputPicker { DataContext = model };
         void DrainBindings() => picker.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.ContextIdle);
         DrainBindings();
         if (picker.SelectedItem is not null || model.Audio.RenderEndpointId is not null) throw new Exception("Picker silently selected a default output.");
@@ -122,25 +122,25 @@ internal static class Program
     private static async Task Run()
     {
         var developerRoot = Environment.CurrentDirectory;
-        var root = Environment.GetEnvironmentVariable("JKILLER_PROBE_ROOT") ?? developerRoot;
+        var root = Environment.GetEnvironmentVariable("PLAYKROSS_PROBE_ROOT") ?? developerRoot;
         if (!Path.IsPathFullyQualified(root)) throw new Exception("Probe root must be absolute.");
         using var deadline = new CancellationTokenSource(TimeSpan.FromMinutes(2));
         var token = deadline.Token;
-        using var fixture = Process.GetProcessById(int.Parse(Environment.GetEnvironmentVariable("JKILLER_FIXTURE_PID")!)); fixture.Refresh();
+        using var fixture = Process.GetProcessById(int.Parse(Environment.GetEnvironmentVariable("PLAYKROSS_FIXTURE_PID")!)); fixture.Refresh();
         var identity = ProcessIdentityReader.Read(fixture.Id) ?? throw new Exception("Fixture disappeared.");
         if (!string.Equals(Path.GetFullPath(identity.ExecutablePath), Path.GetFullPath(Path.Combine(developerRoot, ".artifacts/native/Debug/CaptureFixture.exe")), StringComparison.OrdinalIgnoreCase)) throw new Exception("Only the synthetic fixture may be used in this probe.");
         using var http = new HttpClient(new HttpClientHandler { UseCookies = false, AllowAutoRedirect = false }); var room = new RoomHttpClient(http);
         var playbackAudioGate = new PlaybackAudioGate();
         await using var model = new BroadcasterModel(fallback => new ObsMediaEngine(new OwnedObsProcess(root), fallback, playbackAudioGate), room, new WindowsSourceCatalog(), audioCatalog: new WindowsAudioCatalog());
-        var link = Environment.GetEnvironmentVariable("JKILLER_PROBE_JOIN_LINK")!; model.RoomLink = link; model.Nickname = "Embedded viewer probe";
+        var link = Environment.GetEnvironmentVariable("PLAYKROSS_PROBE_JOIN_LINK")!; model.RoomLink = link; model.Nickname = "Embedded viewer probe";
         await model.JoinAsync(token);
-        var captureMode = Environment.GetEnvironmentVariable("JKILLER_PROBE_CAPTURE_MODE") ?? "application";
+        var captureMode = Environment.GetEnvironmentVariable("PLAYKROSS_PROBE_CAPTURE_MODE") ?? "application";
         model.Video = captureMode == "system-output"
-            ? model.Sources.Single(s => s.Kind == SourceKind.Monitor && s.Id == (Environment.GetEnvironmentVariable("JKILLER_PROBE_MONITOR_ID") ?? throw new Exception("System-output probe requires an explicit monitor ID.")))
+            ? model.Sources.Single(s => s.Kind == SourceKind.Monitor && s.Id == (Environment.GetEnvironmentVariable("PLAYKROSS_PROBE_MONITOR_ID") ?? throw new Exception("System-output probe requires an explicit monitor ID.")))
             : model.Sources.Single(s => s.Kind == SourceKind.Window && s.NativeHandle == unchecked((ulong)(long)fixture.MainWindowHandle));
-        model.Audio = ProbeCaptureMode.SelectAudio(captureMode, model.Video, Environment.GetEnvironmentVariable("JKILLER_PROBE_RENDER_ENDPOINT_ID"));
+        model.Audio = ProbeCaptureMode.SelectAudio(captureMode, model.Video, Environment.GetEnvironmentVariable("PLAYKROSS_PROBE_RENDER_ENDPOINT_ID"));
         await model.StartAsync(token);
-        using var viewer = new RoomWebView(root, room, playbackAudioGate); var window = RoomViewerWindow.Create(viewer); window.Width = 1080; window.Height = 850; window.Title = "JKiller synthetic WebView validation"; window.Show();
+        using var viewer = new RoomWebView(root, room, playbackAudioGate); var window = RoomViewerWindow.Create(viewer); window.Width = 1080; window.Height = 850; window.Title = "PlayKross synthetic WebView validation"; window.Show();
         try
         {
             await viewer.OpenRoomAsync(new Uri(link), token);
@@ -154,7 +154,7 @@ internal static class Program
             // Change the nickname through the native control path while the embedded peer stays active.
             model.Nickname = "Renamed embedded probe"; await model.RenameAsync(token);
             await Wait(async () => await viewer.Core.ExecuteScriptAsync("document.body.textContent.includes('Renamed embedded probe')") == "true", token);
-            await viewer.Core.ExecuteScriptAsync("window.jkFullscreenVideo=document.querySelector('video');window.jkFullscreenMedia=window.jkFullscreenVideo.srcObject;");
+            await viewer.Core.ExecuteScriptAsync("window.playkrossFullscreenVideo=document.querySelector('video');window.playkrossFullscreenMedia=window.playkrossFullscreenVideo.srcObject;");
             var priorState = window.WindowState; var priorStyle = window.WindowStyle; var priorResize = window.ResizeMode;
             await Click(viewer, "Fullscreen"); await Wait(() => Task.FromResult(viewer.IsFullscreen), token);
             await Wait(async () => await viewer.Core.ExecuteScriptAsync("document.fullscreenElement?.classList.contains('fullscreen-chrome-hidden')") == "true", token);
@@ -162,10 +162,10 @@ internal static class Program
             await viewer.Core.ExecuteScriptAsync("document.fullscreenElement.dispatchEvent(new PointerEvent('pointermove',{bubbles:true}));");
             await Click(viewer, "Return to room"); await Wait(() => Task.FromResult(!viewer.IsFullscreen), token);
             if (window.WindowState != priorState || window.WindowStyle != priorStyle || window.ResizeMode != priorResize) throw new Exception("Native window state/style/resize was not restored.");
-            if (await viewer.Core.ExecuteScriptAsync("document.querySelector('video')===window.jkFullscreenVideo && window.jkFullscreenVideo.srcObject===window.jkFullscreenMedia") != "true") throw new Exception("Fullscreen recreated native viewer media.");
+            if (await viewer.Core.ExecuteScriptAsync("document.querySelector('video')===window.playkrossFullscreenVideo && window.playkrossFullscreenVideo.srcObject===window.playkrossFullscreenMedia") != "true") throw new Exception("Fullscreen recreated native viewer media.");
             await Wait(async () => int.Parse(await viewer.Core.ExecuteScriptAsync("document.querySelector('video').getVideoPlaybackQuality().totalVideoFrames")) > before + 60, token);
-            await viewer.Core.ExecuteScriptAsync("fetch('/api/me').then(r=>r.json()).then(s=>window.jkProbeSession=s.sessionId)");
-            await Wait(async () => await viewer.Core.ExecuteScriptAsync($"window.jkProbeSession==='{sessionId}'") == "true", token);
+            await viewer.Core.ExecuteScriptAsync("fetch('/api/me').then(r=>r.json()).then(s=>window.playkrossProbeSession=s.sessionId)");
+            await Wait(async () => await viewer.Core.ExecuteScriptAsync($"window.playkrossProbeSession==='{sessionId}'") == "true", token);
             if (room.Session.SessionId.ToString() != sessionId || !model.CaptureLive) throw new Exception("Viewing disturbed publication ownership.");
             if (viewer.Core.Settings.AreHostObjectsAllowed || viewer.Core.Settings.IsWebMessageEnabled) throw new Exception("Native bridge is exposed.");
             await CheckScriptFailureNotice(viewer, playbackAudioGate, token);
@@ -188,7 +188,7 @@ internal static class Program
     {
         var core = viewer.Core;
         var browser = viewer.Children.OfType<Grid>().Single().Children.OfType<WebView2>().Single();
-        await core.ExecuteScriptAsync("window.jkProbeVideo=document.querySelector('video');window.jkProbeMedia=window.jkProbeVideo.srcObject;Object.defineProperty(window,'playkrossPlaybackAudioBlocked',{value:'forced-script-update-failure',configurable:false});");
+        await core.ExecuteScriptAsync("window.playkrossProbeVideo=document.querySelector('video');window.playkrossProbeMedia=window.playkrossProbeVideo.srcObject;Object.defineProperty(window,'playkrossPlaybackAudioBlocked',{value:'forced-script-update-failure',configurable:false});");
         await using (var lease = await playbackGate.AcquireAsync(token))
         {
             viewer.UpdateLayout();
@@ -198,7 +198,7 @@ internal static class Program
             var browserTop = browser.TranslatePoint(new Point(), viewer).Y;
             if (!notice.IsVisible || notice.ActualHeight <= 0 || !reload.IsVisible || !reload.IsEnabled || !browser.IsVisible || browser.ActualHeight <= 0 || noticeTop + notice.ActualHeight > browserTop + 0.5)
                 throw new Exception("Forced script failure did not expose usable native guidance outside the still-visible WebView airspace.");
-            if (!ReferenceEquals(core, viewer.Core) || !core.IsMuted || await core.ExecuteScriptAsync("document.querySelector('video')===window.jkProbeVideo && window.jkProbeVideo.srcObject===window.jkProbeMedia") != "true")
+            if (!ReferenceEquals(core, viewer.Core) || !core.IsMuted || await core.ExecuteScriptAsync("document.querySelector('video')===window.playkrossProbeVideo && window.playkrossProbeVideo.srcObject===window.playkrossProbeMedia") != "true")
                 throw new Exception("Showing script-failure guidance replaced browser/media or lost native mute.");
             // Exercise the native action, not a page command bridge. Explicit reload may
             // restart page playback but must retain this WebView/Core and native mute.

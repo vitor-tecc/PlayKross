@@ -1,0 +1,212 @@
+using System.ComponentModel;
+using PlayKross.Contracts;
+using PlayKross.Core.Media;
+using PlayKross.Core.Rooms;
+using PlayKross.Windows.Capture;
+using PlayKross.Core.Broadcast;
+using PlayKross.Core.Capture;
+using PlayKross.Windows.Rooms;
+using PlayKross.Windows.Security;
+using System.Runtime.CompilerServices;
+using PlayKross.Windows.Obs;
+using PlayKross.Core.Diagnostics;
+namespace PlayKross.Windows.Presentation;
+public class BroadcasterModel(Func<bool, IMediaEngine> engineFactory, IRoomClient room, IWindowsSourceCatalog catalog, SessionVault? vault = null, IWindowsAudioCatalog? audioCatalog = null) : INotifyPropertyChanged, IAsyncDisposable
+{
+    private BroadcastController? controller;
+    private IMediaEngine? engine;
+    private Uri? origin;
+    private bool disposed;
+    private CancellationTokenSource? diagnosticsCancellation;
+    private Task? diagnosticsTask;
+    private CancellationTokenSource? presenceCancellation;
+    private Task? presenceTask;
+    private string observedText = "Observed: unavailable until broadcasting.";
+    public string ObservedText { get => observedText; private set { observedText = value; Notify(); } }
+    private string status = "Join a room and select a source. Nothing is captured until Start.";
+    public string RoomLink { get; set; } = "";
+    public string Nickname { get; set; } = "Player";
+    private SourceDescriptor? video;
+    private AudioSelection audio = AudioSelection.Off;
+    public SourceDescriptor? Video
+    {
+        get => video;
+        set
+        {
+            video = value; Notify();
+            if (video?.Kind == SourceKind.Window && audio.Mode == AudioMode.SystemOutput)
+            {
+                Audio = AudioSelection.Off;
+                Status = CaptureLive
+                    ? "Audio off is staged for the selected window; current capture continues until Apply sources and settings (restart). System output requires sharing a display."
+                    : "Audio turned off: system output requires sharing a display. Select application audio for a window.";
+            }
+            Notify(nameof(AudioEligibility));
+        }
+    }
+    public AudioSelection Audio { get => audio; set { ArgumentNullException.ThrowIfNull(value); if (audio == value) return; audio = value; Notify(); Notify(nameof(AudioEligibility)); } }
+    public IReadOnlyList<AudioOutputDescriptor> AudioOutputs { get; private set; } = [];
+    public AudioEligibility AudioEligibility
+    {
+        get
+        {
+            var eligibility = AudioPolicy.EvaluateSelection(Audio, Video?.Kind ?? SourceKind.Window, Environment.ProcessId);
+            return eligibility.Allowed && Audio.Mode == AudioMode.SystemOutput && !AudioOutputs.Any(output => output.Id == Audio.RenderEndpointId)
+                ? new(false, "The selected output device is unavailable. Select an available output again; capture will not follow the default device.") : eligibility;
+        }
+    }
+    public void SelectApplicationAudio(SourceDescriptor? source) => Audio = source is null ? AudioSelection.Off : new(AudioMode.Application, source.Process);
+    public void SelectSystemAudio(AudioOutputDescriptor output) => Audio = new(AudioMode.SystemOutput, RenderEndpointId: output.Id);
+    public bool AllowCpuFallback { get; set; }
+    public BroadcastSettings Settings { get; set; } = new(1920, 1080, 60, 15);
+    public IReadOnlyList<SourceDescriptor> Sources { get; private set; } = [];
+    public IReadOnlyList<SourceDescriptor> AudioApplications => Sources.Where(source => source.Kind == SourceKind.Window).ToArray();
+    public string Status { get => status; private set { status = value; Notify(); } }
+    public string AppliedText => controller?.Applied is { } applied ? $"Applied: {applied.Settings.Width}×{applied.Settings.Height}, {applied.Settings.Fps} FPS target, {applied.Settings.BitrateMbps} Mbps target; {applied.Encoder}/{applied.Codec}. Hardware initialized: {applied.HardwareVerified}.{(applied.Encoder == "h264_texture_amf" ? " AMF transfer route unverified; frame uploads may add CPU/GPU work." : "")} Delivered FPS/bitrate require measurement." : "No active encoder.";
+    public bool CaptureLive => controller?.State == BroadcastState.Broadcasting;
+    public bool IsJoined => origin is not null;
+    public static AudioEligibility AudioEligibilityFor(SourceDescriptor? source)
+    {
+        if (source is null) return new(false, "Select a running application for application audio.");
+        return AudioPolicy.EvaluateApplication(source.Process, Environment.ProcessId);
+    }
+    public event PropertyChangedEventHandler? PropertyChanged;
+    protected void Notify([CallerMemberName] string? name = null) => PropertyChanged?.Invoke(this, new(name));
+    public async Task RefreshAsync(CancellationToken token)
+    {
+        Sources = await catalog.ListSourcesAsync(token); Notify(nameof(Sources)); Notify(nameof(AudioApplications));
+        if (audioCatalog is not null) AudioOutputs = await audioCatalog.ListOutputsAsync(token);
+        Notify(nameof(AudioOutputs)); Notify(nameof(AudioEligibility));
+    }
+    public async Task JoinAsync(CancellationToken token)
+    {
+        ObjectDisposedException.ThrowIf(disposed, this);
+        if (CaptureLive) throw new InvalidOperationException("Stop broadcasting before changing rooms.");
+        var parsed = RoomHttpClient.ParseLink(RoomLink);
+        if (origin is not null && origin != parsed.Origin) await LeaveRoomCore(token);
+        if (origin is null && room is RoomHttpClient client && vault is not null && await vault.RestoreAsync(parsed.Origin, token) is { } saved) client.Restore(saved.Origin, saved.Grant);
+        var joined = await room.JoinAsync(parsed.Origin, parsed.Invite, Nickname, token); origin = parsed.Origin;
+        await StopPresenceAsync();
+        await ReleaseControllerAsync();
+        Notify(nameof(IsJoined));
+        presenceCancellation = new(); presenceTask = MaintainPresence(presenceCancellation.Token);
+        await room.HeartbeatAsync(token);
+        if (vault is not null) await vault.SaveAsync(new(origin, joined), token);
+        Status = "Joined. Select video, then Start. Audio stays off until you explicitly select application or system output audio.";
+        await RefreshAsync(token);
+    }
+    public async Task RenameAsync(CancellationToken token) { await room.RenameAsync(Nickname, token); Status = "Nickname updated; your session identity stays the same."; }
+    public async Task StartAsync(CancellationToken token)
+    {
+        ObjectDisposedException.ThrowIf(disposed, this);
+        if (origin is null) throw new InvalidOperationException("Join a room first.");
+        var video = Video ?? throw new InvalidOperationException("Select the display or window to capture.");
+        if (CaptureLive) return;
+        if (!AudioEligibility.Allowed) throw new InvalidOperationException(AudioEligibility.Reason);
+        await ReleaseControllerAsync();
+        engine = engineFactory(AllowCpuFallback); controller = new(engine, room, origin, TimeProvider.System);
+        controller.BroadcastStateChanged += OnState;
+        await controller.StartAsync(new(video, Audio, Settings), token);
+        if (engine is ObsMediaEngine native)
+        {
+            diagnosticsCancellation = new(); diagnosticsTask = Observe(native, diagnosticsCancellation.Token);
+        }
+    }
+    private void OnState(object? sender, EventArgs args)
+    {
+        Status = controller?.LastError is { } error && controller.State == BroadcastState.Faulted ? "Broadcast stopped: " + error.Message : controller?.State.ToString() ?? "Stopped";
+        Notify(nameof(AppliedText)); Notify(nameof(CaptureLive));
+    }
+    public async Task ApplySettingsAsync(CancellationToken token)
+    {
+        if (controller is null) throw new InvalidOperationException("Start a broadcast before applying settings.");
+        var selectedVideo = Video ?? throw new InvalidOperationException("Select the display or window to capture.");
+        if (!AudioEligibility.Allowed) throw new InvalidOperationException(AudioEligibility.Reason);
+        await controller.ChangeSourcesAsync(new(selectedVideo, Audio, Settings), token);
+    }
+    public async Task StopAsync(CancellationToken token) { await StopDiagnostics(); if (controller is not null) await controller.StopAsync(token); }
+    public Task LeaveAsync(CancellationToken token)
+    {
+        ObjectDisposedException.ThrowIf(disposed, this);
+        return LeaveRoomCore(token);
+    }
+    private async Task MaintainPresence(CancellationToken token)
+    {
+        while (!token.IsCancellationRequested)
+        {
+            try
+            {
+                await Task.Delay(TimeSpan.FromSeconds(5), token);
+                using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token); deadline.CancelAfter(TimeSpan.FromSeconds(5));
+                await room.HeartbeatAsync(deadline.Token);
+            }
+            catch (OperationCanceledException) when (token.IsCancellationRequested) { break; }
+            catch (Exception error) when (error is HttpRequestException or OperationCanceledException)
+            {
+                // A temporary network interruption may recover within the server's
+                // reconnect grace. Publication has its separate fail-closed lease.
+                if (!disposed) Status = "Room connection interrupted; trying to reconnect.";
+            }
+            catch (Exception error) when (error is InvalidOperationException or InvalidDataException or System.Text.Json.JsonException)
+            {
+                if (!disposed) Status = "Room presence could not be renewed. Join the room again.";
+                break;
+            }
+        }
+    }
+    private async Task StopPresenceAsync()
+    {
+        presenceCancellation?.Cancel();
+        if (presenceTask is not null) await presenceTask;
+        presenceCancellation?.Dispose(); presenceCancellation = null; presenceTask = null;
+    }
+    private async Task LeaveRoomCore(CancellationToken token)
+    {
+        await StopPresenceAsync(); await ReleaseControllerAsync();
+        try { if (origin is not null) await room.LeaveAsync(token); }
+        finally { origin = null; Notify(nameof(IsJoined)); Status = "Left room."; Notify(nameof(CaptureLive)); }
+    }
+    public async Task<RedactedReport> ExportDiagnosticsAsync(CancellationToken token) => room is RoomHttpClient client ? await client.ExportDiagnosticsAsync(token) : throw new InvalidOperationException("Diagnostic export requires a room connection.");
+    private async Task Observe(ObsMediaEngine native, CancellationToken token)
+    {
+        MediaDiagnostics? previous = null;
+        while (!token.IsCancellationRequested)
+        {
+            try
+            {
+                var current = await native.GetDiagnosticsAsync(token);
+                var rates = PublisherRates.Between(previous, current);
+                ObservedText = PublisherObservation.Describe(current, rates);
+                if (room is RoomHttpClient client && controller?.StreamId is { } id && controller.Applied is { } applied)
+                {
+                    using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token); deadline.CancelAfter(TimeSpan.FromSeconds(3));
+                    try { await client.ReportDiagnosticsAsync(PublisherObservation.Envelope(id, current, rates, Settings, applied), deadline.Token); }
+                    catch (Exception e) when (e is HttpRequestException || e is OperationCanceledException && !token.IsCancellationRequested) { }
+                }
+                previous = current;
+            }
+            catch (OperationCanceledException) when (token.IsCancellationRequested) { break; }
+            catch (Exception) { previous = null; ObservedText = "Observed: diagnostics unavailable; native safety monitoring remains active."; }
+            try { await Task.Delay(1000, token); } catch (OperationCanceledException) { break; }
+        }
+    }
+    private async Task StopDiagnostics()
+    {
+        diagnosticsCancellation?.Cancel(); if (diagnosticsTask is not null) await diagnosticsTask;
+        diagnosticsCancellation?.Dispose(); diagnosticsCancellation = null; diagnosticsTask = null;
+        ObservedText = "Observed: unavailable until broadcasting.";
+    }
+    private async Task ReleaseControllerAsync()
+    {
+        await StopDiagnostics();
+        if (controller is not null) { controller.BroadcastStateChanged -= OnState; await controller.DisposeAsync(); controller = null; }
+        if (engine is IAsyncDisposable disposable) await disposable.DisposeAsync(); engine = null;
+    }
+    public async ValueTask DisposeAsync()
+    {
+        if (disposed) return; disposed = true;
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+        try { await LeaveRoomCore(deadline.Token); }
+        catch (Exception error) when (error is HttpRequestException or OperationCanceledException) { /* Server presence expires if close cannot reach it. */ }
+    }
+}

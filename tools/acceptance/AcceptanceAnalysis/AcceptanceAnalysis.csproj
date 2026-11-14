@@ -1,1 +1,1 @@
-<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><OutputType>Exe</OutputType></PropertyGroup><ItemGroup><ProjectReference Include="../../../src/JKiller.Core/JKiller.Core.csproj"/></ItemGroup></Project>
+<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><OutputType>Exe</OutputType></PropertyGroup><ItemGroup><ProjectReference Include="../../../src/PlayKross.Core/PlayKross.Core.csproj"/></ItemGroup></Project>

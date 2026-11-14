@@ -10,7 +10,7 @@ export function DiagnosticsPanel({ sample }: { sample: ViewerDiagnostics | null 
     try {
       const response = await fetch("/api/diagnostics", { credentials: "same-origin" });
       if (!response.ok) throw new Error();
-      downloadBlob(await response.blob(), "jkiller-diagnostics.json");
+      downloadBlob(await response.blob(), "playkross-diagnostics.json");
     } catch { setExportFailed(true); }
   };
   const value = (v: number | null | undefined, unit: string) => v === null || v === undefined ? t("unavailable") : `${v.toFixed(1)} ${unit}`;

@@ -7,26 +7,26 @@
         "resolved": "1.0.4258.31",
         "contentHash": "sHVZ2MQrHT1J3q5/6csn0fIP27rzpTO/RRC+wPQDrZheB7T4t2n+vVbY6SdCKr4WRV9s/gmBM3PPMWWJtoDzMg=="
       },
-      "jkiller.app": {
+      "playkross.app": {
         "type": "Project",
         "dependencies": {
-          "JKiller.Windows": "[1.0.0, )",
-          "Microsoft.Web.WebView2": "[1.0.4258.31, )"
+          "Microsoft.Web.WebView2": "[1.0.4258.31, )",
+          "PlayKross.Windows": "[1.0.0, )"
         }
       },
-      "jkiller.contracts": {
+      "playkross.contracts": {
         "type": "Project"
       },
-      "jkiller.core": {
+      "playkross.core": {
         "type": "Project",
         "dependencies": {
-          "JKiller.Contracts": "[1.0.0, )"
+          "PlayKross.Contracts": "[1.0.0, )"
         }
       },
-      "jkiller.windows": {
+      "playkross.windows": {
         "type": "Project",
         "dependencies": {
-          "JKiller.Core": "[1.0.0, )"
+          "PlayKross.Core": "[1.0.0, )"
         }
       }
     }

@@ -59,3 +59,14 @@ The owner reported website broadcasting failing in Firefox on Windows 11. Reprod
 3. With `-MediaInterface Ethernet` and Firefox's OpenH264 plugin present: **live**, 1280×720 at ~30 encoded FPS, ~0.8 Mbps synthetic content, lease renewed, sustained for 25 s. Without OpenH264 (fresh automation profile), Firefox negotiates H.264 but encodes nothing and MediaMTX drops the session after its 10 s read timeout; a connection that never carried video now explains that the OpenH264 plugin is required.
 
 Unit coverage: rejected constraints still go live; encoder downscale; codec/connection messages; never-sent-video detection. Web: 137 tests and production build pass. Actual display/window/tab capture and captured audio in Firefox still need a manual check (the automation replaces the chooser).
+
+## Full rename to PlayKross — 2026-11-14
+
+The former internal name JKiller is replaced throughout source, scripts, configuration and current documentation:
+
+- `PlayKross.sln`; projects/namespaces `PlayKross.App`, `.Contracts`, `.Core`, `.Host`, `.Windows` and their test projects; NuGet lock files regenerated (locked restore verified).
+- Native plugin `native/playkross-obs` → `playkross-obs.dll` (OBS source IDs `playkross_*`, CMake options `PLAYKROSS_*`). `Build-Native.ps1 -Plugin` removes a leftover `jk-obs.dll`, because the owned runtime refuses unlisted plugins.
+- OBS profile/scene collection `PlayKross`; environment variables `PLAYKROSS_*` (including `PLAYKROSS_BOOTSTRAP_SECRET`, `PLAYKROSS_ADMIN_SECRET`, `PLAYKROSS_PUBLIC_HOST`); session cookie `playkross-session`; browser invite key `playkross-invite`; web package `playkross-viewer`; diagnostics export `playkross-diagnostics.json`.
+- **Intentionally unchanged:** the hash-pinned OBS capture patch and the prebuilt instrumented component it describes (`JKILLER_WGC_INTERVAL_MS`, `jk_*` trace fields), plus historical records in `docs/superpowers/` and `docs/validation/`, which describe their original revisions.
+
+Upgrading an existing checkout: stop the broadcaster and local services, pull, run `./scripts/Build-Native.ps1 -Plugin` once, then start as usual. Existing browser/app room sessions and the in-app viewer profile start fresh (new cookie/profile names). Rename the checkout folder itself only while nothing is running; scripts resolve paths relative to the repository.

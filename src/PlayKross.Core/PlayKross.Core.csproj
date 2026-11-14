@@ -1,0 +1,1 @@
+<Project Sdk="Microsoft.NET.Sdk"><ItemGroup><ProjectReference Include="../PlayKross.Contracts/PlayKross.Contracts.csproj" /></ItemGroup></Project>

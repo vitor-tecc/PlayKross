@@ -9,7 +9,7 @@ import { BrowserPublisher, type PublisherSnapshot } from "../media/BrowserPublis
 import { WhipSession } from "../media/WhipSession";
 import { BroadcastControls } from "./BroadcastControls";
 
-const inviteStorageKey = "jk-invite";
+const inviteStorageKey = "playkross-invite";
 const idlePublisher: PublisherSnapshot = { phase: "idle", streamId: null, hasAudio: false, error: null };
 /** Delays before re-opening a room subscription after SignalR's own reconnects give up. */
 export const ROOM_RESUBSCRIBE_MS = [2000, 5000, 10000, 15000] as const;

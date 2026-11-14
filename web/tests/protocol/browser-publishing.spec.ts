@@ -13,8 +13,8 @@ for (const scenario of [
   { name: "captured Opus audio", requestAudio: true, availableAudio: true },
 ]) {
   test(`Browser publication plays with ${scenario.name}`, async ({ browser }, info) => {
-    test.skip(!process.env.JKILLER_BROWSER_PUBLISHING, "Requires Test-BrowserPublishing.ps1 and its owned local host.");
-    const link = new URL(process.env.JKILLER_PROBE_JOIN_LINK!);
+    test.skip(!process.env.PLAYKROSS_BROWSER_PUBLISHING, "Requires Test-BrowserPublishing.ps1 and its owned local host.");
+    const link = new URL(process.env.PLAYKROSS_PROBE_JOIN_LINK!);
     const publisherContext = await browser.newContext(), viewerContext = await browser.newContext();
     try {
       await publisherContext.addInitScript(() => localStorage.setItem("playkross-language", "en"));
