@@ -6,17 +6,25 @@ namespace JKiller.Host.Diagnostics;
 public sealed class DiagnosticStore(TimeProvider clock)
 {
     private readonly object gate = new();
+    private const int MaximumSamples = 4096;
+    private static readonly TimeSpan MinimumInterval = TimeSpan.FromMilliseconds(900);
     private readonly LinkedList<(Guid Room, Guid Session, DateTimeOffset At, DiagnosticsEnvelope Sample)> samples = new();
+    // Last accepted sample per observer/stream: an O(1) rate check instead of scanning the history.
+    private readonly Dictionary<(Guid Session, Guid Stream), DateTimeOffset> lastAccepted = [];
     public bool Add(Guid room, Guid session, DiagnosticsEnvelope envelope)
     {
         lock (gate)
         {
-            Purge(); var now = clock.GetUtcNow();
-            if (samples.Any(s => s.Session == session && s.Sample.StreamId == envelope.StreamId && now - s.At < TimeSpan.FromMilliseconds(900))) return false;
+            Purge(); var now = clock.GetUtcNow(); var key = (session, envelope.StreamId);
+            if (lastAccepted.TryGetValue(key, out var previous) && now - previous < MinimumInterval) return false;
             var clean = DiagnosticsExport.Redact([envelope with { ObserverId = session }]).Samples.Single();
             var metrics = clean.Metrics.ToDictionary(); metrics["serverReceivedUnixMs"] = now.ToUnixTimeMilliseconds();
             samples.AddLast((room, session, now, clean with { Metrics = metrics }));
-            while (samples.Count > 4096) samples.RemoveFirst(); return true;
+            lastAccepted[key] = now;
+            while (samples.Count > MaximumSamples) samples.RemoveFirst();
+            if (lastAccepted.Count > MaximumSamples)
+                foreach (var stale in lastAccepted.Where(x => now - x.Value >= MinimumInterval).Select(x => x.Key).ToArray()) lastAccepted.Remove(stale);
+            return true;
         }
     }
     public DiagnosticsEnvelope[] Read(RoomSnapshot room)

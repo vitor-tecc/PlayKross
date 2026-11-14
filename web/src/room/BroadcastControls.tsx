@@ -1,13 +1,13 @@
 import { t, useLanguage } from "../i18n";
 import type { PublisherSnapshot } from "../media/BrowserPublisher";
 import { useState } from "react";
-import { defaultQuality, qualityPreset, validQuality, type BroadcastQuality } from "../media/BroadcastQuality";
+import { loadQualityPreference, qualityPreset, saveQualityPreference, validQuality, type BroadcastQuality } from "../media/BroadcastQuality";
 export interface BroadcastControlsProps { state: PublisherSnapshot; unavailableReason: string | null; onStart: (shareAudio: boolean, quality: BroadcastQuality) => void; onStop: () => void }
 export function BroadcastControls({ state, unavailableReason, onStart, onStop }: BroadcastControlsProps) {
   useLanguage();
   const [shareAudio, setShareAudio] = useState(false);
-  const [quality, setQuality] = useState<BroadcastQuality>({ ...defaultQuality });
-  const [bitrate, setBitrate] = useState(String(defaultQuality.bitrateMbps));
+  const [quality, setQuality] = useState<BroadcastQuality>(loadQualityPreference);
+  const [bitrate, setBitrate] = useState(() => String(quality.bitrateMbps));
   const selectedQuality = { ...quality, bitrateMbps: Number(bitrate) };
   const choosePreset = (height: number, fps: number) => { const preset = qualityPreset(height, fps); setQuality(preset); setBitrate(String(preset.bitrateMbps)); };
   const active = state.phase !== "idle";
@@ -18,7 +18,7 @@ export function BroadcastControls({ state, unavailableReason, onStart, onStop }:
   return <section className="broadcast-controls" aria-label={t("Screen sharing controls")}>
     <div className="broadcast-actions"><strong role="status">{t(status)}</strong>
       <label><input type="checkbox" checked={shareAudio} disabled={active} onChange={event => setShareAudio(event.target.checked)} />{t("Share captured audio")}</label>
-      {active ? <button disabled={state.phase === "stopping"} onClick={onStop}>{t("Stop sharing")}</button> : <button disabled={Boolean(unavailableReason) || !validQuality(selectedQuality)} onClick={() => onStart(shareAudio, selectedQuality)}>{t("Start sharing")}</button>}
+      {active ? <button disabled={state.phase === "stopping"} onClick={onStop}>{t("Stop sharing")}</button> : <button disabled={Boolean(unavailableReason) || !validQuality(selectedQuality)} onClick={() => { saveQualityPreference(selectedQuality); onStart(shareAudio, selectedQuality); }}>{t("Start sharing")}</button>}
     </div>
     <div className="broadcast-quality">
       <label>{t("Resolution")}<select disabled={active} value={quality.height} onChange={event => choosePreset(Number(event.target.value), quality.fps)}>

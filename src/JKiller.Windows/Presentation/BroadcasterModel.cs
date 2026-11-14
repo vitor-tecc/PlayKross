@@ -175,27 +175,12 @@ public class BroadcasterModel(Func<bool, IMediaEngine> engineFactory, IRoomClien
             try
             {
                 var current = await native.GetDiagnosticsAsync(token);
-                var interval = TimeSpan.FromSeconds(previous is null ? 0 : (current.MonotonicNs - previous.MonotonicNs) / 1e9);
-                double? Rate(long? a, long? b) => a is null || b is null ? null : CounterRates.Calculate(a.Value, b.Value, interval);
-                var capture = Rate(previous?.CaptureFrames, current.CaptureFrames); var encoded = Rate(previous?.ActualEncodedFrames, current.ActualEncodedFrames);
-                var sent = Rate(previous?.SentFrames, current.SentFrames); var mbps = Rate(previous?.SentMediaBytes, current.SentMediaBytes) * 8 / 1e6;
-                string Format(double? value) => value is null ? "unavailable" : value.Value.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture);
-                ObservedText = $"Observed: source {current.CaptureWidth}×{current.CaptureHeight}, encoded {current.EncodedWidth}×{current.EncodedHeight}; capture {Format(capture)}, encoded {Format(encoded)}, sent {Format(sent)} FPS; {Format(mbps)} Mbps to host. Encode API {Format(current.EncodeApiCallMs)} ms; input→packet {Format(current.InputToOutputPacketMs)} ms; fresh capture→packet {Format(current.FreshCaptureToPacketMs)} ms. GPU kernel timing unavailable. Audio {current.AudioModeName ?? "unavailable"}; capture initialized/running: {current.AudioRunning}; captured/emitted frames {current.CapturedAudioFrames}/{current.EmittedAudioFrames}; queue {Format(current.AudioQueueMs)} ms, dropped frames {current.DroppedAudioFrames}; active owned video/audio encoders {current.ActiveVideoEncoders}/{current.ActiveAudioEncoders}. Audio error: {current.AudioError ?? "unavailable"}. Viewer audibility requires a playback check. Viewer/network measurements are in Playback diagnostics.";
+                var rates = PublisherRates.Between(previous, current);
+                ObservedText = PublisherObservation.Describe(current, rates);
                 if (room is RoomHttpClient client && controller?.StreamId is { } id && controller.Applied is { } applied)
                 {
-                    var metrics = new Dictionary<string, double?> { ["audioQueueMs"] = current.AudioQueueMs, ["droppedAudioFrames"] = current.DroppedAudioFrames, ["activeVideoEncoders"] = current.ActiveVideoEncoders, ["activeAudioEncoders"] = current.ActiveAudioEncoders,
-                        ["captureFps"] = capture, ["encodedFps"] = encoded, ["sentFps"] = sent, ["sendMbps"] = mbps,
-                        ["compositorFps"] = Rate(previous?.CompositorFrames, current.CompositorFrames), ["encodeApiCallMs"] = current.EncodeApiCallMs, ["inputToOutputPacketMs"] = current.InputToOutputPacketMs,
-                        ["captureToRenderMs"] = current.CaptureToRenderMs, ["freshCaptureToPacketMs"] = current.FreshCaptureToPacketMs, ["nativeRenderAverageMs"] = current.NativeRenderAverageMs,
-                        ["width"] = current.EncodedWidth, ["height"] = current.EncodedHeight, ["sourceWidth"] = current.CaptureWidth, ["sourceHeight"] = current.CaptureHeight,
-                        ["requestedWidth"] = Settings.Width, ["requestedHeight"] = Settings.Height, ["requestedFps"] = Settings.Fps, ["requestedMbps"] = (double)Settings.BitrateMbps,
-                        ["appliedWidth"] = applied.Settings.Width, ["appliedHeight"] = applied.Settings.Height, ["appliedFps"] = applied.Settings.Fps, ["appliedMbps"] = (double)applied.Settings.BitrateMbps };
                     using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token); deadline.CancelAfter(TimeSpan.FromSeconds(3));
-                    var metadata = new Dictionary<string, string> { ["encoder"] = current.Encoder, ["codec"] = current.Codec, ["captureApi"] = current.CaptureApi, ["hardwareInitialized"] = current.HardwareInitialized ? "true" : "false", ["provenance"] = "native-monotonic-interval" };
-                    if (current.AudioModeName is "off" or "application" or "system-output") metadata["audioMode"] = current.AudioModeName;
-                    if (current.EncoderFamily is "nvenc" or "amf" or "x264") metadata["encoderFamily"] = current.EncoderFamily;
-                    if (current.EncoderTransferRoute == "unverified") metadata["encoderTransferRoute"] = current.EncoderTransferRoute;
-                    try { await client.ReportDiagnosticsAsync(new(id, "publisher", metrics, metadata), deadline.Token); }
+                    try { await client.ReportDiagnosticsAsync(PublisherObservation.Envelope(id, current, rates, Settings, applied), deadline.Token); }
                     catch (Exception e) when (e is HttpRequestException || e is OperationCanceledException && !token.IsCancellationRequested) { }
                 }
                 previous = current;

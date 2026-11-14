@@ -28,6 +28,8 @@ See [browser publishing implementation notes](setup/publishing-and-compatibility
 
 2026-11-02 follow-up: browser broadcasting adds desktop-matching 480p/720p/1080p × 30/60 FPS presets, a 1–25 Mbps bitrate control and local outgoing-video diagnostics. Defaults stay 720p30/4 Mbps; changes require stop/start and a new chooser gesture. Keep one encoding and all existing ownership/audio cleanup rules. See [quality control verification](validation/2026-11-02-browser-quality.md); the friend's reported Chrome 0.5 Mbps/poor image remains an unconfirmed live issue rather than a proven fixed bitrate cap.
 
+2026-11-13 follow-up: a code-only [refactor and optimization pass](validation/2026-11-13-refactor-and-optimizations.md) shares WHIP/WHEP signaling code, makes room updates resubscribe after SignalR gives up, remembers the last browser broadcast quality (never captured audio), and stops duplicate room-snapshot delivery. It changes no live-acceptance status.
+
 Follow-up: the [video-only playback regression](validation/2026-10-18-m3-browser-playback.md) fixes WHEP POST 400 for browser publications without audio by accepting MediaMTX's PCMU placeholder in the viewer. Three real synthetic Edge protocol cases and a Firefox 158 receive check passed; actual display capture/audio and the remaining M3 live acceptance checks are still pending.
 
 ## Initial interface/cursor slice

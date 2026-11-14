@@ -50,11 +50,29 @@ public sealed class RoomConnections : IDisposable
         lock (gate) expired = connections.Values.Select(x => x.Session).Distinct().ToArray();
         foreach (var id in expired) if (sessions.FindActive(id) is null) Revoke(id);
     }
-    public Task SendAsync(IHubContext<RoomHub> hub, RoomSnapshot snapshot, CancellationToken token = default)
+    // Endpoints deliver a mutation's snapshot immediately and RoomUpdatesService
+    // delivers the same change shortly after. Revisions identify content, so
+    // skip snapshots that are not newer than the last one sent for the room.
+    private readonly Dictionary<Guid, long> delivered = [];
+    public async Task SendAsync(IHubContext<RoomHub> hub, RoomSnapshot snapshot, CancellationToken token = default)
     {
-        Sweep();
-        var recipients = snapshot.Participants.Where(p => sessions.FindActive(p.SessionId)?.RoomId == snapshot.RoomId).Select(p => p.SessionId.ToString()).ToArray();
-        return hub.Clients.Users(recipients).SendAsync("room", snapshot, token);
+        lock (gate)
+        {
+            if (delivered.TryGetValue(snapshot.RoomId, out var last) && snapshot.Revision <= last) return;
+            delivered[snapshot.RoomId] = snapshot.Revision;
+        }
+        try
+        {
+            Sweep();
+            var recipients = snapshot.Participants.Where(p => sessions.FindActive(p.SessionId)?.RoomId == snapshot.RoomId).Select(p => p.SessionId.ToString()).ToArray();
+            await hub.Clients.Users(recipients).SendAsync("room", snapshot, token);
+        }
+        catch
+        {
+            // Allow a later delivery attempt of this revision after a failed send.
+            lock (gate) if (delivered.TryGetValue(snapshot.RoomId, out var last) && last == snapshot.Revision) delivered.Remove(snapshot.RoomId);
+            throw;
+        }
     }
     public void Dispose()
     {
